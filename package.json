@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@asd14/posix-utils",
+  "version": "1.0.0",
+  "description": "Cross-platform POSIX utilities for development workflows.",
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/asd-xiv/posix-utils.git"
+  },
+  "keywords": [
+    "posix",
+    "shell",
+    "utils",
+    "utilities",
+    "cross-platform",
+    "git",
+    "logging",
+    "cli"
+  ],
+  "files": [
+    "src"
+  ],
+  "bin": {
+    "pu": "./src/pu"
+  },
+  "scripts": {
+    "----UTIL": "",
+    "prepare": "git config --local core.hooksPath .githook",
+    "format": "shfmt --posix --indent 2 --case-indent --simplify --write src/*",
+    "----CODE-ANALYSIS": "",
+    "lint": "shellcheck src/*"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
+    "@semantic-release/git": "^10.0.1",
+    "conventional-changelog-conventionalcommits": "^9.1.0",
+    "semantic-release": "^24.2.7"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "license": "MIT"
+}

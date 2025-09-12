@@ -1,0 +1,72 @@
+#!/usr/bin/env sh
+
+# NAME
+#  pu - POSIX utilities dispatcher
+#
+# SYNOPSIS
+#  pu <command> [options...]
+#
+# DESCRIPTION
+#  Cross-platform POSIX utilities for development workflows.
+#
+# COMMANDS
+#  log <type> [options...] <message>
+#   Print fancy formatted log messages with colors and timestamps.
+#
+#  git-has-changed <file> --since <commit-ref>
+#   Check if a file has changed since a git commit reference.
+#
+# EXAMPLES
+#  pu log info "Build started"
+#  pu git-has-changed package.json --since HEAD~1
+
+# Get the directory where this script is located (symlink aware)
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+
+# ╭───┤ Functions
+# ╰─
+
+show_help() {
+  echo "pu - POSIX utilities"
+  echo ""
+  echo "Usage: pu <command> [options...]"
+  echo ""
+  echo "Commands:"
+  echo "  log               Print fancy formatted log messages"
+  echo "  git-has-changed   Check if file changed since git commit"
+  echo ""
+  echo "Examples:"
+  echo "  pu log info 'Build started'"
+  echo "  pu git-has-changed package.json --since HEAD~1"
+  echo ""
+  echo "For command-specific help, run: pu <command> --help"
+}
+
+# ╭───┤ Main. Start here.
+# ╰─
+
+if [ $# -eq 0 ]; then
+  show_help
+  exit 1
+fi
+
+COMMAND="$1"
+shift
+
+case "$COMMAND" in
+  log)
+    "$SCRIPT_DIR/log.sh" "$@"
+    ;;
+  git-has-changed)
+    "$SCRIPT_DIR/git-has-changed.sh" "$@"
+    ;;
+  help | --help | -h)
+    show_help
+    ;;
+  *)
+    echo "Unknown command: $COMMAND" >&2
+    echo "" >&2
+    show_help >&2
+    exit 1
+    ;;
+esac
