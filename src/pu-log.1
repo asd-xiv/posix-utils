@@ -1,0 +1,117 @@
+.TH PU-LOG 1 "2024-12-15" "pu 1.0.0" "PU Manual"
+
+.SH NAME
+pu-log \- Print fancy formatted log messages with colors and timestamps
+
+.SH SYNOPSIS
+.B pu-log
+.I <TYPE>
+[OPTIONS]
+.I <MESSAGE>
+
+.SH DESCRIPTION
+Print dated, colored, namespaced, multi-level, CI aware and pretty formatted log messages. Supports different log levels with automatic filtering and colored output.
+.br
+Messages include timestamps and can be enhanced with key-value pairs for structured logging.
+
+.SH ARGUMENTS
+.TP
+.I TYPE
+The type of message to print. Valid values:
+.BR error " (or " err "), "
+.BR warning " (or " wrn "), "
+.BR info " (or " inf "), "
+.BR success " (or " suc ")"
+
+.TP
+.I MESSAGE
+The message text to display. Can contain spaces and will be printed after the timestamp and type indicator.
+
+.SH OPTIONS
+.TP
+.BR \-c ", " \-\-color
+Enable colored output even when CI environment variable is set.
+
+.TP
+.BR \-nc ", " \-\-no\-color
+Disable colored output. Useful for logging to files.
+
+.TP
+.BR \-v ", " \-\-var " <NAME> <VALUE>"
+Add a key-value pair to be displayed after the message. Can be used multiple times to add multiple variables. Values are color-coded for readability.
+
+.TP
+.BR \-h ", " \-\-help
+Display this help message and exit
+
+.SH NOTES
+.TP
+.B Positional Flags
+Color flags (\c
+.B \-\-color, \-\-no\-color\c
+) are positional and only affect variables that come after them in the command line. For consistent behavior, place color flags before
+.B \-v, \-\-var
+flags.
+
+.SH ENVIRONMENT
+.TP
+.B LOG_LEVEL=error
+Minimum level of log messages to print.
+.br
+Valid values:
+.BR error ", " warning ", " info
+(success messages are always printed).
+
+.TP
+.B LOG_NAMESPACE
+If set, displays a namespace prefix before messages in gray text. Useful for identifying message sources in complex applications.
+
+.TP
+.B CI
+If set to any value, automatically disables colored output for CI/CD environments.
+
+.SH LOG LEVELS
+Messages are filtered based on LOG_LEVEL:
+.TP
+.B error
+Shows only error and success messages
+.TP
+.B warning
+Shows error, warning, and success messages
+.TP
+.B info
+Shows all message types (error, warning, info, success)
+
+.SH EXAMPLES
+.TP
+Basic info message:
+.B pu-log inf "Application started"
+
+.TP
+Error with context variables:
+.B pu-log err -v file "/etc/config" -v error "not found" "Configuration error"
+
+.TP
+Warning without colors:
+.B pu-log wrn --no-color "Deprecated function used"
+
+.TP
+Success with namespace:
+.B LOG_NAMESPACE="deploy" pu-log suc "Deployment completed"
+
+.TP
+Controlled log level:
+.B LOG_LEVEL=info pu-log inf "This will be shown"
+.br
+.B LOG_LEVEL=error pu-log inf "This will be hidden"
+
+.SH EXIT STATUS
+.TP
+.B 0
+Success
+.TP
+.B 1
+Error (invalid message type, missing arguments, etc.)
+
+.SH AUTHOR
+Andrei Dumitrescu <andrei.dumitrescu@pm.me>

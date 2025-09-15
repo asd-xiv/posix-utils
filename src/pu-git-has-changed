@@ -1,0 +1,130 @@
+#!/usr/bin/env sh
+
+# Symlink aware script paths and name
+REAL_PATH=$(realpath "$0")
+SCRIPT_DIR=$(dirname "$REAL_PATH")
+SCRIPT_NAME=$(basename "$REAL_PATH")
+
+# Config vars for `$SCRIPT_DIR/pu-log`
+export LOG_NAMESPACE=" $SCRIPT_NAME"
+export LOG_LEVEL="${LOG_LEVEL:-info}"
+
+# ╭───┤ Bootstrap & Argument parsing
+# ╰─
+
+_color() {
+  "$SCRIPT_DIR/pu-color" "$@"
+}
+
+_log() {
+  "$SCRIPT_DIR/pu-log" "$@"
+}
+
+show_help() {
+  man --pager cat "$SCRIPT_DIR/$SCRIPT_NAME.1"
+}
+
+show_mini_help() {
+  cat <<EOF
+$(_color gray "USAGE:") $SCRIPT_NAME <file> --since <commit-ref>
+
+$(_color gray "ARGUMENTS:")
+  <file>        File path to check for changes
+  <commit-ref>  Git commit reference (HEAD~1, v1.2.3, origin/main, etc.)
+
+$(_color gray "OPTIONS:")
+  -h, --help    Show detailed man page
+
+$(_color gray "EXIT CODES:")
+  0  File has changed since the specified commit
+  1  File unchanged or error occurred
+EOF
+}
+
+# ╭───┤ Domain Functions
+# ╰─
+
+validate_git_repo() {
+  if ! git rev-parse --git-dir >/dev/null 2>&1; then
+    _log error "Not in a git repository"
+    exit 1
+  fi
+}
+
+validate_file() {
+  if [ ! -f "$1" ]; then
+    _log error "File not found: $1"
+    exit 1
+  fi
+}
+
+validate_commit_ref() {
+  if ! git rev-parse --verify "$1" >/dev/null 2>&1; then
+    _log error "Invalid commit reference: $1"
+    exit 1
+  fi
+}
+
+check_file_changed() {
+  file="$1"
+  commit_ref="$2"
+
+  if git diff --quiet "$commit_ref" "$file" 2>/dev/null; then
+    _log info "$file unchanged since $commit_ref"
+    exit 1
+  else
+    _log info "$file has changed since $commit_ref"
+    exit 0
+  fi
+}
+
+# ╭───┤ Main. Start Here.
+# ╰─
+
+FILE=""
+COMMIT_REF=""
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -h | --help | --hlep)
+      show_help
+      exit 0
+      ;;
+    --since)
+      COMMIT_REF="$2"
+      shift 2
+      ;;
+    -?*)
+      _log error -v flag "$1" "Unknown flag"
+      show_mini_help
+      exit 1
+      ;;
+    *)
+      if [ -z "$FILE" ]; then
+        FILE="$1"
+      else
+        _log error "Too many arguments"
+        show_mini_help
+        exit 1
+      fi
+      shift
+      ;;
+  esac
+done
+
+if [ -z "$FILE" ]; then
+  _log error "Missing file argument"
+  show_mini_help
+  exit 1
+fi
+
+if [ -z "$COMMIT_REF" ]; then
+  _log error "Missing --since argument"
+  show_mini_help
+  exit 1
+fi
+
+validate_git_repo
+validate_file "$FILE"
+validate_commit_ref "$COMMIT_REF"
+check_file_changed "$FILE" "$COMMIT_REF"

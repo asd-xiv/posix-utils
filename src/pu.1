@@ -1,0 +1,75 @@
+.TH PU 1 "2024-12-15" "pu 1.0.0" "PU Manual"
+
+.SH NAME
+pu \- Cross-platform POSIX utilities for development workflows.
+
+.SH SYNOPSIS
+.B pu
+[OPTIONS]
+.I <COMMAND>
+[COMMAND_OPTIONS...]
+
+.SH DESCRIPTION
+Provides a unified interface to various development tools and utilities across different operating systems.
+
+The dispatcher validates commands and executes the appropriate underlying scripts with proper error handling and logging.
+
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Display this help message and exit
+
+.SH ARGUMENTS
+.TP
+.I COMMAND
+.B log
+Print dated, colored, namespaced, multi-level, CI aware and pretty formatted log messages. See
+.B pu-log(1)
+for details.
+
+.B git-has-changed
+Check if a file has changed since a given git commit. See
+.B pu-git-has-changed(1)
+for details.
+
+.B ensure-installed
+Install packages across different operating systems and package managers. See
+.B pu-ensure-installed(1)
+for details.
+
+.SH EXAMPLES
+.TP
+Display help information:
+.B pu --help
+
+.TP
+Print an informational log message:
+.B pu log info "Build started"
+
+.TP
+Check if package.json changed since last commit:
+.B pu git-has-changed package.json --since HEAD~1
+
+.TP
+Install development tools:
+.B pu ensure-installed fzf git curl
+
+.TP
+Install with specific package manager flags:
+.B pu ensure-installed firefox -- --cask
+
+.SH EXIT STATUS
+.TP
+.B 0
+Success
+.TP
+.B 1
+Error (unknown command, missing arguments, command script not found, etc.)
+
+.SH SEE ALSO
+.B pu-log (1),
+.B pu-git-has-changed (1),
+.B pu-ensure-installed (1)
+
+.SH AUTHOR
+Andrei Dumitrescu <andrei.dumitrescu@pm.me>

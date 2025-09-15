@@ -1,0 +1,185 @@
+#!/usr/bin/env sh
+
+# Symlink aware script paths and name
+REAL_PATH=$(realpath "$0")
+SCRIPT_DIR=$(dirname "$REAL_PATH")
+SCRIPT_NAME=$(basename "$REAL_PATH")
+
+# Config vars - allow external override of LOG_NAMESPACE
+export LOG_NAMESPACE="${LOG_NAMESPACE:-📝 $SCRIPT_NAME}"
+export LOG_LEVEL="${LOG_LEVEL:-error}"
+
+# Global color state - starts with CI value, can be overridden by flags
+NO_COLOR="$CI"
+
+# ╭───┤ Bootstrap & Argument parsing
+# ╰─
+
+_color() {
+  color="$1"
+  text="$2"
+
+  if [ -n "$NO_COLOR" ]; then
+    printf "%s" "$text"
+    return
+  fi
+
+  case "$color" in
+    gray) printf "\033[90m%s\033[0m" "$text" ;;
+    red) printf "\033[31m%s\033[0m" "$text" ;;
+    green) printf "\033[32m%s\033[0m" "$text" ;;
+    yellow) printf "\033[33m%s\033[0m" "$text" ;;
+    blue) printf "\033[34m%s\033[0m" "$text" ;;
+    *) printf "%s" "$text" ;;
+  esac
+}
+
+show_help() {
+  man --pager cat "$SCRIPT_DIR/$SCRIPT_NAME.1"
+}
+
+show_mini_help() {
+  cat <<EOF
+$(_color gray "USAGE:")
+  $SCRIPT_NAME <type> [OPTIONS] <message>
+
+$(_color gray "TYPES:")
+  error/err, warning/wrn, info/inf, success/suc
+
+$(_color gray "OPTIONS:")
+  -c, --color                  Enable colored output (even if env var CI present)
+  -nc, --no-color              Disable colored output
+  -v, --var <name> <value>     Add key-value pair to output
+  -h, --help                   Show detailed man page
+
+$(_color gray "NOTE:")
+  Color flags are positional - they only affect variables that come after them
+
+$(_color gray "ENVIRONMENT:")
+  CI             If present, assumes --no-color unless explicit --color present
+  LOG_LEVEL      Minimum level to print (error, warning, info)
+  LOG_NAMESPACE  Namespace prefix for messages
+EOF
+}
+
+# ╭───┤ Domain Functions
+# ╰─
+
+set_theme() {
+  case $1 in
+    err | error)
+      TYPE_LABEL="ERR"
+      TYPE_COLOR="red"
+      ;;
+    wrn | warning)
+      TYPE_LABEL="WRN"
+      TYPE_COLOR="yellow"
+      ;;
+    inf | info)
+      TYPE_LABEL="INF"
+      TYPE_COLOR="blue"
+      ;;
+    suc | success)
+      TYPE_LABEL="SUC"
+      TYPE_COLOR="green"
+      ;;
+  esac
+  TYPE_LABEL_COLORIZED="$(_color "$TYPE_COLOR" "$TYPE_LABEL")"
+}
+
+should_print() {
+  case $LOG_LEVEL in
+    err | error) [ "$1" = "error" ] || [ "$1" = "err" ] || [ "$1" = "success" ] || [ "$1" = "suc" ] ;;
+    wrn | warning) [ "$1" = "error" ] || [ "$1" = "err" ] || [ "$1" = "warning" ] || [ "$1" = "wrn" ] || [ "$1" = "success" ] || [ "$1" = "suc" ] ;;
+    inf | info) [ "$1" = "error" ] || [ "$1" = "err" ] || [ "$1" = "warning" ] || [ "$1" = "wrn" ] || [ "$1" = "info" ] || [ "$1" = "inf" ] || [ "$1" = "success" ] || [ "$1" = "suc" ] ;;
+  esac
+}
+
+print_message() {
+  variables=""
+
+  while [ "$#" -gt 0 ]; do
+    case $1 in
+      -nc | --no-color)
+        NO_COLOR="1"
+        shift
+        ;;
+      -c | --color)
+        NO_COLOR=""
+        shift
+        ;;
+      -v | --var)
+        key=$2
+        value=$3
+        shift 3 # remove all 3 elements: flag, key and value
+
+        if [ -n "$NO_COLOR" ]; then
+          variables="$variables $key=$value"
+        else
+          variables="$variables$(_color gray "$key=")$value "
+        fi
+        ;;
+      --)
+        shift
+        break
+        ;;
+      -*)
+        echo "Unknown parameter $1" >&2
+        exit 1
+        ;;
+      *) break ;;
+    esac
+  done
+
+  timestamp=$(date +%T)
+  styled_namespace=""
+  if [ -n "$LOG_NAMESPACE" ]; then
+    styled_namespace="$(_color gray "$LOG_NAMESPACE: ")"
+  fi
+
+  if [ -n "$NO_COLOR" ]; then
+    printf "%s %s %s%s %s\n" "$timestamp" "$TYPE_LABEL" "${LOG_NAMESPACE:+${LOG_NAMESPACE}: }" "$1" "$variables" >&2
+  else
+    printf "%s %b %b%s %b\n" "$timestamp" "$TYPE_LABEL_COLORIZED" "$styled_namespace" "$1" "$variables" >&2
+  fi
+}
+
+# ╭───┤ Main. Start Here.
+# ╰─
+
+MESSAGE_TYPE=""
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -h | --help | --hlep)
+      show_help
+      exit 0
+      ;;
+    error | err | warning | wrn | info | inf | success | suc)
+      if [ -z "$MESSAGE_TYPE" ]; then
+        MESSAGE_TYPE="$1"
+      else
+        break
+      fi
+      shift
+      ;;
+    -?*)
+      # Pass unknown flags to print_message for handling
+      break
+      ;;
+    *)
+      # First non-flag argument after type is the message
+      break
+      ;;
+  esac
+done
+
+if [ -z "$MESSAGE_TYPE" ]; then
+  show_mini_help
+  exit 1
+fi
+
+if should_print "$MESSAGE_TYPE"; then
+  set_theme "$MESSAGE_TYPE"
+  print_message "$@"
+fi

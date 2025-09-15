@@ -1,0 +1,118 @@
+.TH PU-GIT-HAS-CHANGED 1 "2024-12-15" "pu 1.0.0" "PU Manual"
+
+.SH NAME
+pu-git-has-changed \- Check if a file has changed since a given git commit
+
+.SH SYNOPSIS
+.B pu-git-has-changed
+.I <FILE>
+.B --since
+.I <COMMIT-REF>
+[OPTIONS]
+
+.SH DESCRIPTION
+Check if a file has changed since a given git commit reference. This tool compares the current state of a file against its state at a specific commit, making it useful for conditional build steps, deployment decisions, and change detection in CI/CD pipelines.
+
+The tool exits with code 0 if the file has changed, making it perfect for use in shell conditionals and npm scripts.
+
+.SH ARGUMENTS
+.TP
+.I FILE
+The file path to check for changes. Must be a valid file that exists in the current working directory or repository.
+
+.TP
+.I COMMIT-REF
+Git commit reference to compare against. Can be any valid git revision such as:
+.B HEAD~1
+(previous commit),
+.B v1.2.3
+(tag),
+.B origin/main
+(remote branch), commit SHA, or any other git reference.
+
+.SH OPTIONS
+.TP
+.B --since
+Required flag that precedes the commit reference. This makes the command more readable and explicit about what the commit reference represents.
+
+.TP
+.BR \-h ", " \-\-help
+Display detailed help message and exit
+
+.SH ENVIRONMENT
+.TP
+.B LOG_LEVEL=info
+Controls verbosity of log output. Valid values:
+.BR error ", " warning ", " info
+
+.TP
+.B LOG_NAMESPACE
+If set, displays a namespace prefix before log messages. Useful for identifying message sources in complex scripts.
+
+.SH EXIT STATUS
+.TP
+.B 0
+File has changed since the specified commit
+.TP
+.B 1
+File unchanged since the specified commit, or error occurred (file not found, invalid commit reference, not in git repository, etc.)
+
+.SH EXAMPLES
+.TP
+Check if package.json changed since last commit:
+.B pu-git-has-changed package.json --since HEAD~1
+
+.TP
+Conditional npm script execution:
+.B pu-git-has-changed package-lock.json --since HEAD~1 && npm ci
+
+.TP
+Check changes since a specific tag:
+.B pu-git-has-changed src/main.js --since v1.0.0
+
+.TP
+Compare against remote branch:
+.B pu-git-has-changed config/database.yml --since origin/main
+
+.TP
+Use in shell conditional:
+.B if pu-git-has-changed Dockerfile --since HEAD~1; then
+.br
+.B   docker build -t myapp .
+.br
+.B fi
+
+.SH COMMON USE CASES
+.TP
+.B CI/CD Optimization
+Skip expensive build steps when specific files haven't changed:
+.br
+.B pu-git-has-changed package.json --since HEAD~1 || npm run build
+
+.TP
+.B Selective Testing
+Run tests only when source files have changed:
+.br
+.B pu-git-has-changed "src/**/*.js" --since origin/main && npm test
+
+.TP
+.B Deployment Decisions
+Deploy only when configuration files have changed:
+.br
+.B pu-git-has-changed config/prod.yml --since HEAD~1 && ./deploy.sh
+
+.SH NOTES
+.TP
+• The tool must be run from within a git repository
+.TP
+• Both the file and commit reference are validated before comparison
+.TP
+• Uses git diff internally to detect changes
+.TP
+• Supports all git revision formats (SHA, tags, branches, relative references)
+
+.SH SEE ALSO
+.B git (1)
+
+.SH AUTHOR
+Andrei Dumitrescu <andrei.dumitrescu@pm.me>
