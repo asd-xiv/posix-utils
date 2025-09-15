@@ -1,0 +1,32 @@
+#!/usr/bin/env sh
+
+# NAME
+#  color - print colored text
+#
+# SYNOPSIS
+#  color gray <text>
+#  color red <text>
+#  color green <text>
+#  color yellow <text>
+#  color blue <text>
+
+if [ -n "$CI" ]; then
+  printf "%s" "$2"
+  exit 0
+fi
+
+case "$1" in
+  gray) printf "\033[90m%s\033[0m" "$2" ;;
+  red) printf "\033[31m%s\033[0m" "$2" ;;
+  green) printf "\033[32m%s\033[0m" "$2" ;;
+  yellow) printf "\033[33m%s\033[0m" "$2" ;;
+  blue) printf "\033[34m%s\033[0m" "$2" ;;
+  cyan) printf "\033[36m%s\033[0m" "$2" ;;
+  orange) printf "\033[33m%s\033[0m" "$2" ;;
+  white) printf "\033[37m%s\033[0m" "$2" ;;
+  black) printf "\033[30m%s\033[0m" "$2" ;;
+  *)
+    echo "Unknown command $1" >&2
+    exit 1
+    ;;
+esac
