@@ -1,0 +1,104 @@
+.TH PU-ENSURE-INSTALLED 1 "2024-12-15" "pu 1.0.0" "PU Manual"
+
+.SH NAME
+pu-ensure-installed \- Install packages across different operating systems and package managers
+
+.SH SYNOPSIS
+.B pu-ensure-installed
+[OPTIONS]
+.I <PACKAGE>...
+[--]
+[PACKAGE_MANAGER_FLAGS...]
+
+.SH DESCRIPTION
+Cross-platform package installer that automatically detects the system package manager and installs the specified packages. Supports major Linux distributions, macOS, and npm packages.
+
+Packages are validated for security (only alphanumeric characters, dots, underscores, hyphens, and plus signs allowed). Package manager flags can be passed after -- separator.
+
+.SH OPTIONS
+.TP
+.BR \-pm ", " \-\-package\-manager " <PM>"
+Force use of specific package manager instead of auto-detection.
+Supported: pacman, apt, yum, dnf, brew, npm
+
+.TP
+.BR \-h ", " \-\-help
+Display this help message and exit
+
+.SH SUPPORTED PACKAGE MANAGERS
+.TP
+.B pacman
+ArchLinux, Manjaro, EndeavourOS (uses --sync --noconfirm --needed)
+
+.TP
+.B apt
+Ubuntu, Debian (updates package list first)
+
+.TP
+.B yum
+CentOS, RHEL, older Fedora
+
+.TP
+.B dnf
+Fedora, newer RHEL
+
+.TP
+.B brew
+macOS Homebrew
+
+.TP
+.B npm
+Node.js packages (global installation)
+
+.SH EXAMPLES
+.TP
+Auto-detect package manager and install git:
+.B ensure-installed.sh git
+
+.TP
+Install multiple packages:
+.B ensure-installed.sh git curl jq
+
+.TP
+Force use of npm for global tools:
+.B ensure-installed.sh --package-manager npm typescript eslint
+
+.TP
+Install system dependencies for development:
+.B ensure-installed.sh build-essential git nodejs npm
+
+.TP
+Install package with specific package manager flags:
+.B ensure-installed.sh fzf -- --verbose
+
+.TP
+Install Homebrew cask application:
+.B ensure-installed.sh firefox -- --cask
+
+.TP
+Install apt package without recommended dependencies:
+.B ensure-installed.sh -pm apt vim -- --no-install-recommends
+
+.SH EXIT STATUS
+.TP
+.B 0
+Success
+.TP
+.B 1
+Error (unsupported package manager, missing arguments, etc.)
+
+.SH ENVIRONMENT
+.TP
+.B LOG_LEVEL=info
+Log level: error, warning, info
+
+.SH SEE ALSO
+.BR pacman (8),
+.BR apt (8),
+.BR yum (8),
+.BR dnf (8),
+.BR brew (1),
+.BR npm (1)
+
+.SH AUTHOR
+Andrei Dumitrescu <andrei.dumitrescu@pm.me>

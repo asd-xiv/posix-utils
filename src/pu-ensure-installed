@@ -1,0 +1,178 @@
+#!/usr/bin/env sh
+
+# Symlink aware script paths and name
+REAL_PATH=$(realpath "$0")
+SCRIPT_DIR=$(dirname "$REAL_PATH")
+SCRIPT_NAME=$(basename "$REAL_PATH")
+
+# Config vars for `$SCRIPT_DIR/log.sh`
+export LOG_NAMESPACE="󰏖 $SCRIPT_NAME"
+export LOG_LEVEL="${LOG_LEVEL:-info}"
+
+# ╭───┤ Bootstrap & Argument parsing
+# ╰─
+
+_color() {
+  "$SCRIPT_DIR/pu-color" "$@"
+}
+
+_log() {
+  "$SCRIPT_DIR/pu-log" "$@"
+}
+
+show_help() {
+  man --pager cat "$SCRIPT_DIR/$SCRIPT_NAME.1"
+}
+
+show_mini_help() {
+  cat <<EOF
+$(_color gray "USAGE:")
+  $SCRIPT_NAME [OPTIONS] <package1> [package2] [...]
+
+$(_color gray "OPTIONS:")
+  -pm, --package-manager <manager>  Specify package manager to use
+  -h, --help                        Show detailed man page
+  --                                Pass remaining arguments as flags to package manager
+
+$(_color gray "SUPPORTED PACKAGE MANAGERS:")
+  pacman, apt, yum, dnf, brew, npm
+EOF
+}
+
+PACKAGE_MANAGER=""
+PACKAGE_MANAGER_FLAGS=""
+PACKAGES=""
+SUPPORTED_PACKAGE_MANAGERS="pacman apt yum dnf brew npm"
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -pm | --package-manager)
+      PACKAGE_MANAGER="$2"
+      shift 2
+      ;;
+    -h | --help | --hlep)
+      show_help
+      exit 0
+      ;;
+    --)
+      shift
+      PACKAGE_MANAGER_FLAGS="$*"
+      break
+      ;;
+    -?*)
+      _log error -v name "$1" "Unknown flag."
+      show_mini_help
+      exit 1
+      ;;
+    *)
+      [ -z "$PACKAGES" ] && PACKAGES="$1" || PACKAGES="$PACKAGES $1"
+      shift
+      ;;
+  esac
+done
+
+# ╭───┤ Domain Functions
+# ╰─
+
+detect_os_pkg_manager() {
+  if command -v pacman >/dev/null 2>&1; then
+    echo "pacman"
+  elif command -v apt >/dev/null 2>&1; then
+    echo "apt"
+  elif command -v yum >/dev/null 2>&1; then
+    echo "yum"
+  elif command -v dnf >/dev/null 2>&1; then
+    echo "dnf"
+  elif command -v brew >/dev/null 2>&1; then
+    echo "brew"
+  fi
+}
+
+ensure_installed() {
+  _log info \
+    -v package_manager "$PACKAGE_MANAGER" \
+    -v package_manager_flags "$PACKAGE_MANAGER_FLAGS" \
+    -v packages "$PACKAGES" \
+    "Installing…"
+
+  case "$PACKAGE_MANAGER" in
+    pacman)
+      # ArchLinux, Manjaro, EndeavourOS
+      # shellcheck disable=SC2086 # Intentionaly allowing word splitting so "git fzf" is not considers one package
+      sudo pacman --sync --noconfirm --needed $PACKAGE_MANAGER_FLAGS $PACKAGES
+      ;;
+    apt)
+      # Ubuntu, Debian
+      export DEBIAN_FRONTEND=noninteractive
+      # shellcheck disable=SC2086
+      sudo apt update --quiet && sudo apt install --yes $PACKAGE_MANAGER_FLAGS $PACKAGES
+      ;;
+    yum)
+      # CentOS, RHEL, Fedora (older versions)
+      # shellcheck disable=SC2086
+      sudo yum install --assumeyes $PACKAGE_MANAGER_FLAGS $PACKAGES
+      ;;
+    dnf)
+      # Fedora (newer versions)
+      # shellcheck disable=SC2086
+      sudo dnf install --assumeyes $PACKAGE_MANAGER_FLAGS $PACKAGES
+      ;;
+    brew)
+      # macOS
+      # shellcheck disable=SC2086
+      brew install $PACKAGE_MANAGER_FLAGS $PACKAGES
+      ;;
+    npm)
+      # Non OS specific
+      # shellcheck disable=SC2086
+      npm install --global $PACKAGE_MANAGER_FLAGS $PACKAGES
+      ;;
+  esac
+}
+
+is_package_manager_supported() {
+  case "$SUPPORTED_PACKAGE_MANAGERS" in
+    *"$1"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# ╭───┤ Main. Start Here.
+# ╰─
+
+if [ $# -eq 0 ]; then
+  _log error "No package provided"
+  show_mini_help
+  exit 1
+fi
+
+if [ -z "$PACKAGE_MANAGER" ]; then
+  PACKAGE_MANAGER="$(detect_os_pkg_manager)"
+  _log info \
+    -v package_manager "$PACKAGE_MANAGER" \
+    -v os "$(uname -s -r)" \
+    "Auto-detected package manager"
+fi
+
+if [ -n "$PACKAGE_MANAGER" ] && ! is_package_manager_supported "$PACKAGE_MANAGER"; then
+  _log error -v name "$PACKAGE_MANAGER" \
+    "Unsupported package manager"
+  show_mini_help
+  exit 1
+fi
+
+if ! command -v "$PACKAGE_MANAGER" >/dev/null 2>&1; then
+  _log error -v name "$PACKAGE_MANAGER" \
+    "Package manager not installed"
+  exit 1
+fi
+
+for package_name in $PACKAGES; do
+  if ! echo "$package_name" | grep -qE '^[a-zA-Z0-9._+-]+$'; then
+    _log error -v package "$package_name" \
+      "Invalid package name. Only alphanumeric characters, dots, underscores, hyphens and plus signs are allowed"
+    exit 1
+  fi
+done
+
+ensure_installed
