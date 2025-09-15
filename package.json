@@ -32,7 +32,7 @@
     "prepare": "git config --local core.hooksPath .githook",
     "format": "shfmt --posix --indent 2 --case-indent --simplify --write src/*",
     "----CODE-ANALYSIS": "",
-    "lint": "shellcheck src/*"
+    "lint": "find src -type f ! -name '*.1' -exec shellcheck {} +"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.8.1",
