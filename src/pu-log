@@ -2,7 +2,7 @@
 
 # Symlink aware script paths and name
 REAL_PATH=$(realpath "$0")
-SCRIPT_DIR=$(dirname "$REAL_PATH")
+# SCRIPT_DIR=$(dirname "$REAL_PATH")
 SCRIPT_NAME=$(basename "$REAL_PATH")
 
 # Config vars - allow external override of LOG_NAMESPACE
