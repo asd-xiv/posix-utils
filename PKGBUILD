@@ -47,7 +47,7 @@ package() {
 
   # Install man pages
   install -dm755 "${pkgdir}/usr/share/man/man1"
-  for manpage in src/*.1; do
+  for manpage in man/man1/*.1; do
     if [[ -f "$manpage" ]]; then
       install -Dm644 "$manpage" "${pkgdir}/usr/share/man/man1/$(basename "$manpage")"
     fi
