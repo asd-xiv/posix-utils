@@ -9,8 +9,11 @@ SCRIPT_NAME=$(basename "$REAL_PATH")
 export LOG_NAMESPACE="${LOG_NAMESPACE:-📝 $SCRIPT_NAME}"
 export LOG_LEVEL="${LOG_LEVEL:-error}"
 
-# Global color state - starts with CI value, can be overridden by flags
+# Global color state - starts with CI value or non-terminal output, can be overridden by flags
 NO_COLOR="$CI"
+if ! [ -t 1 ]; then
+  NO_COLOR="1"
+fi
 
 # ╭───┤ Bootstrap & Argument parsing
 # ╰─
@@ -35,10 +38,6 @@ _color() {
 }
 
 show_help() {
-  man --pager cat "$SCRIPT_DIR/$SCRIPT_NAME.1"
-}
-
-show_mini_help() {
   cat <<EOF
 $(_color gray "USAGE:")
   $SCRIPT_NAME <type> [OPTIONS] <message>
@@ -175,7 +174,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ -z "$MESSAGE_TYPE" ]; then
-  show_mini_help
+  show_help
   exit 1
 fi
 
