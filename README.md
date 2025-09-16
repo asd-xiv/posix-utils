@@ -14,8 +14,8 @@
 - [Usage](#usage)
   - [`pu git-has-changed` - Git Changed Detection](#pu-git-has-changed---git-changed-detection)
   - [`pu log` - Fancy Logging](#pu-log---fancy-logging)
-  - [`pu tadaa` - Celebration Messages](#pu-tadaa---celebration-messages)
-  - [`pu ensure-installed` - Cross-Platform Package Installation](#pu-ensure-installed---cross-platform-package-installation)
+  - [`pu tadaa` - An overly excited version of `pu log success`](#pu-tadaa---an-overly-excited-version-of-pu-log-success)
+  - [`pu install` - Cross-Platform Package Installation](#pu-install---cross-platform-package-installation)
 - [License](#license)
 
 <!-- vim-markdown-toc -->
@@ -80,7 +80,7 @@ pu log warning "Invalid parameter" \
     -v param-value "null"
 ```
 
-### `pu tadaa` - Celebration Messages
+### `pu tadaa` - An overly excited version of `pu log success`
 
 Display celebratory "TADAA!" messages with decorative borders, stars, and
 optional content. Perfect for announcing successful operations, completed
@@ -104,7 +104,7 @@ pu tadaa "Build finished" | tee build.log
 pu tadaa --color "Deploy completed" | less -R
 ```
 
-### `pu ensure-installed` - Cross-Platform Package Installation
+### `pu install` - Cross-Platform Package Installation
 
 Cross-platform package installer that automatically detects the system package
 manager and installs the specified packages. Supports major Linux
@@ -116,16 +116,16 @@ passed after -- separator.
 
 ```sh
 # Auto-detect package manager
-pu ensure-installed git curl jq
+pu install git curl jq
 
 # Force specific package manager
-pu ensure-installed --package-manager npm typescript eslint
+pu install --package-manager npm typescript eslint
 
 # Pass flags to package manager
-pu ensure-installed firefox -- --cask
+pu install firefox -- --cask
 
 # Install development dependencies
-pu ensure-installed build-essential git nodejs npm
+pu install build-essential git nodejs npm
 ```
 
 ## License

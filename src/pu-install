@@ -20,16 +20,17 @@ _log() {
   "$SCRIPT_DIR/pu-log" "$@"
 }
 
-show_help() {
-  man --pager cat "$SCRIPT_DIR/$SCRIPT_NAME.1"
+_tadaa() {
+  "$SCRIPT_DIR/pu-tadaa" "$@"
 }
 
-show_mini_help() {
+show_help() {
   cat <<EOF
 $(_color gray "USAGE:")
   $SCRIPT_NAME [OPTIONS] <package1> [package2] [...]
 
 $(_color gray "OPTIONS:")
+  -f, --force                       Reinstall existing packages
   -pm, --package-manager <manager>  Specify package manager to use
   -h, --help                        Show detailed man page
   --                                Pass remaining arguments as flags to package manager
@@ -43,9 +44,14 @@ PACKAGE_MANAGER=""
 PACKAGE_MANAGER_FLAGS=""
 PACKAGES=""
 SUPPORTED_PACKAGE_MANAGERS="pacman apt yum dnf brew npm"
+FORCE_REINSTALL=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    -f | --force)
+      FORCE_REINSTALL="true"
+      shift
+      ;;
     -pm | --package-manager)
       PACKAGE_MANAGER="$2"
       shift 2
@@ -61,7 +67,7 @@ while [ "$#" -gt 0 ]; do
       ;;
     -?*)
       _log error -v name "$1" "Unknown flag."
-      show_mini_help
+      show_help
       exit 1
       ;;
     *)
@@ -89,45 +95,45 @@ detect_os_pkg_manager() {
 }
 
 ensure_installed() {
-  _log info \
-    -v package_manager "$PACKAGE_MANAGER" \
-    -v package_manager_flags "$PACKAGE_MANAGER_FLAGS" \
-    -v packages "$PACKAGES" \
-    "Installing…"
+  install_cmd_args="$PACKAGE_MANAGER_FLAGS"
+  install_cmd=""
 
   case "$PACKAGE_MANAGER" in
     pacman)
-      # ArchLinux, Manjaro, EndeavourOS
-      # shellcheck disable=SC2086 # Intentionaly allowing word splitting so "git fzf" is not considers one package
-      sudo pacman --sync --noconfirm --needed $PACKAGE_MANAGER_FLAGS $PACKAGES
+      install_cmd_args="$install_cmd_args --sync --noconfirm"
+      [ -z "$FORCE_REINSTALL" ] && install_cmd_args="$install_cmd_args --needed"
+      install_cmd="sudo pacman $install_cmd_args $PACKAGES"
       ;;
     apt)
-      # Ubuntu, Debian
       export DEBIAN_FRONTEND=noninteractive
-      # shellcheck disable=SC2086
-      sudo apt update --quiet && sudo apt install --yes $PACKAGE_MANAGER_FLAGS $PACKAGES
+      install_cmd_args="$install_cmd_args --yes"
+      [ -n "$FORCE_REINSTALL" ] && install_cmd_args="$install_cmd_args --reinstall"
+      install_cmd="sudo apt update --quiet && sudo apt install $install_cmd_args $PACKAGES"
       ;;
-    yum)
-      # CentOS, RHEL, Fedora (older versions)
-      # shellcheck disable=SC2086
-      sudo yum install --assumeyes $PACKAGE_MANAGER_FLAGS $PACKAGES
-      ;;
-    dnf)
-      # Fedora (newer versions)
-      # shellcheck disable=SC2086
-      sudo dnf install --assumeyes $PACKAGE_MANAGER_FLAGS $PACKAGES
+    yum | dnf)
+      install_cmd_args="$install_cmd_args --assumeyes"
+      [ -n "$FORCE_REINSTALL" ] && install_cmd_args="$install_cmd_args --reinstall"
+      install_cmd="sudo $PACKAGE_MANAGER install $install_cmd_args $PACKAGES"
       ;;
     brew)
-      # macOS
-      # shellcheck disable=SC2086
-      brew install $PACKAGE_MANAGER_FLAGS $PACKAGES
+      [ -n "$FORCE_REINSTALL" ] && install_cmd_args="$install_cmd_args --force"
+      install_cmd="brew install $install_cmd_args $PACKAGES"
       ;;
     npm)
-      # Non OS specific
-      # shellcheck disable=SC2086
-      npm install --global $PACKAGE_MANAGER_FLAGS $PACKAGES
+      install_cmd_args="$install_cmd_args --global"
+      [ -n "$FORCE_REINSTALL" ] && install_cmd_args="$install_cmd_args --force"
+      install_cmd="npm install $install_cmd_args $PACKAGES"
       ;;
   esac
+
+  _log info \
+    -v pm "$PACKAGE_MANAGER" \
+    -v pm_user_flags "$PACKAGE_MANAGER_FLAGS" \
+    -v command "$install_cmd" \
+    "Running command…"
+
+  # shellcheck disable=SC2086 # Intentional word splitting for packages and flags
+  $install_cmd
 }
 
 is_package_manager_supported() {
@@ -140,16 +146,16 @@ is_package_manager_supported() {
 # ╭───┤ Main. Start Here.
 # ╰─
 
-if [ $# -eq 0 ]; then
+if [ -z "$PACKAGES" ]; then
   _log error "No package provided"
-  show_mini_help
+  show_help
   exit 1
 fi
 
 if [ -z "$PACKAGE_MANAGER" ]; then
   PACKAGE_MANAGER="$(detect_os_pkg_manager)"
   _log info \
-    -v package_manager "$PACKAGE_MANAGER" \
+    -v pm "$PACKAGE_MANAGER" \
     -v os "$(uname -s -r)" \
     "Auto-detected package manager"
 fi
@@ -157,7 +163,7 @@ fi
 if [ -n "$PACKAGE_MANAGER" ] && ! is_package_manager_supported "$PACKAGE_MANAGER"; then
   _log error -v name "$PACKAGE_MANAGER" \
     "Unsupported package manager"
-  show_mini_help
+  show_help
   exit 1
 fi
 
