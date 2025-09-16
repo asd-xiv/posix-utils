@@ -14,6 +14,7 @@
 - [Usage](#usage)
   - [`pu git-has-changed` - Git Changed Detection](#pu-git-has-changed---git-changed-detection)
   - [`pu log` - Fancy Logging](#pu-log---fancy-logging)
+  - [`pu tadaa` - Celebration Messages](#pu-tadaa---celebration-messages)
   - [`pu ensure-installed` - Cross-Platform Package Installation](#pu-ensure-installed---cross-platform-package-installation)
 - [License](#license)
 
@@ -77,6 +78,30 @@ LOG_NAMESPACE="my-app"
 pu log warning "Invalid parameter" \
     -v param-name "username" \
     -v param-value "null"
+```
+
+### `pu tadaa` - Celebration Messages
+
+Display celebratory "TADAA!" messages with decorative borders, stars, and
+optional content. Perfect for announcing successful operations, completed
+builds, or project milestones.
+
+```sh
+# Simple celebration
+pu tadaa
+
+# With title
+pu tadaa "Build completed"
+
+# Full celebration with message and note
+pu tadaa "Deploy successful" "All services are running" \
+    "Check logs for details, file:///var/log/deploy.log"
+
+# Colors automatically disabled when piping or redirecting
+pu tadaa "Build finished" | tee build.log
+
+# Force colors even when piping
+pu tadaa --color "Deploy completed" | less -R
 ```
 
 ### `pu ensure-installed` - Cross-Platform Package Installation

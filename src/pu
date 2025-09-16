@@ -16,14 +16,39 @@ _log() {
   "$SCRIPT_DIR/pu-log" "$@"
 }
 
+_color() {
+  "$SCRIPT_DIR/pu-color" "$@"
+}
+
 show_help() {
-  man --pager cat "$SCRIPT_DIR/$SCRIPT_NAME.1"
+  cat <<EOF
+$(_color gray "USAGE:")
+  $SCRIPT_NAME <COMMAND> [OPTIONS...]
+
+$(_color gray "COMMANDS:")
+  log              Print formatted log messages with timestamps and colors
+  tadaa            Display celebratory messages with decorative borders
+  git-has-changed  Check if files changed since a git commit
+  install          Install packages across different systems and package managers
+  color            Print colored text to terminal
+
+$(_color gray "OPTIONS:")
+  -h, --help       Show detailed man page
+
+$(_color gray "EXAMPLES:")
+  $SCRIPT_NAME log info "Build started"
+  $SCRIPT_NAME tadaa "Deploy completed"
+  $SCRIPT_NAME git-has-changed package.json --since HEAD~1
+  $SCRIPT_NAME install git curl jq
+
+For detailed help on any command, use: $SCRIPT_NAME <COMMAND> --help
+EOF
 }
 
 # ╭───┤ Main. Start Here.
 # ╰─
 
-AVAILABLE_COMMANDS="log git-has-changed ensure-installed color"
+AVAILABLE_COMMANDS="log tadaa git-has-changed install color"
 COMMAND=$1
 shift
 

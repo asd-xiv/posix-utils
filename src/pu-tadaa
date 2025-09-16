@@ -1,0 +1,165 @@
+#!/usr/bin/env sh
+
+# Symlink aware script paths and name
+REAL_PATH=$(realpath "$0")
+SCRIPT_DIR=$(dirname "$REAL_PATH")
+SCRIPT_NAME=$(basename "$REAL_PATH")
+
+# Global color state - starts with CI value or non-terminal output, can be overridden by flags
+NO_COLOR="$CI"
+if ! [ -t 1 ]; then
+  NO_COLOR="1"
+fi
+
+# ╭───┤ Bootstrap & Argument parsing
+# ╰─
+
+show_help() {
+  printf "%s\n" "$([ -z "$NO_COLOR" ] && "$SCRIPT_DIR/pu-color" gray "USAGE:" || echo "USAGE:")"
+  printf "  %s [OPTIONS] [title] [message] [note]\n\n" "$SCRIPT_NAME"
+
+  printf "%s\n" "$([ -z "$NO_COLOR" ] && "$SCRIPT_DIR/pu-color" gray "ARGUMENTS:" || echo "ARGUMENTS:")"
+  printf "  title     Optional title for the celebration message\n"
+  printf "  message   Optional additional message (default: empty)\n"
+  printf "  note      Optional note in subdued color (default: empty)\n\n"
+
+  printf "%s\n" "$([ -z "$NO_COLOR" ] && "$SCRIPT_DIR/pu-color" gray "OPTIONS:" || echo "OPTIONS:")"
+  printf "  -c, --color       Enable colored output (even if env var CI present)\n"
+  printf "  -nc, --no-color   Disable colored output\n"
+  printf "  -h, --help        Show this help message\n\n"
+
+  printf "%s\n" "$([ -z "$NO_COLOR" ] && "$SCRIPT_DIR/pu-color" gray "ENVIRONMENT:" || echo "ENVIRONMENT:")"
+  printf "  CI                    If present, assumes --no-color unless explicit --color present\n\n"
+
+  printf "%s\n" "$([ -z "$NO_COLOR" ] && "$SCRIPT_DIR/pu-color" gray "COLOR DETECTION:" || echo "COLOR DETECTION:")"
+  printf "  Colors are automatically disabled when:\n"
+  printf "  - CI environment variable is set\n"
+  printf "  - Output is not a terminal (piping or redirecting)\n"
+  printf "  - --no-color flag is used\n\n"
+
+  printf "%s\n" "$([ -z "$NO_COLOR" ] && "$SCRIPT_DIR/pu-color" gray "EXAMPLES:" || echo "EXAMPLES:")"
+  printf "  %s \"Build completed\"\n" "$SCRIPT_NAME"
+  printf "  %s \"Deploy successful\" \"All services are running\" \"Check logs for details\"\n" "$SCRIPT_NAME"
+}
+
+# ╭───┤ Domain Functions
+# ╰─
+
+print_tadaa() {
+  title="${1:-}"
+  message="${2:-}"
+  note="${3:-}"
+
+  # Calculate terminal width and content dimensions
+  term_width=$(tput cols 2>/dev/null || echo 80)
+  title_length=${#title}
+  message_length=0
+  note_length=0
+
+  if [ -n "$message" ]; then
+    # Handle multiline messages by finding the longest line
+    message_length=$(printf "%s" "$message" | awk '{if(length > max) max = length} END {print max+0}')
+  fi
+
+  if [ -n "$note" ]; then
+    # Handle multiline notes by finding the longest line
+    note_length=$(printf "%s" "$note" | awk '{if(length > max) max = length} END {print max+0}')
+  fi
+
+  # Find the maximum content length
+  content_length=$title_length
+  if [ "$message_length" -gt "$content_length" ]; then
+    content_length=$message_length
+  fi
+  if [ "$note_length" -gt "$content_length" ]; then
+    content_length=$note_length
+  fi
+
+  # Calculate border length (minimum of terminal width and content + padding)
+  border_length=$((content_length + 25))
+  if [ "$border_length" -gt "$term_width" ]; then
+    border_length=$term_width
+  fi
+
+  # Create border using double line characters
+  border=""
+  i=0
+  while [ $i -lt "$border_length" ]; do
+    border="${border}═"
+    i=$((i + 1))
+  done
+
+  # Print the celebration message
+  if [ -z "$NO_COLOR" ]; then
+    printf "%s\n" "$("$SCRIPT_DIR/pu-color" bold_cyan "$border")"
+    if [ -n "$title" ]; then
+      printf "%s %s %s %s\n" \
+        "$("$SCRIPT_DIR/pu-color" bold_yellow "★")" \
+        "$("$SCRIPT_DIR/pu-color" bold_white "TADAA!")" \
+        "$("$SCRIPT_DIR/pu-color" bold_yellow "★")" \
+        "$("$SCRIPT_DIR/pu-color" bold_green "$title")"
+    else
+      printf "%s %s %s\n" \
+        "$("$SCRIPT_DIR/pu-color" bold_yellow "★")" \
+        "$("$SCRIPT_DIR/pu-color" bold_white "TADAA!")" \
+        "$("$SCRIPT_DIR/pu-color" bold_yellow "★")"
+    fi
+
+    if [ -n "$message" ]; then
+      printf "%s %s\n" "$("$SCRIPT_DIR/pu-color" bold_cyan "▶")" "$message"
+    fi
+
+    if [ -n "$note" ]; then
+      printf "%s %s\n" "$("$SCRIPT_DIR/pu-color" gray "▶")" "$("$SCRIPT_DIR/pu-color" gray "$note")"
+    fi
+
+    printf "%s\n" "$("$SCRIPT_DIR/pu-color" bold_cyan "$border")"
+  else
+    printf "%s\n" "$border"
+    if [ -n "$title" ]; then
+      printf "★ TADAA! ★ %s\n" "$title"
+    else
+      printf "★ TADAA! ★\n"
+    fi
+
+    if [ -n "$message" ]; then
+      printf "> %s\n" "$message"
+    fi
+
+    if [ -n "$note" ]; then
+      printf "> %s\n" "$note"
+    fi
+
+    printf "%s\n" "$border"
+  fi
+}
+
+# ╭───┤ Main. Start Here.
+# ╰─
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -h | --help | --hlep)
+      show_help
+      exit 0
+      ;;
+    -nc | --no-color)
+      NO_COLOR="1"
+      shift
+      ;;
+    -c | --color)
+      NO_COLOR=""
+      shift
+      ;;
+    -?*)
+      echo "Unknown parameter $1" >&2
+      show_help
+      exit 1
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+print_tadaa "$1" "$2" "$3"

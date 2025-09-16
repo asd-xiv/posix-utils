@@ -1,0 +1,122 @@
+.TH PU-TADAA 1 "2025-01-15" "pu 1.0.0" "PU Manual"
+
+.SH NAME
+pu-tadaa \- Display celebratory "TADAA!" messages with optional title, message, and note
+
+.SH SYNOPSIS
+.B pu-tadaa
+[OPTIONS]
+[TITLE]
+[MESSAGE]
+[NOTE]
+
+.SH DESCRIPTION
+Display celebratory "TADAA!" messages with decorative borders, stars, and optional content. Perfect for announcing successful operations, completed builds, or project milestones.
+
+.SH ARGUMENTS
+.TP
+.I TITLE
+Optional title for the celebration message. If not provided, displays just "TADAA!" with stars.
+
+.TP
+.I MESSAGE
+Optional additional message displayed below the title with a colored arrow indicator.
+
+.TP
+.I NOTE
+Optional note displayed in subdued gray color below the message with an arrow indicator.
+
+.SH OPTIONS
+.TP
+.BR \-c ", " \-\-color
+Enable colored output even when CI environment variable is set. Overrides CI-based color detection.
+
+.TP
+.BR \-nc ", " \-\-no\-color
+Disable colored output completely. Useful for logging to files or when colors are not desired.
+
+.TP
+.BR \-h ", " \-\-help
+Display this help message and exit.
+
+.SH ENVIRONMENT
+.TP
+.B CI
+If set to any value, automatically disables colored output for CI/CD environments unless
+.B \-\-color
+is explicitly specified.
+
+.SH COLOR DETECTION
+Colors are automatically disabled in the following cases:
+.TP
+.B CI environment
+When the CI environment variable is set (typical in CI/CD pipelines)
+.TP
+.B Non-terminal output
+When output is redirected to a file or piped to another command (detected via stdout terminal check)
+.TP
+.B Explicit flag
+When the
+.B \-\-no\-color
+flag is used
+
+The
+.B \-\-color
+flag can override any of these automatic detections to force colored output.
+
+.SH OUTPUT FORMAT
+The script creates a bordered celebration message with the following structure:
+.TP
+.B With colors:
+- Cyan double-line border (═)
+- Yellow stars (★)
+- White "TADAA!" text in bold
+- Green title text in bold
+- Cyan arrow (▶) for message
+- Gray arrow and text for note
+
+.TP
+.B Without colors:
+- Plain double-line border
+- Plain stars and "TADAA!" text
+- Simple ">" characters as indicators
+
+.SH EXAMPLES
+.TP
+Simple celebration:
+.B pu-tadaa
+
+.TP
+With title only:
+.B pu-tadaa "Build completed"
+
+.TP
+Full celebration with all elements:
+.B pu-tadaa "Deploy successful" "All services are running" "Check logs for details"
+
+.TP
+Disable colors for file output:
+.B pu-tadaa --no-color "Task finished" > log.txt
+
+.TP
+Force colors in CI environment:
+.B CI=1 pu-tadaa --color "Pipeline completed"
+
+.TP
+Force colors when piping:
+.B pu-tadaa --color "Build finished" | tee build.log
+
+.SH EXIT STATUS
+.TP
+.B 0
+Success
+.TP
+.B 1
+Error (invalid options, etc.)
+
+.SH SEE ALSO
+.BR pu-log (1),
+.BR pu-color (1)
+
+.SH AUTHOR
+Andrei Dumitrescu <andrei.dumitrescu@pm.me>
