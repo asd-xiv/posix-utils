@@ -31,9 +31,6 @@
     "----UTIL": "",
     "prepare": "git config --local core.hooksPath .githook",
     "format": "find src -type f ! -name '*.1' -exec shfmt --posix --indent 2 --case-indent --simplify --write {} +",
-    "---BUILD": "",
-    "build:arch-aur": "makepkg --printsrcinfo > .SRCINFO",
-    "build": "npm run build:arch-aur",
     "----CODE-ANALYSIS": "",
     "lint": "find src -type f ! -name '*.1' -exec shellcheck {} +"
   },
