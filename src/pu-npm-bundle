@@ -1,0 +1,215 @@
+#!/usr/bin/env sh
+
+# Symlink aware script paths and name
+REAL_PATH=$(realpath "$0")
+SCRIPT_DIR=$(dirname "$REAL_PATH")
+SCRIPT_NAME=$(basename "$REAL_PATH")
+
+# Config vars for `$SCRIPT_DIR/log.sh`
+export LOG_NAMESPACE="󰏖 $SCRIPT_NAME"
+export LOG_LEVEL="${LOG_LEVEL:-info}"
+
+# ╭───┤ Bootstrap & Argument parsing
+# ╰─
+
+_color() {
+  "$SCRIPT_DIR/pu-color" "$@"
+}
+
+_log() {
+  "$SCRIPT_DIR/pu-log" "$@"
+}
+
+_tadaa() {
+  "$SCRIPT_DIR/pu-tadaa" "$@"
+}
+
+show_help() {
+  cat <<EOF
+$(_color gray "USAGE:")
+  $SCRIPT_NAME [OPTIONS]
+
+$(_color gray "DESCRIPTION:")
+  Creates a distributable bundle in bundle/ containing package.json, files
+  declared in the "files" property, and production dependencies. Works with
+  npm workspaces and hoisted dependencies.
+
+$(_color gray "OPTIONS:")
+  -o, --output <dir>     Output directory (default: bundle)
+  --include <path>       Include additional file or directory (can be used multiple times)
+  -h, --help             Show this help message
+
+$(_color gray "EXAMPLES:")
+  $SCRIPT_NAME                                  # Bundle to bundle/
+  $SCRIPT_NAME --output build --include .env    # Custom output and extra file
+
+$(_color gray "NOTES:")
+  - Uses 'npm ls' and 'npm pack --dry-run' to determine files
+  - Respects package.json "files" property
+  - Works with monorepo/workspace hoisted dependencies
+  - Requires: jq, npm (>=8.0.0)
+EOF
+}
+
+OUTPUT_DIR="bundle"
+EXTRA_INCLUDES=""
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o | --output)
+      OUTPUT_DIR="$2"
+      shift 2
+      ;;
+    --include)
+      if [ -z "$2" ]; then
+        _log error "Option --include requires a value"
+        exit 1
+      fi
+      [ -z "$EXTRA_INCLUDES" ] && EXTRA_INCLUDES="$2" || EXTRA_INCLUDES="$EXTRA_INCLUDES $2"
+      shift 2
+      ;;
+    -h | --help | --hlep)
+      show_help
+      exit 0
+      ;;
+    -?*)
+      _log error -v name "$1" "Unknown flag"
+      show_help
+      exit 1
+      ;;
+    *)
+      _log error -v arg "$1" "Unexpected argument"
+      show_help
+      exit 1
+      ;;
+  esac
+done
+
+# ╭───┤ Domain Functions
+# ╰─
+
+copy_package_files() {
+  _log info "Determining files to include from package.json"
+
+  # Use npm pack --dry-run to get the list of files that would be included
+  # This respects the "files" field in package.json
+  npm pack --dry-run --json 2>/dev/null \
+    | jq -r '.[0].files[]?.path // empty' \
+    | while IFS= read -r file_path; do
+      if [ -z "$file_path" ]; then
+        continue
+      fi
+
+      # Create parent directory structure in output
+      file_dir=$(dirname "$file_path")
+      if [ "$file_dir" != "." ]; then
+        mkdir -p "$OUTPUT_DIR/$file_dir"
+      fi
+
+      # Copy file or directory
+      if [ -d "$file_path" ]; then
+        cp -r "$file_path" "$OUTPUT_DIR/$file_path"
+      elif [ -f "$file_path" ]; then
+        cp "$file_path" "$OUTPUT_DIR/$file_path"
+      fi
+    done
+
+  _log info "Package files copied"
+}
+
+copy_extra_includes() {
+  if [ -z "$EXTRA_INCLUDES" ]; then
+    return
+  fi
+
+  _log info "Copying extra includes"
+
+  for include_path in $EXTRA_INCLUDES; do
+    if [ ! -e "$include_path" ]; then
+      _log warn -v path "$include_path" "Include path does not exist, skipping"
+      continue
+    fi
+
+    include_basename=$(basename "$include_path")
+    if [ -d "$include_path" ]; then
+      cp -r "$include_path" "$OUTPUT_DIR/$include_basename"
+    else
+      cp "$include_path" "$OUTPUT_DIR/$include_basename"
+    fi
+  done
+}
+
+copy_production_deps() {
+  _log info "Installing production dependencies"
+
+  prod_deps=$(npm ls --omit dev --parseable 2>/dev/null | tail -n +3)
+
+  if [ -z "$prod_deps" ]; then
+    _log info "No production dependencies found"
+    return
+  fi
+
+  deps_count=$(echo "$prod_deps" | wc -l)
+  _log info -v count "$deps_count" "Found production dependencies"
+
+  # Copy dependencies from workspace/hoisted node_modules
+  echo "$prod_deps" | while IFS= read -r dep_path; do
+    if [ -z "$dep_path" ]; then
+      continue
+    fi
+
+    # Extract the portion after the first occurrence of "/node_modules/"
+    # This removes everything up to and including "/node_modules/" from dep_path
+    relative_path="${dep_path#*/node_modules/}"
+
+    # Copy the dependency
+    mkdir -p "$OUTPUT_DIR/node_modules/$(dirname "$relative_path")"
+    cp -rL "$dep_path" "$OUTPUT_DIR/node_modules/$relative_path"
+  done
+
+  _log info "Production dependencies copied"
+}
+
+# ╭───┤ Main. Start Here.
+# ╰─
+
+if ! command -v jq >/dev/null 2>&1; then
+  _log error "jq is required but not installed"
+  exit 1
+fi
+
+if ! command -v npm >/dev/null 2>&1; then
+  _log error "npm is required but not installed"
+  exit 1
+fi
+
+if [ ! -f "package.json" ]; then
+  _log error "package.json not found in current directory"
+  exit 1
+fi
+
+name=$(jq -r '.name // "unnamed"' package.json)
+version=$(jq -r '.version // "0.0.0"' package.json)
+
+_log info \
+  -v name "$name" \
+  -v version "$version" \
+  "Package information"
+
+#
+# Prepare bundle folder
+#
+
+_log info -v dir "$OUTPUT_DIR" "Cleaning output directory"
+rm -rf "$OUTPUT_DIR"
+mkdir -p "$OUTPUT_DIR/node_modules"
+
+_log info "Copying package.json"
+cp package.json "$OUTPUT_DIR/package.json"
+
+copy_package_files
+copy_extra_includes
+copy_production_deps
+
+bundle_size=$(du -sh "$OUTPUT_DIR" | cut -f1)
+_tadaa "Bundle created at $OUTPUT_DIR ($bundle_size)"
