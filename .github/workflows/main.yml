@@ -1,0 +1,61 @@
+name: Release
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  detect-secrets:
+    name: Detect Secrets
+    uses: ./.github/workflows/_detect-secrets.yml
+
+  install-dependencies:
+    name: Install Dependencies
+    uses: ./.github/workflows/_install-dependencies.yml
+
+  code-qa:
+    name: Code QA
+    needs: [detect-secrets, install-dependencies]
+    uses: ./.github/workflows/_code-qa.yml
+    with:
+      cache-key: ${{ needs.install-dependencies.outputs.cache-key }}
+      node-version: ${{ needs.install-dependencies.outputs.node-version }}
+
+  release:
+    name: Release
+    needs: [install-dependencies, code-qa]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          # Auth for git commands later in the job (commit, tag, push)
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ needs.install-dependencies.outputs.node-version }}
+
+      - name: Restore node_modules
+        uses: actions/cache@v5
+        with:
+          path: node_modules
+          key: node-modules-${{ needs.install-dependencies.outputs.cache-key }}
+
+      - name: Release
+        env:
+          # Auth for GitHub REST API (create release, comment on issues/PRs)
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          # Override @semantic-release/git's default "semantic-release-bot" author
+          GIT_AUTHOR_NAME: Andrei Dumitrescu
+          GIT_AUTHOR_EMAIL: 5057797+andreidmt@users.noreply.github.com
+          GIT_COMMITTER_NAME: Andrei Dumitrescu
+          GIT_COMMITTER_EMAIL: 5057797+andreidmt@users.noreply.github.com
+        run: npx semantic-release

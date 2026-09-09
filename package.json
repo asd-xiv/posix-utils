@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@asd14/posix-utils",
   "version": "1.3.0",
-  "description": "Cross-platform POSIX utilities for development workflows.",
+  "description": "Composable, portable POSIX shell scripts.",
   "sideEffects": false,
   "publishConfig": {
     "access": "public"
@@ -22,27 +22,21 @@
     "cli"
   ],
   "files": [
-    "src"
+    "bin"
   ],
-  "bin": {
-    "pu": "./src/pu"
-  },
   "scripts": {
-    "----UTIL": "",
     "prepare": "git config --local core.hooksPath .githook",
-    "format": "find src -type f ! -name '*.1' -exec shfmt --posix --indent 2 --case-indent --simplify --write {} +",
-    "----CODE-ANALYSIS": "",
-    "lint": "find src -type f ! -name '*.1' -exec shellcheck {} +"
+    "lint": "./verify"
   },
   "devDependencies": {
-    "@commitlint/cli": "^19.8.1",
-    "@commitlint/config-conventional": "^19.8.1",
-    "@semantic-release/git": "^10.0.1",
-    "conventional-changelog-conventionalcommits": "^9.1.0",
-    "semantic-release": "^24.2.7"
+    "@commitlint/cli": "^21.2.2",
+    "@commitlint/config-conventional": "^21.2.2",
+    "@semantic-release/git": "^11.0.1",
+    "conventional-changelog-conventionalcommits": "^10.4.0",
+    "semantic-release": "^25.0.9"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
   },
   "license": "MIT"
 }

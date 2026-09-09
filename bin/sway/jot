@@ -1,0 +1,116 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   jot - Write a quick note in Neovim, print it to stdout
+#
+# SYNOPSIS
+#   jot [-c|--continue]
+#   ... | jot
+#
+# DESCRIPTION
+#   Opens a note in Neovim, in a floating Alacritty window, then prints it to
+#   stdout. Piped input is appended to the note before editing, so jot reads
+#   as an editable echo.
+#
+#   Notes live in JOT_HOME and are kept, so --continue can reopen the last
+#   one. Nothing is written to /tmp.
+#
+# OPTIONS
+#   -c, --continue   Reopen the last note
+#   -h, --help       Print this help
+#
+# ENVIRONMENT
+#   JOT_HOME   Note directory (default: ~/.jot)
+#
+# EXAMPLE
+#   jot > ~/notes/$(date +%Y-%m-%d).md
+#   cat fn.js | jot | claude -p "explain this"
+#
+# EXIT CODES
+#   0   Note printed
+#   1   Nothing written, or an error
+#
+# SEE ALSO
+#   nvim, alacritty
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+LOG_NAMESPACE="jot"
+. "$SCRIPT_DIR/../lib.sh"
+
+_require_cmd alacritty nvim
+
+JOT_HOME="${JOT_HOME:-${HOME}/.jot}"
+LAST_NOTE_LINK="${JOT_HOME}/last-note"
+SHOULD_CONTINUE=""
+
+remaining=$#
+while [ "$remaining" -gt 0 ]; do
+  case "$1" in
+    -h | --help)
+      _show_help "$0"
+      exit 0
+      ;;
+    -c | --continue)
+      SHOULD_CONTINUE="true"
+      shift
+      remaining=$((remaining - 1))
+      ;;
+    --)
+      shift
+      remaining=$((remaining - 1))
+      break
+      ;;
+    -?*)
+      _fail -v flag "$1" "Unknown flag."
+      ;;
+    *)
+      _fail -v argument "$1" "jot takes no arguments. Pipe text instead."
+      ;;
+  esac
+done
+
+mkdir -p "${JOT_HOME}/notes"
+
+# ╭───
+# │ Main
+# ╰───
+
+NOTE_PATH=""
+[ -n "$SHOULD_CONTINUE" ] && [ -f "$LAST_NOTE_LINK" ] && {
+  NOTE_PATH=$(cat "$LAST_NOTE_LINK")
+  [ -f "$NOTE_PATH" ] || {
+    _warn -v path "$NOTE_PATH" "The last note is gone. Starting a new one."
+    NOTE_PATH=""
+  }
+}
+
+[ -z "$NOTE_PATH" ] && {
+  NOTE_PATH=$(mktemp "${JOT_HOME}/notes/$(date +%Y-%m-%d).XXXXXX") \
+    || _fail "Could not create a note."
+}
+
+# Record the note before editing, so --continue works even when the editor
+# is closed without saving.
+printf '%s' "$NOTE_PATH" >"$LAST_NOTE_LINK"
+
+# Piped input becomes the starting text.
+[ -t 0 ] || cat >>"$NOTE_PATH"
+
+# --class drives the sway floating rule.
+alacritty \
+  --title "jot - $(basename "$NOTE_PATH")" \
+  --class "jot-center-float" \
+  --command nvim \
+  -c "setlocal syntax=markdown" \
+  -c "setlocal wrap" \
+  -c "setlocal spell" \
+  "$NOTE_PATH"
+
+[ -s "$NOTE_PATH" ] || {
+  _info "Nothing written."
+  exit 1
+}
+
+cat "$NOTE_PATH"

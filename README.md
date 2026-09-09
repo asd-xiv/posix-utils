@@ -1,132 +1,103 @@
-[![Release](https://github.com/asd-xiv/posix-utils/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/asd-xiv/posix-utils/actions/workflows/release.yml)
+[![Release](https://github.com/asd-xiv/posix-utils/actions/workflows/main.yml/badge.svg?branch=main)](https://github.com/asd-xiv/posix-utils/actions/workflows/main.yml)
 [![npm version](https://img.shields.io/npm/v/@asd14/posix-utils.svg)](https://www.npmjs.com/package/@asd14/posix-utils)
 
-# PU, short for Posix Utils
+# posix-utils
 
-> Cross-platform POSIX utilities for development workflows.
+> Composable, portable POSIX shell scripts.
 
 <!-- vim-markdown-toc GFM -->
 
-- [Installation](#installation)
-  - [NPM](#npm)
-  - [Pacman (ArchLinux)](#pacman-archlinux)
-  - [APT (Ubuntu)](#apt-ubuntu)
-- [Usage](#usage)
-  - [`pu git-has-changed` - Git Changed Detection](#pu-git-has-changed---git-changed-detection)
-  - [`pu log` - Fancy Logging](#pu-log---fancy-logging)
-  - [`pu tadaa` - An overly excited version of `pu log success`](#pu-tadaa---an-overly-excited-version-of-pu-log-success)
-  - [`pu install` - Cross-Platform Package Installation](#pu-install---cross-platform-package-installation)
+- [Scripts](#scripts)
+- [Install](#install)
+  - [Local](#local)
+  - [In a Node monorepo](#in-a-node-monorepo)
+- [The primitive library](#the-primitive-library)
+- [Develop](#develop)
 - [License](#license)
 
 <!-- vim-markdown-toc -->
 
-## Installation
+## Scripts
 
-### NPM
+`bin/` groups scripts by the environment they need.
+
+| Script          | Does                                              | Needs             |
+| --------------- | ------------------------------------------------- | ----------------- |
+| `cli/fancy-log` | Dated, colored, namespaced log messages           | terminal or CI    |
+| `cli/omnipack`  | Install OS dependencies, package manager agnostic | terminal or CI    |
+| `sway/doomst`   | Doomguy themed desktop notifications              | Wayland, notifier |
+| `sway/jot`      | Write a quick note in Neovim, print it to stdout  | Wayland, Neovim   |
+
+> [!NOTE]  
+> Every script prints its own man page: `fancy-log --help`
+
+## Install
+
+### Local
+
+`install` symlinks each script into the first writable system bin directory.
+
+```sh
+git clone git@github.com:asd-xiv/posix-utils.git
+cd posix-utils
+./install
+```
+
+`./uninstall` removes the symlinks.
+
+### In a Node monorepo
+
+npm carries the version and the dependency edge, nothing runs through node. The
+package ships `bin/` and nothing else, so point at it by path:
 
 ```sh
 npm install --save-dev @asd14/posix-utils
 ```
 
-### Pacman (ArchLinux)
-
-TBD
-
-### APT (Ubuntu)
-
-TBD
-
-## Usage
-
-### `pu git-has-changed` - Git Changed Detection
-
-Check if a file has changed since a given git commit reference. This tool
-compares the current state of a file against its state at a specific commit,
-making it useful for conditional build steps, deployment decisions, and change
-detection in CI/CD pipelines.
-
-The tool exits with code 0 if the file has changed, making it perfect for use
-in shell conditionals and npm scripts.
-
 ```sh
-# In npm scripts - regenerate lock only if package.json changed
-pu git-has-changed package.json --since HEAD~1 \
-    && npm install
-
-# Check against specific version tag
-pu git-has-changed src/config.json --since v1.2.0 \
-    && npm run rebuild-config
+export POSIX_UTILS="node_modules/@asd14/posix-utils/bin/cli"
+"$POSIX_UTILS/fancy-log" info "Build started"
 ```
 
-### `pu log` - Fancy Logging
+Or add that directory to `PATH` once, in the pipeline or the Dockerfile.
 
-Print dated, colored, namespaced, multi-level, CI aware and pretty formatted
-log messages. Supports different log levels with automatic filtering and
-colored output.
+## The primitive library
 
-Messages include timestamps and can be enhanced with key-value pairs for
-structured logging.
+`bin/lib.sh` holds the primitives every script sources: logging, guards,
+downloads, help. It is sourced, never executed.
 
 ```sh
-# Basic logging
-pu log info "Build started"
-pu log success "Deploy completed"
-pu log error "Something went wrong"
+#!/bin/sh
 
-# With variables
-LOG_NAMESPACE="my-app"
-pu log warning "Invalid parameter" \
-    -v param-name "username" \
-    -v param-value "null"
+set -eu
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+LOG_NAMESPACE="my-script"
+. "$SCRIPT_DIR/../lib.sh"
+
+_require_cmd curl
+_assert positive-integer retries "$RETRIES"
+_ok -v url "$URL" "Downloaded."
 ```
 
-### `pu tadaa` - An overly excited version of `pu log success`
+`realpath` matters: `install` symlinks the script, so `dirname "$0"` alone would
+point at the link rather than at the script.
 
-Display celebratory "TADAA!" messages with decorative borders, stars, and
-optional content. Perfect for announcing successful operations, completed
-builds, or project milestones.
+Read `bin/lib.sh` for the full list, and
+[`.ai/skills/write-posix-sh/SKILL.md`](.ai/skills/write-posix-sh/SKILL.md) for
+the conventions every script here follows.
+
+## Develop
+
+One script runs every check, in CI and on your machine:
 
 ```sh
-# Simple celebration
-pu tadaa
-
-# With title
-pu tadaa "Build completed"
-
-# Full celebration with message and note
-pu tadaa "Deploy successful" "All services are running" \
-    "Check logs for details, file:///var/log/deploy.log"
-
-# Colors automatically disabled when piping or redirecting
-pu tadaa "Build finished" | tee build.log
-
-# Force colors even when piping
-pu tadaa --color "Deploy completed" | less -R
+./verify
 ```
 
-### `pu install` - Cross-Platform Package Installation
-
-Cross-platform package installer that automatically detects the system package
-manager and installs the specified packages. Supports major Linux
-distributions, macOS, and npm packages.
-
-Packages are validated for security (only alphanumeric characters, dots,
-underscores, hyphens, and plus signs allowed). Package manager flags can be
-passed after -- separator.
-
-```sh
-# Auto-detect package manager
-pu install git curl jq
-
-# Force specific package manager
-pu install --package-manager npm typescript eslint
-
-# Pass flags to package manager
-pu install firefox -- --cask
-
-# Install development dependencies
-pu install build-essential git nodejs npm
-```
+It runs `shellcheck` over each script in `bin/`, then parses and smoke tests
+each one under `dash` and BusyBox `ash`. It installs nothing — a missing tool
+exits 3 and says which.
 
 ## License
 
