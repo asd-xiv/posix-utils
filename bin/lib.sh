@@ -104,81 +104,67 @@ _warn() { _log warning "$@"; }
 
 # _fail <code> [-v <key> <val>]... <message>
 #
-# Print at error level, then exit with <code>. What a code means is the
-# caller's convention, not this library's, so every call names its own:
-#
-#   _fail 2 "--max needs a count."
-#   _fail 3 -v status "$status" "grep failed."
-#
-# The rest goes to _log untouched. Inside $( ) it exits the subshell only.
+# Print at error level, then exit with <code>. Valid exit codes between 1 and 125.
 _fail() {
-  # Checked here, not through _assert, which would call _fail back.
-  # This also catches a call that forgot the code and passed a message.
-  case "${1:-}" in
-    "" | *[!0-9]* | 0)
-      _log error -v got "${1:-}" "_fail needs an exit code of 1 or more."
-      exit 1
-      ;;
-  esac
+  fail_code=$(printf '%d' "${1:-}" 2>/dev/null) || fail_code=0
 
-  fail_code="$1"
+  if [ "$fail_code" -lt 1 ] || [ "$fail_code" -gt 125 ]; then
+    _log error -v got "${1:-}" "_fail needs an exit code of 1 to 125."
+    exit 2
+  fi
+
   shift
-
   _log error "$@"
   exit "$fail_code"
 }
 
 # ╭───
-# │ Guards
+# │ Predicates & Guards
 # ╰───
 
-# _assert <type> <label> <value>
+# _is <type> <value>
 #
-# Exit 2 unless <value> has the shape <type> names. Every type here is
-# domain-agnostic. A script that needs a shape of its own writes it as a local
-# guard in the same form, eg. assert_package in cli/omnipack.
+# Predicate checking common value shapes. Returns 1 on no, exits 3 on a type it
+# does not know.
 #
 #   positive-integer   0-9, no leading zero
 #   version            0-9 and dots, eg. 1.13.4
 #   slug               A-Za-z0-9_-
 #   identifier         A-Za-z0-9_, cannot start with a digit
 #
-# Every type rejects with a negated class, the only form that reads the whole
-# string. A positive pattern is a fixed number of bracket expressions and a
-# trailing *, so [A-Za-z_][A-Za-z0-9_]* tests characters one and two and lets
-# everything after them through — it accepts "ab; rm -rf /" and rejects "a".
-#
-# Inside a class "-" goes last and "]" first, or the class means something else.
-_assert() {
-  [ "$#" -eq 3 ] || _fail 3 "_assert needs <type> <label> <value>."
-  [ -n "$3" ] || _fail 2 -v type "$1" "Empty $2."
+# Each type rejects with a negated class, the only form that reads the whole
+# string. [A-Za-z_][A-Za-z0-9_]* tests two characters and lets the rest through,
+# accepting "ab; rm -rf /". Inside a class "-" goes last and "]" first.
+_is() {
+  [ "$#" -eq 2 ] || _fail 3 "_is needs <type> <value>."
+  [ -n "$2" ] || return 1
 
   case "$1" in
     positive-integer)
       # 0* rejects zero and every leading zero with it, so no arithmetic runs
       # and a 20-digit value cannot abort the shell with "Illegal number".
-      case "$3" in
-        *[!0-9]* | 0*) _fail 2 -v "$2" "$3" "Not a whole number above zero." ;;
+      case "$2" in
+        *[!0-9]* | 0*) return 1 ;;
       esac
       ;;
     version)
-      case "$3" in
-        *[!0-9.]* | .* | *. | *..*)
-          _fail 2 -v "$2" "$3" "Not a version number."
-          ;;
+      case "$2" in
+        *[!0-9.]* | .* | *. | *..*) return 1 ;;
       esac
       ;;
     slug)
-      case "$3" in
-        *[!A-Za-z0-9_-]*) _fail 2 -v "$2" "$3" "Not a slug." ;;
+      case "$2" in
+        *[!A-Za-z0-9_-]*) return 1 ;;
       esac
       ;;
     identifier)
-      case "$3" in
-        *[!A-Za-z0-9_]* | [0-9]*) _fail 2 -v "$2" "$3" "Not an identifier." ;;
+      case "$2" in
+        *[!A-Za-z0-9_]* | [0-9]*) return 1 ;;
       esac
       ;;
-    *) _fail 3 -v type "$1" "Unknown type." ;;
+    *)
+      _fail 3 -v type "$1" "Unknown type."
+      ;;
   esac
 
   return 0
@@ -202,7 +188,8 @@ _require_cmd() {
 _require_var() {
   require_missing=""
   for require_name in "$@"; do
-    _assert identifier var "$require_name"
+    _is identifier "$require_name" \
+      || _fail 3 -v name "$require_name" "_require_var takes variable names."
 
     eval "require_value=\${$require_name:-}"
     [ -z "$require_value" ] \

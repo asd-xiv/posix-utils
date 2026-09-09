@@ -58,7 +58,7 @@ case "$1" in
   succ | success) LEVEL="success" ;;
   info) LEVEL="info" ;;
   debug) LEVEL="debug" ;;
-  *) _fail -v level "$1" "Unknown level." ;;
+  *) _fail 2 -v level "$1" "Unknown level." ;;
 esac
 shift
 
@@ -85,6 +85,6 @@ while [ "$remaining" -gt 0 ]; do
   esac
 done
 
-[ "$#" -eq 0 ] && _fail "No message given."
+[ "$#" -eq 0 ] && _fail 2 "No message given."
 
 _log "$LEVEL" "$@"

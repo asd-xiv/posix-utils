@@ -63,10 +63,10 @@ while [ "$remaining" -gt 0 ]; do
       break
       ;;
     -?*)
-      _fail -v flag "$1" "Unknown flag."
+      _fail 2 -v flag "$1" "Unknown flag."
       ;;
     *)
-      _fail -v argument "$1" "jot takes no arguments. Pipe text instead."
+      _fail 2 -v argument "$1" "jot takes no arguments. Pipe text instead."
       ;;
   esac
 done
@@ -88,7 +88,7 @@ NOTE_PATH=""
 
 [ -z "$NOTE_PATH" ] && {
   NOTE_PATH=$(mktemp "${JOT_HOME}/notes/$(date +%Y-%m-%d).XXXXXX") \
-    || _fail "Could not create a note."
+    || _fail 3 "Could not create a note."
 }
 
 # Record the note before editing, so --continue works even when the editor
