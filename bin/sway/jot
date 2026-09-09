@@ -39,8 +39,6 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 LOG_NAMESPACE="jot"
 . "$SCRIPT_DIR/../lib.sh"
 
-_require_cmd alacritty nvim
-
 JOT_HOME="${JOT_HOME:-${HOME}/.jot}"
 LAST_NOTE_LINK="${JOT_HOME}/last-note"
 SHOULD_CONTINUE=""
@@ -70,6 +68,9 @@ while [ "$remaining" -gt 0 ]; do
       ;;
   esac
 done
+
+# after --help and the usage checks, so user can still learn what this does
+_require_cmd alacritty nvim
 
 mkdir -p "${JOT_HOME}/notes"
 
