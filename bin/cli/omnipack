@@ -1,0 +1,255 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   omnipack - Install OS dependencies, package manager agnostic
+#
+# SYNOPSIS
+#   omnipack <dep> [dep...]
+#
+# DESCRIPTION
+#   - Known names use a recipe, anything else goes to yum or apt-get.
+#   - Already installed dependencies are skipped.
+#   - Assumes running user has root/sudo privileges.
+#
+# ARGUMENTS
+#   terraform  - HashiCorp Terraform CLI
+#   awscli     - AWS CLI v2
+#   java       - Headless JRE, needed by neo4j
+#   neo4j      - Neo4j server and admin tools, from the distribution tarball
+#   <other>    - Installed through yum or apt-get
+#
+# OPTIONS
+#   -h, --help   Print this help
+#
+# ENVIRONMENT
+#   TERRAFORM_VERSION  Terraform version (default: 1.13.4)
+#   NEO4J_VERSION      Neo4j version (default: 5.26.0)
+#   LOG_LEVEL          Lowest level to print (default: info)
+#
+# EXAMPLE
+#   omnipack jq terraform
+#   NEO4J_VERSION=5.26.0 omnipack neo4j
+#
+# SEE ALSO
+#   curl, unzip, tar, yum, apt-get
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+LOG_NAMESPACE="omnipack"
+. "$SCRIPT_DIR/../lib.sh"
+
+TERRAFORM_DEFAULT_VERSION="1.13.4"
+NEO4J_DEFAULT_VERSION="5.26.0"
+APT_UPDATED=""
+
+# ╭───
+# │ Primitives
+# ╰───
+
+# <require_version <var_name> <version>
+# Ensure <version> is a valid version string.
+require_version() {
+  _require_chars '0-9.' "$1" "$2"
+  case "$2" in
+    .* | *. | *..*) _fail 2 -v "$1" "$2" "Not a version number." ;;
+  esac
+}
+
+# install_pkg <pkg>...
+# Install each package that is not already there, in one call to the package
+# manager.
+#
+# The guard checks `command -v <pkg>`, so it skips only when the package name
+# matches the command name. It doesnt defend against packages that install a
+# differently named command (openjdk-17-jre-headless -> java)
+install_pkg() {
+  # Drop what is installed, keep the rest in "$@"
+  count=$#
+  while [ "$count" -gt 0 ]; do
+    if command -v "$1" >/dev/null 2>&1; then
+      _debug -v path "$(command -v "$1")" "$1 is already installed."
+    else
+      set -- "$@" "$1"
+    fi
+
+    shift
+    count=$((count - 1))
+  done
+
+  # All installed, nothing to do
+  [ "$#" -eq 0 ] && return 0
+
+  _info -v packages "$*" "Installing…"
+
+  if command -v yum >/dev/null 2>&1; then
+    yum install -y -q "$@" || _fail 3 -v packages "$*" "yum install failed."
+  elif command -v apt-get >/dev/null 2>&1; then
+    export DEBIAN_FRONTEND=noninteractive
+
+    [ -z "$APT_UPDATED" ] && {
+      _info "Updating the apt package index…"
+      apt-get update -qq || _fail 3 "apt-get update failed."
+      APT_UPDATED="true"
+    }
+
+    apt-get install -y -qq "$@" \
+      || _fail 3 -v packages "$*" "apt-get install failed."
+  else
+    _fail 3 -v packages "$*" "No supported package manager."
+  fi
+
+  _ok -v packages "$*" "Installed."
+}
+
+# ╭───
+# │ Recipes
+# ╰───
+
+install_java() {
+  command -v java >/dev/null 2>&1 && {
+    _debug -v version "$(java -version 2>&1 | head -1)" "java is already installed."
+    return 0
+  }
+
+  _info "Installing a headless JRE…"
+
+  if command -v yum >/dev/null 2>&1; then
+    install_pkg java-17-openjdk-headless
+  else
+    install_pkg openjdk-17-jre-headless
+  fi
+
+  _ok -v version "$(java -version 2>&1 | head -1)" "java installed."
+}
+
+install_terraform() {
+  command -v terraform >/dev/null 2>&1 && {
+    _debug "terraform is already installed."
+    return 0
+  }
+
+  version="${TERRAFORM_VERSION:-$TERRAFORM_DEFAULT_VERSION}"
+  require_version TERRAFORM_VERSION "$version"
+  install_pkg curl unzip
+
+  _info -v version "$version" "Installing terraform…"
+
+  archive=$(_make_temp terraform-zip)
+  _download_file \
+    "https://releases.hashicorp.com/terraform/${version}/terraform_${version}_linux_amd64.zip" \
+    "$archive"
+  unzip -qo "$archive" -d "$(_resolve_bin_dir)"
+
+  _ok -v version "$version" "terraform installed."
+}
+
+install_awscli() {
+  command -v aws >/dev/null 2>&1 && {
+    _debug "awscli is already installed."
+    return 0
+  }
+
+  install_pkg curl unzip
+
+  _info "Installing awscli v2…"
+
+  archive=$(_make_temp awscli-zip)
+  _download_file \
+    "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" \
+    "$archive"
+  unzip -qo "$archive" -d "$TEMP_DIR"
+  "$TEMP_DIR/aws/install" --update
+
+  _ok -v version "$(aws --version 2>&1 | head -1)" "awscli installed."
+}
+
+install_neo4j() {
+  version="${NEO4J_VERSION:-$NEO4J_DEFAULT_VERSION}"
+  require_version NEO4J_VERSION "$version"
+
+  install_dir="/var/lib/neo4j"
+
+  [ -x "${install_dir}/bin/neo4j" ] \
+    && [ -x "${install_dir}/bin/neo4j-admin" ] \
+    && [ -x "${install_dir}/bin/cypher-shell" ] && {
+    _debug -v path "$install_dir" "neo4j is already installed."
+    return 0
+  }
+
+  install_java
+  install_pkg curl tar ca-certificates
+
+  _info -v version "$version" -v path "$install_dir" "Installing neo4j…"
+
+  archive=$(_make_temp neo4j-tgz)
+  _download_file \
+    "https://dist.neo4j.org/neo4j-community-${version}-unix.tar.gz" \
+    "$archive"
+
+  # Unpack into the temp dir first, so a failed download or a truncated
+  # archive never deletes a working install.
+  tar -xzf "$archive" -C "$TEMP_DIR"
+  [ -d "${TEMP_DIR}/neo4j-community-${version}" ] \
+    || _fail 3 -v version "$version" "The archive holds no neo4j-community dir."
+
+  rm -rf "$install_dir"
+  mkdir -p "$(dirname "$install_dir")"
+  mv "${TEMP_DIR}/neo4j-community-${version}" "$install_dir"
+
+  bin_dir=$(_resolve_bin_dir)
+  for tool in neo4j neo4j-admin cypher-shell; do
+    ln -sf "${install_dir}/bin/${tool}" "${bin_dir}/${tool}"
+  done
+
+  _ok -v version "$version" "neo4j installed."
+}
+
+# ╭───
+# │ Bootstrap
+# ╰───
+
+# Both answers to "what is argument zero" live here. --help succeeds, an
+# empty call does not.
+case "${1:-}" in
+  -h | --help)
+    _show_help "$0"
+    exit 0
+    ;;
+  "")
+    _show_help "$0"
+    exit 2
+    ;;
+  -?*)
+    _fail 2 -v flag "$1" "Unknown flag."
+    ;;
+esac
+
+# ╭───
+# │ Cleanup
+# ╰───
+
+cleanup() {
+  rm -rf "${TEMP_DIR:-}" || true
+}
+
+trap cleanup EXIT INT TERM HUP
+
+TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/omnipack.XXXXXX") \
+  || _fail 3 "Could not create a temporary directory."
+
+# ╭───
+# │ Main
+# ╰───
+
+for dep in "$@"; do
+  _require_chars 'A-Za-z0-9._+-' package "$dep"
+
+  case "$dep" in
+    terraform) install_terraform ;;
+    awscli) install_awscli ;;
+    java) install_java ;;
+    neo4j) install_neo4j ;;
+    *) install_pkg "$dep" ;;
+  esac
+done

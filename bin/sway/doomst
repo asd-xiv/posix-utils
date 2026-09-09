@@ -1,0 +1,83 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   doomst - Doomguy themed desktop notifications
+#
+# SYNOPSIS
+#   doomst [-t <type>] <title> [message]
+#
+# DESCRIPTION
+#   Sends a notification through notify-send, picking a Doomguy icon and an
+#   urgency from the type.
+#
+# ARGUMENTS
+#   title     - notification title
+#   message   - notification body, optional
+#
+# OPTIONS
+#   -t, --type <type>   info, success or error (default: info)
+#   -h, --help          Print this help
+#
+# EXAMPLE
+#   doomst -t success "Build passed" "42 tests, 3.1s"
+#
+# SEE ALSO
+#   notify-send, dunst
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+LOG_NAMESPACE="doomst"
+. "$SCRIPT_DIR/../lib.sh"
+
+_require_cmd notify-send
+
+# `type` is a shell builtin — name the variable after what it selects.
+NOTIFY_TYPE="info"
+
+remaining=$#
+while [ "$remaining" -gt 0 ]; do
+  case "$1" in
+    -h | --help)
+      _show_help "$0"
+      exit 0
+      ;;
+    -t | --type)
+      [ "$remaining" -lt 2 ] && _fail 2 "--type needs a value: info, success, error."
+      NOTIFY_TYPE="$2"
+      shift 2
+      remaining=$((remaining - 2))
+      ;;
+    --)
+      shift
+      remaining=$((remaining - 1))
+      break
+      ;;
+    -?*)
+      _fail 2 -v flag "$1" "Unknown flag."
+      ;;
+    *)
+      set -- "$@" "$1"
+      shift
+      remaining=$((remaining - 1))
+      ;;
+  esac
+done
+
+[ "$#" -eq 0 ] && _fail 2 "No title given."
+
+case "$NOTIFY_TYPE" in
+  success) ICON="doomguy-smile.png" URGENCY="normal" ;;
+  error) ICON="doomguy-blood.png" URGENCY="critical" ;;
+  info) ICON="doomguy.png" URGENCY="normal" ;;
+  *) _fail 2 -v type "$NOTIFY_TYPE" "Unknown type. Use info, success or error." ;;
+esac
+
+ICON_PATH="${SCRIPT_DIR}/assets/${ICON}"
+[ -f "$ICON_PATH" ] || _fail 3 -v path "$ICON_PATH" "Icon not found."
+
+# ╭───
+# │ Main
+# ╰───
+
+notify-send --icon "$ICON_PATH" --urgency "$URGENCY" "$@"

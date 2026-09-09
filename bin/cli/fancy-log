@@ -1,0 +1,90 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   fancy-log - Dated, colored, namespaced log messages
+#
+# SYNOPSIS
+#   fancy-log <level> [-v <key> <val>]... <message>
+#
+# DESCRIPTION
+#   The command form of the lib.sh logging helpers. Use it from shells and
+#   pipelines that do not source lib.sh. A script that sources lib.sh calls
+#   _info, _ok, _warn, _debug and _fail instead — one process fewer per line.
+#
+#   All output goes to stderr, so stdout stays free for the script result.
+#
+# ARGUMENTS
+#   level     - error, warning, success, info or debug
+#   message   - text to print, last argument
+#
+# OPTIONS
+#   -v, --var <key> <val>   Append a key=val pair after the message
+#   --no-color              Print without color
+#   -h, --help              Print this help
+#
+# ENVIRONMENT
+#   LOG_LEVEL       Lowest level to print (default: info)
+#   LOG_NAMESPACE   Label printed before the message
+#   NO_COLOR        If set, disables color
+#
+# EXAMPLE
+#   fancy-log error -v param "bad" "Invalid parameter."
+#   LOG_LEVEL=debug fancy-log debug "Cache miss."
+#
+# SEE ALSO
+#   lib.sh
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../lib.sh"
+
+# Both answers to "what is argument zero" live here. --help succeeds, an
+# empty call does not.
+case "${1:-}" in
+  -h | --help)
+    _show_help "$0"
+    exit 0
+    ;;
+  "")
+    _show_help "$0"
+    exit 1
+    ;;
+esac
+
+case "$1" in
+  err | error) LEVEL="error" ;;
+  warn | warning) LEVEL="warning" ;;
+  succ | success) LEVEL="success" ;;
+  info) LEVEL="info" ;;
+  debug) LEVEL="debug" ;;
+  *) _fail -v level "$1" "Unknown level." ;;
+esac
+shift
+
+# Strip the flags this command owns, pass the rest to _log untouched.
+remaining=$#
+while [ "$remaining" -gt 0 ]; do
+  case "$1" in
+    --no-color)
+      NO_COLOR=1
+      export NO_COLOR
+      shift
+      remaining=$((remaining - 1))
+      ;;
+    --)
+      shift
+      remaining=$((remaining - 1))
+      break
+      ;;
+    *)
+      set -- "$@" "$1"
+      shift
+      remaining=$((remaining - 1))
+      ;;
+  esac
+done
+
+[ "$#" -eq 0 ] && _fail "No message given."
+
+_log "$LEVEL" "$@"
