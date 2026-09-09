@@ -107,7 +107,7 @@ set -eu
 _log <level> [-v <key> <val>]... <message>   level: error|warning|success|info|debug
 _debug|_info|_ok|_warn [-v <key> <val>]... <message>
 _fail <code> [-v <key> <val>]... <message>   logs at error level, then exits <code>
-_assert <type> <label> <value>               type: positive-integer|version|slug|identifier
+_is <type> <value>                           type: positive-integer|version|slug|identifier
 _require_cmd <cmd>...                        exit 3 unless every <cmd> is on PATH
 _require_var <NAME>...                       exit 2 unless every <NAME> is set
 _download_file <url> <output-path>
@@ -120,7 +120,7 @@ _show_help <script-path>                     print the man page to stdout
     `LOG_NAMESPACE` labels the line
   - `bin/cli/fancy-log` is the same logger as a command, for when `lib.sh` is
     not sourced
-- Never add a domain shape to `_assert`. Write a local guard in the script
+- Never add a domain shape to `_is`. Write a local predicate in the script
 
 ```sh
 # install symlinks this into PU_INSTALL_DIR, so dirname "$0" would point at
@@ -223,7 +223,7 @@ while [ "$remaining" -gt 0 ]; do
       ;;
     -m | --max)
       [ "$remaining" -lt 2 ] && _fail 2 "--max needs a count."
-      _assert positive-integer max "$2"
+      _is positive-integer "$2" || _fail 2 -v max "$2" "Not a count."
       MAX_COUNT="$2"
       shift 2
       remaining=$((remaining - 2))

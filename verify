@@ -9,9 +9,13 @@ set -eu
 #   ./verify
 #
 # DESCRIPTION
-#   Runs shellcheck over every shell script in bin/, then parses and smoke
-#   tests each one under dash and BusyBox ash. CI and a developer run the same
-#   checks through this one script.
+#   For every shell script in bin/, runs shellcheck, parses it under dash and
+#   BusyBox ash, and smoke tests it:
+#
+#     --help            must exit 0
+#     an unknown flag   must exit 2 (invalid usage)
+#
+#   CI and a developer run the same checks through this one script.
 #
 # OPTIONS
 #   -h, --help    Print this help
@@ -51,7 +55,7 @@ _require_cmd shellcheck dash busybox
 
 _info "Checking bin/"
 
-find "$SCRIPT_DIR/bin" -type f | sort | {
+find "$SCRIPT_DIR/bin" -type f ! -name lib.sh | sort | {
   # local to this subshell, not visible outside
   rc=0
 
@@ -86,6 +90,14 @@ find "$SCRIPT_DIR/bin" -type f | sort | {
       _warn -v script "$name" "busybox --help failed."
       rc=1
     }
+
+    flag_rc=0
+    dash "$file" --zz-not-a-real-flag >/dev/null 2>&1 || flag_rc=$?
+
+    if [ "$flag_rc" -ne 2 ]; then
+      _warn -v script "$name" -v got "$flag_rc" "Unknown flag did not exit 2."
+      rc=1
+    fi
   done
 
   exit "$rc"
