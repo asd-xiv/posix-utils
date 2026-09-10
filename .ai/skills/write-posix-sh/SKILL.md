@@ -178,7 +178,7 @@ search_file() {
 ### 6. Bootstrap
 
 - Guard dependencies after the help branch. `--help` names them in `SEE ALSO`,
-  so it has to work when they are missing
+  so it must work to allow learning about them
 
 ```sh
 # ╭───
@@ -201,10 +201,7 @@ _require_cmd grep
 
 ### 7. Flags and positionals
 
-- Rotate positionals to the back of `"$@"`
-  - Do not collect into a string. `FILES="${FILES:+$FILES }$1"` splits on a
-    space in a filename
-  - What survives the loop are the positionals, in order
+- Flags first, then the positionals
 - Always handle `--`, always catch `-?*`
 - Guard before every `shift 2`. `dash` aborts with
   `shift: can't shift that many`
@@ -212,41 +209,26 @@ _require_cmd grep
   always misses an edge case
 
 ```sh
-# rotation keeps $# constant, so count the arguments down instead
-remaining=$#
-while [ "$remaining" -gt 0 ]; do
+while [ "$#" -gt 0 ]; do
   case "$1" in
     -i | --ignore-case)
       IGNORE_CASE="true"
       shift
-      remaining=$((remaining - 1))
       ;;
     -m | --max)
-      [ "$remaining" -lt 2 ] && _fail 2 "--max needs a count."
+      [ "$#" -lt 2 ] && _fail 2 "--max needs a count."
       _is positive-integer "$2" || _fail 2 -v max "$2" "Not a count."
       MAX_COUNT="$2"
       shift 2
-      remaining=$((remaining - 2))
       ;;
+    # the first positional starts with a dash, eg. the pattern -foo
     --)
-      shift
-      remaining=$((remaining - 1))
-
-      # everything left is positional, rotate it untouched
-      while [ "$remaining" -gt 0 ]; do
-        set -- "$@" "$1"
-        shift
-        remaining=$((remaining - 1))
-      done
+      shift; break
       ;;
     -?*)
       _fail 2 -v flag "$1" "Unknown flag."
       ;;
-    *)
-      set -- "$@" "$1"
-      shift
-      remaining=$((remaining - 1))
-      ;;
+    *) break ;;
   esac
 done
 

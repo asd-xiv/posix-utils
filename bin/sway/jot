@@ -43,8 +43,7 @@ JOT_HOME="${JOT_HOME:-${HOME}/.jot}"
 LAST_NOTE_LINK="${JOT_HOME}/last-note"
 SHOULD_CONTINUE=""
 
-remaining=$#
-while [ "$remaining" -gt 0 ]; do
+while [ "$#" -gt 0 ]; do
   case "$1" in
     -h | --help)
       _show_help "$0"
@@ -53,21 +52,20 @@ while [ "$remaining" -gt 0 ]; do
     -c | --continue)
       SHOULD_CONTINUE="true"
       shift
-      remaining=$((remaining - 1))
       ;;
     --)
       shift
-      remaining=$((remaining - 1))
       break
       ;;
     -?*)
       _fail 2 -v flag "$1" "Unknown flag."
       ;;
-    *)
-      _fail 2 -v argument "$1" "jot takes no arguments. Pipe text instead."
-      ;;
+    *) break ;;
   esac
 done
+
+[ "$#" -eq 0 ] \
+  || _fail 2 -v argument "$1" "jot takes no arguments. Pipe text instead."
 
 # after --help and the usage checks, so user can still learn what this does
 _require_cmd alacritty nvim
