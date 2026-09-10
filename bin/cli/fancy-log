@@ -6,12 +6,15 @@ set -eu
 #   fancy-log - Dated, colored, namespaced log messages
 #
 # SYNOPSIS
-#   fancy-log <level> [-v <key> <val>]... <message>
+#   fancy-log <level> [--no-color] [-v <key> <val>]... <message>
 #
 # DESCRIPTION
 #   The command form of the lib.sh logging helpers. Use it from shells and
 #   pipelines that do not source lib.sh. A script that sources lib.sh calls
 #   _info, _ok, _warn, _debug and _fail instead — one process fewer per line.
+#
+#   fancy-log owns --no-color and --help, which must come first. Everything
+#   after them, -v pairs and the message, goes to the logger untouched.
 #
 #   All output goes to stderr, so stdout stays free for the script result.
 #
@@ -25,7 +28,7 @@ set -eu
 #   -h, --help              Print this help
 #
 # ENVIRONMENT
-#   LOG_LEVEL       Lowest level to print (default: info)
+#   LOG_LEVEL       Cut-off level to print (default: info)
 #   LOG_NAMESPACE   Label printed before the message
 #   NO_COLOR        If set, disables color
 #
@@ -63,25 +66,23 @@ esac
 shift
 
 # Strip the flags this command owns, pass the rest to _log untouched.
-remaining=$#
-while [ "$remaining" -gt 0 ]; do
+while [ "$#" -gt 0 ]; do
   case "$1" in
     --no-color)
       NO_COLOR=1
       export NO_COLOR
       shift
-      remaining=$((remaining - 1))
       ;;
+    # _log's own flag, forward it with the message
+    -v | --var) break ;;
     --)
       shift
-      remaining=$((remaining - 1))
       break
       ;;
-    *)
-      set -- "$@" "$1"
-      shift
-      remaining=$((remaining - 1))
+    -?*)
+      _fail 2 -v flag "$1" "Unknown flag."
       ;;
+    *) break ;;
   esac
 done
 
