@@ -9,7 +9,7 @@ set -eu
 #   omnipack <dep> [dep...]
 #
 # DESCRIPTION
-#   - Known names use a recipe, anything else goes to yum or apt-get.
+#   - Known names use a recipe, anything else goes to yum, apt-get or pacman.
 #   - Already installed dependencies are skipped.
 #   - Assumes running user has root/sudo privileges.
 #
@@ -26,7 +26,7 @@ set -eu
 # ENVIRONMENT
 #   TERRAFORM_VERSION  Terraform version (default: 1.13.4)
 #   NEO4J_VERSION      Neo4j version (default: 5.26.0)
-#   LOG_LEVEL          Lowest level to print (default: info)
+#   LOG_LEVEL          Cut-off level to print (default: info)
 #
 # EXAMPLE
 #   omnipack jq terraform
@@ -47,13 +47,43 @@ APT_UPDATED=""
 # │ Primitives
 # ╰───
 
-# <require_version <var_name> <version>
-# Ensure <version> is a valid version string.
-require_version() {
-  _require_chars '0-9.' "$1" "$2"
-  case "$2" in
-    .* | *. | *..*) _fail 2 -v "$1" "$2" "Not a version number." ;;
+# is_package <value>
+# Return 0 when <value> is a valid package name.
+is_package() {
+  [ -n "$1" ] || return 1
+
+  case "$1" in
+    -* | *[!A-Za-z0-9._+-]*) return 1 ;;
   esac
+
+  return 0
+}
+
+# install_with_yum <pkg>...
+install_with_yum() {
+  yum install -y -q "$@" || _fail 3 -v packages "$*" "yum install failed."
+}
+
+# install_with_apt <pkg>...
+install_with_apt() {
+  export DEBIAN_FRONTEND=noninteractive
+
+  [ -z "$APT_UPDATED" ] && {
+    _info "Updating the apt package index…"
+    apt-get update -qq || _fail 3 "apt-get update failed."
+    APT_UPDATED="true"
+  }
+
+  apt-get install -y -qq "$@" \
+    || _fail 3 -v packages "$*" "apt-get install failed."
+}
+
+# install_with_pacman <pkg>...
+install_with_pacman() {
+  # No -Sy. Refreshing without upgrading leaves Arch in a partial upgrade, so
+  # a stale database has to fail loudly instead.
+  pacman -S --needed --noconfirm "$@" \
+    || _fail 3 -v packages "$*" "pacman install failed."
 }
 
 # install_pkg <pkg>...
@@ -68,7 +98,7 @@ install_pkg() {
   count=$#
   while [ "$count" -gt 0 ]; do
     if command -v "$1" >/dev/null 2>&1; then
-      _debug -v path "$(command -v "$1")" "$1 is already installed."
+      _info -v path "$(command -v "$1")" "$1 is already installed, skipping"
     else
       set -- "$@" "$1"
     fi
@@ -83,20 +113,14 @@ install_pkg() {
   _info -v packages "$*" "Installing…"
 
   if command -v yum >/dev/null 2>&1; then
-    yum install -y -q "$@" || _fail 3 -v packages "$*" "yum install failed."
+    install_with_yum "$@"
   elif command -v apt-get >/dev/null 2>&1; then
-    export DEBIAN_FRONTEND=noninteractive
-
-    [ -z "$APT_UPDATED" ] && {
-      _info "Updating the apt package index…"
-      apt-get update -qq || _fail 3 "apt-get update failed."
-      APT_UPDATED="true"
-    }
-
-    apt-get install -y -qq "$@" \
-      || _fail 3 -v packages "$*" "apt-get install failed."
+    install_with_apt "$@"
+  elif command -v pacman >/dev/null 2>&1; then
+    install_with_pacman "$@"
   else
-    _fail 3 -v packages "$*" "No supported package manager."
+    _fail 3 -v packages "$*" -v supported "yum, apt-get, pacman" \
+      "No supported package manager."
   fi
 
   _ok -v packages "$*" "Installed."
@@ -108,7 +132,7 @@ install_pkg() {
 
 install_java() {
   command -v java >/dev/null 2>&1 && {
-    _debug -v version "$(java -version 2>&1 | head -1)" "java is already installed."
+    _info -v version "$(java -version 2>&1 | head -1)" "java is already installed, skipping"
     return 0
   }
 
@@ -125,17 +149,18 @@ install_java() {
 
 install_terraform() {
   command -v terraform >/dev/null 2>&1 && {
-    _debug "terraform is already installed."
+    _info "terraform is already installed, skipping"
     return 0
   }
 
   version="${TERRAFORM_VERSION:-$TERRAFORM_DEFAULT_VERSION}"
-  require_version TERRAFORM_VERSION "$version"
+  _is version "$version" \
+    || _fail 2 -v TERRAFORM_VERSION "$version" "Not a version number."
   install_pkg curl unzip
 
   _info -v version "$version" "Installing terraform…"
 
-  archive=$(_make_temp terraform-zip)
+  archive=$(mktemp "$TEMP_DIR/terraform.XXXXXX")
   _download_file \
     "https://releases.hashicorp.com/terraform/${version}/terraform_${version}_linux_amd64.zip" \
     "$archive"
@@ -146,7 +171,7 @@ install_terraform() {
 
 install_awscli() {
   command -v aws >/dev/null 2>&1 && {
-    _debug "awscli is already installed."
+    _info "awscli is already installed, skipping"
     return 0
   }
 
@@ -154,7 +179,7 @@ install_awscli() {
 
   _info "Installing awscli v2…"
 
-  archive=$(_make_temp awscli-zip)
+  archive=$(mktemp "$TEMP_DIR/awscli.XXXXXX")
   _download_file \
     "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" \
     "$archive"
@@ -166,14 +191,15 @@ install_awscli() {
 
 install_neo4j() {
   version="${NEO4J_VERSION:-$NEO4J_DEFAULT_VERSION}"
-  require_version NEO4J_VERSION "$version"
+  _is version "$version" \
+    || _fail 2 -v NEO4J_VERSION "$version" "Not a version number."
 
   install_dir="/var/lib/neo4j"
 
   [ -x "${install_dir}/bin/neo4j" ] \
     && [ -x "${install_dir}/bin/neo4j-admin" ] \
     && [ -x "${install_dir}/bin/cypher-shell" ] && {
-    _debug -v path "$install_dir" "neo4j is already installed."
+    _info -v path "$install_dir" "neo4j is already installed, skipping"
     return 0
   }
 
@@ -182,7 +208,7 @@ install_neo4j() {
 
   _info -v version "$version" -v path "$install_dir" "Installing neo4j…"
 
-  archive=$(_make_temp neo4j-tgz)
+  archive=$(mktemp "$TEMP_DIR/neo4j.XXXXXX")
   _download_file \
     "https://dist.neo4j.org/neo4j-community-${version}-unix.tar.gz" \
     "$archive"
@@ -243,7 +269,7 @@ TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/omnipack.XXXXXX") \
 # ╰───
 
 for dep in "$@"; do
-  _require_chars 'A-Za-z0-9._+-' package "$dep"
+  is_package "$dep" || _fail 2 -v package "$dep" "Not a package name."
 
   case "$dep" in
     terraform) install_terraform ;;
