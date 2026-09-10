@@ -6,7 +6,7 @@ set -eu
 #   fancy-log - Dated, colored, namespaced log messages
 #
 # SYNOPSIS
-#   fancy-log <level> [--no-color] [-v <key> <val>]... <message>
+#   fancy-log <level> [--no-color] [-v <key> <val>]... <message>...
 #
 # DESCRIPTION
 #   The command form of the lib.sh logging helpers. Use it from shells and

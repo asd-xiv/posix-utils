@@ -44,7 +44,7 @@ _has_color() {
   [ -t 2 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != "dumb" ]
 }
 
-# _log <level> [-v <key> <val>]... <message>
+# _log <level> [-v <key> <val>]... <message>...
 #
 # Data always goes through %s. Escapes live in the format string only,
 # so a value containing a backslash prints as written.
@@ -90,7 +90,9 @@ _log() {
     esac
   done
 
-  printf '%s' "${1:-}" >&2
+  # What survives the pairs is the message.
+  # Join to mirror echo's behaviour and print everything.
+  printf '%s' "$*" >&2
   [ -n "$log_pairs" ] && printf '%s' "$log_pairs" >&2
   printf '\n' >&2
 
