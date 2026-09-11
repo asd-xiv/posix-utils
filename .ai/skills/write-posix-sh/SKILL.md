@@ -115,9 +115,9 @@ _fail <code> [-v <key> <val>]... <message>   logs at error level, then exits <co
 _is <type> <value>                           type: positive-integer|version|slug|identifier
 _require_cmd <cmd>...                        exit 3 unless every <cmd> is on PATH
 _require_var <NAME>...                       exit 2 unless every <NAME> is set
-_download_file <url> <output-path>
+_download_file <url> <output-file>
 _resolve_bin_dir                             print the first writable bin dir
-_show_help <script-path>                     print the man page to stdout
+_show_help <script-file>                     print the man page to stdout
 ```
 
 - Levels run `error < warning < success < info < debug`
@@ -128,8 +128,8 @@ _show_help <script-path>                     print the man page to stdout
 - Never add a domain shape to `_is`. Write a local predicate in the script
 
 ```sh
-# install symlinks this into PU_INSTALL_DIR, so dirname "$0" would point at
-# the link. realpath reads through it so lib.sh can be resolved.
+# install symlinks this into PU_BIN_DIR, so dirname "$0" would point at the
+# link. realpath reads through it so lib.sh can be resolved.
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 LOG_NAMESPACE="find-in-files"
 . "$SCRIPT_DIR/../lib.sh"
@@ -141,6 +141,8 @@ LOG_NAMESPACE="find-in-files"
   computes belongs where it is computed
 - Case implies scope: `UPPER_SNAKE` globals, `lower_snake` locals and functions
   - Never shadow a builtin: `type`, `test`, `read`, `printf`
+- Name a path for what it holds, `_dir` or `_file`, unless its noun already
+  does. Keep `_path` for a search list, as in `PATH`
 
 ```sh
 IGNORE_CASE="" # -i/--ignore-case, "true" or ""
@@ -280,9 +282,9 @@ TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/find-in-files.XXXXXX") \
 # ╰───
 
 if [ "$#" -eq 0 ] && [ ! -t 0 ]; then
-  stdin_copy=$(mktemp "$TEMP_DIR/stdin.XXXXXX")
-  cat > "$stdin_copy"
-  set -- "$stdin_copy"
+  stdin_file=$(mktemp "$TEMP_DIR/stdin.XXXXXX")
+  cat > "$stdin_file"
+  set -- "$stdin_file"
 fi
 
 if [ "$#" -eq 0 ]; then

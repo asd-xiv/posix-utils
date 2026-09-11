@@ -66,8 +66,8 @@ case "$NOTIFY_TYPE" in
   *) _fail 2 -v type "$NOTIFY_TYPE" "Unknown type. Use info, success or error." ;;
 esac
 
-ICON_PATH="${SCRIPT_DIR}/assets/${ICON}"
-[ -f "$ICON_PATH" ] || _fail 3 -v path "$ICON_PATH" "Icon not found."
+ICON_FILE="${SCRIPT_DIR}/assets/${ICON}"
+[ -f "$ICON_FILE" ] || _fail 3 -v path "$ICON_FILE" "Icon not found."
 
 # after --help and the usage checks, so user can still learn what this does
 _require_cmd notify-send
@@ -77,4 +77,4 @@ _require_cmd notify-send
 # ╰───
 
 # -- so a title starting with a dash reaches notify-send as a title
-notify-send --icon "$ICON_PATH" --urgency "$URGENCY" -- "$@"
+notify-send --icon "$ICON_FILE" --urgency "$URGENCY" -- "$@"
