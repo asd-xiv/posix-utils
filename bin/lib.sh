@@ -111,7 +111,7 @@ _fail() {
   fail_code=$(printf '%d' "${1:-}" 2>/dev/null) || fail_code=0
 
   if [ "$fail_code" -lt 1 ] || [ "$fail_code" -gt 125 ]; then
-    _log error -v got "${1:-}" "_fail needs an exit code of 1 to 125."
+    _log error -v got "${1:-}" "_fail needs an exit code of 1 to 125"
     exit 2
   fi
 
@@ -138,7 +138,7 @@ _fail() {
 # string. [A-Za-z_][A-Za-z0-9_]* tests two characters and lets the rest through,
 # accepting "ab; rm -rf /". Inside a class "-" goes last and "]" first.
 _is() {
-  [ "$#" -eq 2 ] || _fail 3 "_is needs <type> <value>."
+  [ "$#" -eq 2 ] || _fail 3 "_is needs <type> <value>"
   [ -n "$2" ] || return 1
 
   case "$1" in
@@ -165,7 +165,7 @@ _is() {
       esac
       ;;
     *)
-      _fail 3 -v type "$1" "Unknown type."
+      _fail 3 -v type "$1" "Unknown type"
       ;;
   esac
 
@@ -181,7 +181,7 @@ _require_cmd() {
   done
 
   [ -n "$require_missing" ] \
-    && _fail 3 -v missing "$require_missing" "Required commands not found."
+    && _fail 3 -v missing "$require_missing" "Required commands not found"
 
   return 0
 }
@@ -191,7 +191,7 @@ _require_var() {
   require_missing=""
   for require_name in "$@"; do
     _is identifier "$require_name" \
-      || _fail 3 -v name "$require_name" "_require_var takes variable names."
+      || _fail 3 -v name "$require_name" "_require_var takes variable names"
 
     eval "require_value=\${$require_name:-}"
     [ -z "$require_value" ] \
@@ -199,7 +199,7 @@ _require_var() {
   done
 
   [ -n "$require_missing" ] \
-    && _fail 2 -v missing "$require_missing" "Required variables not set."
+    && _fail 2 -v missing "$require_missing" "Required variables not set"
 
   return 0
 }
@@ -212,20 +212,22 @@ _require_var() {
 _download_file() {
   _require_cmd curl
   curl --silent --show-error --fail --location --output "$2" "$1" \
-    || _fail 3 -v url "$1" "Download failed."
+    || _fail 3 -v url "$1" "Download failed"
 }
 
 # _resolve_bin_dir
-# Print the first writable directory for system binaries.
+# Print the first writable binaries directory for the current user, as per
+# "XDG Base Directory Specification" https://specifications.freedesktop.org/basedir/latest/
 _resolve_bin_dir() {
-  for resolve_dir in /usr/local/bin /usr/bin; do
+  for resolve_dir in /usr/local/bin "${HOME:-}/.local/bin"; do
     [ -d "$resolve_dir" ] && [ -w "$resolve_dir" ] && {
       printf '%s' "$resolve_dir"
       return 0
     }
   done
 
-  _fail 3 "No writable bin dir (/usr/local/bin, /usr/bin). Run as root?"
+  _fail 3 -v current_user "$(whoami)" \
+    "No writable bin dir (/usr/local/bin, ~/.local/bin)"
 }
 
 # ╭───
@@ -236,7 +238,7 @@ _resolve_bin_dir() {
 # Print the first NAME comment block of a script to stdout.
 _show_help() {
   if [ ! -f "$1" ]; then
-    _fail 2 -v path "$1" "Script not found."
+    _fail 2 -v path "$1" "Script not found"
   fi
 
   sed -n '/^# NAME$/,/^$/p' "$1" \
