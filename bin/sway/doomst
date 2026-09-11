@@ -23,6 +23,11 @@ set -eu
 # EXAMPLE
 #   doomst -t success "Build passed" "42 tests, 3.1s"
 #
+# EXIT CODES
+#   0   Notification sent
+#   2   Invalid usage
+#   3   Could not run, eg. no notifier or a missing icon
+#
 # SEE ALSO
 #   notify-send, dunst
 
@@ -30,7 +35,6 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 LOG_NAMESPACE="doomst"
 . "$SCRIPT_DIR/../lib.sh"
 
-# `type` is a shell builtin — name the variable after what it selects.
 NOTIFY_TYPE="info"
 
 while [ "$#" -gt 0 ]; do
@@ -44,14 +48,11 @@ while [ "$#" -gt 0 ]; do
       NOTIFY_TYPE="$2"
       shift 2
       ;;
-    # the title starts with a dash
     --)
       shift
       break
       ;;
-    -?*)
-      _fail 2 -v flag "$1" "Unknown flag."
-      ;;
+    -?*) _fail 2 -v flag "$1" "Unknown flag." ;;
     *) break ;;
   esac
 done
