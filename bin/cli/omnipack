@@ -18,7 +18,7 @@ set -eu
 #   awscli     - AWS CLI v2
 #   java       - Headless JRE, needed by neo4j
 #   neo4j      - Neo4j server and admin tools, from the distribution tarball
-#   <other>    - Installed through yum or apt-get
+#   <other>    - Installed through yum, apt-get or pacman
 #
 # OPTIONS
 #   -h, --help   Print this help
@@ -32,8 +32,13 @@ set -eu
 #   omnipack jq terraform
 #   NEO4J_VERSION=5.26.0 omnipack neo4j
 #
+# EXIT CODES
+#   0   Every dependency exists, installed now or already there
+#   2   Invalid usage
+#   3   Could not run, eg. no supported package manager
+#
 # SEE ALSO
-#   curl, unzip, tar, yum, apt-get
+#   curl, unzip, tar, yum, apt-get, pacman
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 LOG_NAMESPACE="omnipack"
@@ -95,8 +100,8 @@ install_with_pacman() {
 # differently named command (openjdk-17-jre-headless -> java)
 install_pkg() {
   # Drop what is installed, keep the rest in "$@"
-  count=$#
-  while [ "$count" -gt 0 ]; do
+  pkg_count=$#
+  while [ "$pkg_count" -gt 0 ]; do
     if command -v "$1" >/dev/null 2>&1; then
       _info -v path "$(command -v "$1")" "$1 is already installed, skipping"
     else
@@ -104,7 +109,7 @@ install_pkg() {
     fi
 
     shift
-    count=$((count - 1))
+    pkg_count=$((pkg_count - 1))
   done
 
   # All installed, nothing to do
@@ -153,20 +158,22 @@ install_terraform() {
     return 0
   }
 
-  version="${TERRAFORM_VERSION:-$TERRAFORM_DEFAULT_VERSION}"
-  _is version "$version" \
-    || _fail 2 -v TERRAFORM_VERSION "$version" "Not a version number."
+  tf_version="${TERRAFORM_VERSION:-$TERRAFORM_DEFAULT_VERSION}"
+  _is version "$tf_version" \
+    || _fail 2 -v TERRAFORM_VERSION "$tf_version" "Not a version number."
   install_pkg curl unzip
 
-  _info -v version "$version" "Installing terraform…"
+  _info -v version "$tf_version" "Installing terraform…"
 
-  archive=$(mktemp "$TEMP_DIR/terraform.XXXXXX")
+  tf_archive=$(mktemp "$TEMP_DIR/terraform.XXXXXX")
   _download_file \
-    "https://releases.hashicorp.com/terraform/${version}/terraform_${version}_linux_amd64.zip" \
-    "$archive"
-  unzip -qo "$archive" -d "$(_resolve_bin_dir)"
+    "https://releases.hashicorp.com/terraform/${tf_version}/terraform_${tf_version}_linux_amd64.zip" \
+    "$tf_archive"
 
-  _ok -v version "$version" "terraform installed."
+  tf_bin_dir=$(_resolve_bin_dir)
+  unzip -qo "$tf_archive" -d "$tf_bin_dir"
+
+  _ok -v version "$tf_version" "terraform installed."
 }
 
 install_awscli() {
@@ -179,56 +186,54 @@ install_awscli() {
 
   _info "Installing awscli v2…"
 
-  archive=$(mktemp "$TEMP_DIR/awscli.XXXXXX")
+  aws_archive=$(mktemp "$TEMP_DIR/awscli.XXXXXX")
   _download_file \
     "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" \
-    "$archive"
-  unzip -qo "$archive" -d "$TEMP_DIR"
+    "$aws_archive"
+  unzip -qo "$aws_archive" -d "$TEMP_DIR"
   "$TEMP_DIR/aws/install" --update
 
   _ok -v version "$(aws --version 2>&1 | head -1)" "awscli installed."
 }
 
 install_neo4j() {
-  version="${NEO4J_VERSION:-$NEO4J_DEFAULT_VERSION}"
-  _is version "$version" \
-    || _fail 2 -v NEO4J_VERSION "$version" "Not a version number."
+  neo4j_version="${NEO4J_VERSION:-$NEO4J_DEFAULT_VERSION}"
+  _is version "$neo4j_version" \
+    || _fail 2 -v NEO4J_VERSION "$neo4j_version" "Not a version number."
 
-  install_dir="/var/lib/neo4j"
+  neo4j_dir="/var/lib/neo4j"
 
-  [ -x "${install_dir}/bin/neo4j" ] \
-    && [ -x "${install_dir}/bin/neo4j-admin" ] \
-    && [ -x "${install_dir}/bin/cypher-shell" ] && {
-    _info -v path "$install_dir" "neo4j is already installed, skipping"
+  [ -x "${neo4j_dir}/bin/neo4j" ] \
+    && [ -x "${neo4j_dir}/bin/neo4j-admin" ] \
+    && [ -x "${neo4j_dir}/bin/cypher-shell" ] && {
+    _info -v path "$neo4j_dir" "neo4j is already installed, skipping"
     return 0
   }
 
   install_java
   install_pkg curl tar ca-certificates
 
-  _info -v version "$version" -v path "$install_dir" "Installing neo4j…"
+  _info -v version "$neo4j_version" -v path "$neo4j_dir" "Installing neo4j…"
 
-  archive=$(mktemp "$TEMP_DIR/neo4j.XXXXXX")
+  neo4j_archive=$(mktemp "$TEMP_DIR/neo4j.XXXXXX")
   _download_file \
-    "https://dist.neo4j.org/neo4j-community-${version}-unix.tar.gz" \
-    "$archive"
+    "https://dist.neo4j.org/neo4j-community-${neo4j_version}-unix.tar.gz" \
+    "$neo4j_archive"
 
-  # Unpack into the temp dir first, so a failed download or a truncated
-  # archive never deletes a working install.
-  tar -xzf "$archive" -C "$TEMP_DIR"
-  [ -d "${TEMP_DIR}/neo4j-community-${version}" ] \
-    || _fail 3 -v version "$version" "The archive holds no neo4j-community dir."
+  tar -xzf "$neo4j_archive" -C "$TEMP_DIR"
+  [ -d "${TEMP_DIR}/neo4j-community-${neo4j_version}" ] \
+    || _fail 3 -v version "$neo4j_version" "The archive holds no neo4j-community dir."
 
-  rm -rf "$install_dir"
-  mkdir -p "$(dirname "$install_dir")"
-  mv "${TEMP_DIR}/neo4j-community-${version}" "$install_dir"
+  rm -rf "$neo4j_dir"
+  mkdir -p "$(dirname "$neo4j_dir")"
+  mv "${TEMP_DIR}/neo4j-community-${neo4j_version}" "$neo4j_dir"
 
-  bin_dir=$(_resolve_bin_dir)
-  for tool in neo4j neo4j-admin cypher-shell; do
-    ln -sf "${install_dir}/bin/${tool}" "${bin_dir}/${tool}"
+  neo4j_bin_dir=$(_resolve_bin_dir)
+  for neo4j_tool in neo4j neo4j-admin cypher-shell; do
+    ln -sf "${neo4j_dir}/bin/${neo4j_tool}" "${neo4j_bin_dir}/${neo4j_tool}"
   done
 
-  _ok -v version "$version" "neo4j installed."
+  _ok -v version "$neo4j_version" "neo4j installed."
 }
 
 # ╭───
