@@ -208,7 +208,7 @@ _require_var() {
 # │ Files
 # ╰───
 
-# _download_file <url> <output-path>
+# _download_file <url> <output-file>
 _download_file() {
   _require_cmd curl
   curl --silent --show-error --fail --location --output "$2" "$1" \
@@ -234,7 +234,7 @@ _resolve_bin_dir() {
 # │ Help
 # ╰───
 
-# _show_help <script-path>
+# _show_help <script-file>
 # Print the first NAME comment block of a script to stdout.
 _show_help() {
   if [ ! -f "$1" ]; then

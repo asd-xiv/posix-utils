@@ -78,40 +78,40 @@ mkdir -p "${JOT_HOME}/notes"
 # │ Main
 # ╰───
 
-NOTE_PATH=""
+NOTE_FILE=""
 [ -n "$SHOULD_CONTINUE" ] && [ -f "$LAST_NOTE_LINK" ] && {
-  NOTE_PATH=$(cat "$LAST_NOTE_LINK")
-  [ -f "$NOTE_PATH" ] || {
-    _warn -v path "$NOTE_PATH" "The last note is gone. Starting a new one."
-    NOTE_PATH=""
+  NOTE_FILE=$(cat "$LAST_NOTE_LINK")
+  [ -f "$NOTE_FILE" ] || {
+    _warn -v path "$NOTE_FILE" "The last note is gone. Starting a new one."
+    NOTE_FILE=""
   }
 }
 
-[ -z "$NOTE_PATH" ] && {
-  NOTE_PATH=$(mktemp "${JOT_HOME}/notes/$(date +%Y-%m-%d).XXXXXX") \
+[ -z "$NOTE_FILE" ] && {
+  NOTE_FILE=$(mktemp "${JOT_HOME}/notes/$(date +%Y-%m-%d).XXXXXX") \
     || _fail 3 "Could not create a note."
 }
 
 # Record the note before editing, so --continue works even when the editor
 # is closed without saving.
-printf '%s' "$NOTE_PATH" >"$LAST_NOTE_LINK"
+printf '%s' "$NOTE_FILE" >"$LAST_NOTE_LINK"
 
 # Piped input becomes the starting text.
-[ -t 0 ] || cat >>"$NOTE_PATH"
+[ -t 0 ] || cat >>"$NOTE_FILE"
 
 # --class drives the sway floating rule.
 alacritty \
-  --title "jot - $(basename "$NOTE_PATH")" \
+  --title "jot - $(basename "$NOTE_FILE")" \
   --class "jot-center-float" \
   --command nvim \
   -c "setlocal syntax=markdown" \
   -c "setlocal wrap" \
   -c "setlocal spell" \
-  "$NOTE_PATH"
+  "$NOTE_FILE"
 
-[ -s "$NOTE_PATH" ] || {
+[ -s "$NOTE_FILE" ] || {
   _info "Nothing written."
   exit 1
 }
 
-cat "$NOTE_PATH"
+cat "$NOTE_FILE"
