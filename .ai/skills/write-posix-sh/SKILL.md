@@ -30,9 +30,14 @@ and it runs.
 - Write POSIX: no bashisms, no GNU-only flags
 - Switch to `set +e` only to read an exit code, then turn it back on. Where it
   reads clearer, use `rc=0; cmd || rc=$?`
-- `set -e` is off wherever the shell already tests the status: `if`, `while`,
-  `until`, `!`, and every command but the last in an `&&` or `||` list,
-  including the body of a function called there
+  - `set -e` is off wherever the shell already tests the status: `if`, `while`,
+    `until`, `!`, and every command but the last in an `&&` or `||` list,
+    including the body of a function called there
+  - `set -e` sees a subshell's status only when the assignment stands alone
+    - `echo "$(im-bad)"` does not exit, `echo` ran and its status won
+    - `x=$(im-bad)` exits, with no command name the status is the subshell's
+  - Wrap or separate a command only when recovering is possible, or to add what
+    the caller cannot already see, otherwise let `set -e` stop the script
 - `set -o pipefail` returns the last failed status in a pipe (eg.
   `(exit 3) | (exit 4) | true` -> 4)
   - Turn it on around the pipe that needs it, off after
@@ -132,14 +137,14 @@ LOG_NAMESPACE="find-in-files"
 
 ### 4. Globals
 
-- Declare every global up front, empty or with a default
+- Declare the knobs up front, each with an explicit default. What the script
+  computes belongs where it is computed
 - Case implies scope: `UPPER_SNAKE` globals, `lower_snake` locals and functions
   - Never shadow a builtin: `type`, `test`, `read`, `printf`
 
 ```sh
 IGNORE_CASE="" # -i/--ignore-case, "true" or ""
 MAX_COUNT=""   # -m/--max, a positive integer
-PATTERN=""     # first positional after the flags
 ```
 
 ### 5. Domain primitives
