@@ -22,7 +22,8 @@
     "cli"
   ],
   "files": [
-    "bin"
+    "/bin",
+    "/.ai"
   ],
   "scripts": {
     "prepare": "git config --local core.hooksPath .githook",
