@@ -22,12 +22,28 @@ posix-utils/bin/     <- Group by the running environment
 
 ## Conventions
 
-Literate style, on one real script: `find-in-files`. Concatenate the `sh` blocks
-and it runs.
+Literate style, on one script: `find-in-files`.
+
+Apply these everywhere:
+
+- Write POSIX: no bashisms, no GNU-only flags
+- Name by case: `UPPER_SNAKE` globals, `lower_snake` locals and functions
+  - Never shadow a builtin: `type`, `test`, `read`, `printf`
+- Name a path for what it holds, `_dir` or `_file`, unless its noun already
+  does. Keep `_path` for a search list, as in `PATH`
+- Return the exit code that names what happened
+  - `0` success. The work is done, or the answer is yes
+  - `1` no. A real answer, not a failure. Only a script that asks a yes/no
+    question returns it
+  - `2` invalid usage. The caller can fix it by retyping (eg. a typo in a flag)
+  - `3` could not run. The call was right, the work still failed (eg. a missing
+    dependency)
+  - `4`-`125` are free for domain specific
+  - Never return a code the shell owns: `126` (found, not executable), `127`
+    (not found), `128`+n (killed by signal n) or `130` (`Ctrl-C`)
 
 ### 1. Shebang and shell options
 
-- Write POSIX: no bashisms, no GNU-only flags
 - Switch to `set +e` only to read an exit code, then turn it back on. Where it
   reads clearer, use `rc=0; cmd || rc=$?`
   - `set -e` is off wherever the shell already tests the status: `if`, `while`,
@@ -57,16 +73,7 @@ set -eu
 - Write the man page once, as comments. `_show_help "$0"` prints it back
   - Headings, in order: `NAME`, `SYNOPSIS`, `DESCRIPTION`, `ARGUMENTS`,
     `OPTIONS`, `ENVIRONMENT`, `EXAMPLE`, `EXIT CODES`, `SEE ALSO`
-- Exit codes are semantic
-  - `0` success. The work is done, or the answer is yes
-  - `1` no. A real answer, not a failure. Only a script that asks a yes/no
-    question returns it
-  - `2` invalid usage. The caller can fix it by retyping (eg. a typo in a flag)
-  - `3` could not run. The call was right, the work still failed (eg. a missing
-    dependency)
-  - `4`-`125` are free for domain specific. Document in `EXIT CODES`
-  - Never return a code the shell owns: `126` (found, not executable), `127`
-    (not found), `128`+n (killed by signal n) or `130` (`Ctrl-C`)
+  - Document every code the script returns under `EXIT CODES`
 
 ```sh
 # NAME
@@ -139,10 +146,6 @@ LOG_NAMESPACE="find-in-files"
 
 - Declare the knobs up front, each with an explicit default. What the script
   computes belongs where it is computed
-- Case implies scope: `UPPER_SNAKE` globals, `lower_snake` locals and functions
-  - Never shadow a builtin: `type`, `test`, `read`, `printf`
-- Name a path for what it holds, `_dir` or `_file`, unless its noun already
-  does. Keep `_path` for a search list, as in `PATH`
 
 ```sh
 IGNORE_CASE="" # -i/--ignore-case, "true" or ""
