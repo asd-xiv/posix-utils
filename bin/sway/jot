@@ -30,7 +30,9 @@ set -eu
 #
 # EXIT CODES
 #   0   Note printed
-#   1   Nothing written, or an error
+#   1   Nothing written
+#   2   Invalid usage
+#   3   Could not run
 #
 # SEE ALSO
 #   nvim, alacritty

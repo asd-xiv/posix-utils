@@ -36,6 +36,10 @@ set -eu
 #   fancy-log error -v param "bad" "Invalid parameter."
 #   LOG_LEVEL=debug fancy-log debug "Cache miss."
 #
+# EXIT CODES
+#   0   Printed, or below LOG_LEVEL and dropped
+#   2   Invalid usage
+#
 # SEE ALSO
 #   lib.sh
 
@@ -51,7 +55,7 @@ case "${1:-}" in
     ;;
   "")
     _show_help "$0"
-    exit 1
+    exit 2
     ;;
 esac
 
