@@ -46,8 +46,6 @@ set -eu
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../lib.sh"
 
-# Both answers to "what is argument zero" live here. --help succeeds, an
-# empty call does not.
 case "${1:-}" in
   -h | --help)
     _show_help "$0"
