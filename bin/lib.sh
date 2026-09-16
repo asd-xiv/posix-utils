@@ -103,6 +103,7 @@ _debug() { _log debug "$@"; }
 _info() { _log info "$@"; }
 _ok() { _log success "$@"; }
 _warn() { _log warning "$@"; }
+_error() { _log error "$@"; }
 
 # _fail <code> [-v <key> <val>]... <message>
 #
@@ -126,8 +127,8 @@ _fail() {
 
 # _is <type> <value>
 #
-# Predicate checking common value shapes. Returns 1 on no, exits 3 on a type it
-# does not know.
+# Predicate checking common value shapes.
+# Returns 1 on no, exits 3 on a type it does not know.
 #
 #   positive-integer   0-9, no leading zero
 #   version            0-9 and dots, eg. 1.13.4
