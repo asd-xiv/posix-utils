@@ -27,7 +27,8 @@
   ],
   "scripts": {
     "prepare": "git config --local core.hooksPath .githook",
-    "lint": "./tools/verify ./bin ./tools"
+    "lint": "./tools/verify ./bin ./tools",
+    "format": "shfmt --write ./bin ./tools"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.2",
