@@ -1,0 +1,148 @@
+#!/bin/sh
+
+set -eu
+
+# Under `curl … | sh` there is no $0 to read back, so the help lives in a
+# heredoc instead of the comment block every other script here uses.
+
+# Fixed path, the one thing uninstall can find without being told
+PU_RECEIPT_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/posix-utils/receipt"
+
+# ╭───
+# │ Primitives
+# ╰───
+
+log() {
+  printf '[posix-utils] %s\n' "$*" >&2
+}
+
+# fail <code> <message>...
+fail() {
+  fail_code="$1"
+  shift
+
+  printf '[posix-utils] ERROR: %s\n' "$*" >&2
+  exit "$fail_code"
+}
+
+show_help() {
+  cat <<'EOF'
+NAME
+  uninstall - Remove what install put on disk
+
+SYNOPSIS
+  uninstall [-h]
+
+DESCRIPTION
+  Reads the receipt install wrote, removes the command symlinks it made, then
+  removes the scripts and the receipt itself. Takes no options: everything it
+  needs is in the receipt.
+
+  With no receipt, there is nothing to remove and it exits 0.
+
+OPTIONS
+  -h, --help   Print this help
+
+ENVIRONMENT
+  XDG_STATE_HOME   Defaults the receipt to $XDG_STATE_HOME/posix-utils/receipt
+
+FILES
+  ~/.local/state/posix-utils/receipt   Written by install, read here
+
+EXAMPLE
+  uninstall
+
+EXIT CODES
+  0   Removed, or nothing was installed
+  2   Invalid usage
+  3   Could not run
+  4   The receipt is missing a path
+
+SEE ALSO
+  install
+EOF
+}
+
+# read_receipt <file>
+# Print one <key>=<value> per line, dropping keys uninstall does not use. Parse
+# it, never source it: a tampered receipt must not run as shell
+read_receipt() {
+  while IFS='=' read -r receipt_key receipt_value; do
+    case "$receipt_key" in
+      data_dir | bin_dir) printf '%s=%s\n' "$receipt_key" "$receipt_value" ;;
+    esac
+  done <"$1"
+}
+
+# unlink_commands <bin-dir> <data-dir>
+# Remove the bin links pointing into <data-dir>, leaving everything else alone
+unlink_commands() {
+  unlink_count=0
+
+  for unlink_link in "$1"/*; do
+    [ ! -L "$unlink_link" ] && continue
+
+    case "$(readlink "$unlink_link")" in
+      "$2"/*)
+        rm -f "$unlink_link"
+        unlink_count=$((unlink_count + 1))
+        ;;
+    esac
+  done
+
+  log "Removed $unlink_count command(s) from $1"
+}
+
+# ╭───
+# │ Bootstrap
+# ╰───
+
+case "${1:-}" in
+  -h | --help)
+    show_help
+    exit 0
+    ;;
+  "") ;;
+  *) fail 2 "uninstall takes no arguments, got: $1" ;;
+esac
+
+# ╭───
+# │ Main
+# ╰───
+
+if [ ! -f "$PU_RECEIPT_FILE" ]; then
+  log "No receipt at $PU_RECEIPT_FILE, nothing to uninstall"
+  exit 0
+fi
+
+DATA_DIR=""
+BIN_DIR=""
+while IFS='=' read -r KEY VALUE; do
+  case "$KEY" in
+    data_dir) DATA_DIR="$VALUE" ;;
+    bin_dir) BIN_DIR="$VALUE" ;;
+  esac
+done <<EOF
+$(read_receipt "$PU_RECEIPT_FILE")
+EOF
+
+[ -z "$DATA_DIR" ] && fail 4 "The receipt names no data dir"
+[ -z "$BIN_DIR" ] && fail 4 "The receipt names no bin dir"
+
+# A half-removed install still has links to clean, so check each dir on its own
+if [ -d "$BIN_DIR" ]; then
+  unlink_commands "$BIN_DIR" "$DATA_DIR"
+fi
+
+if [ -d "$DATA_DIR" ]; then
+  rm -rf "$DATA_DIR"
+  log "Removed $DATA_DIR"
+fi
+
+rm -f "$PU_RECEIPT_FILE"
+# rmdir, not rm -rf: it refuses once we keep more state than the receipt
+rmdir "$(dirname "$PU_RECEIPT_FILE")" 2>/dev/null || true
+
+log "Uninstalled"
+
+exit 0

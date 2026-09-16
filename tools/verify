@@ -1,0 +1,146 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   verify - Lint, parse and smoke test the shell scripts in a directory
+#
+# SYNOPSIS
+#   verify [-h] <dir>...
+#
+# DESCRIPTION
+#   Runs shellcheck on every shell script under each dir and parses it under
+#   dash and BusyBox ash. A command, a file without an extension, must also be
+#   executable and pass a smoke test. A sourced library, a *.sh file, must not
+#   be executable.
+#
+#     --help            must exit 0
+#     an unknown flag   must exit 2
+#
+#   CI and a developer run the same checks through this one script.
+#
+# ARGUMENTS
+#   dir   Directory to search for shell scripts, repeatable
+#
+# OPTIONS
+#   -h, --help    Print this help
+#
+# EXAMPLE
+#   verify ./bin ./tools
+#
+# EXIT CODES
+#   0   Every script passed
+#   1   At least one script failed
+#   2   Invalid usage
+#   3   Could not run
+#
+# SEE ALSO
+#   dash, busybox, shellcheck
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../bin/lib.sh"
+
+# lib.sh -> fancy-log settings
+export LOG_NAMESPACE="verify"
+
+# ╭───
+# │ Bootstrap
+# ╰───
+
+case "${1:-}" in
+  -h | --help)
+    _show_help "$0"
+    exit 0
+    ;;
+  "")
+    _show_help "$0"
+    exit 2
+    ;;
+  --) shift ;;
+  -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
+esac
+
+_require_cmd shellcheck dash busybox
+
+[ "$#" -eq 0 ] && _fail 2 "No directory given"
+
+for DIR in "$@"; do
+  [ -d "$DIR" ] || _fail 2 -v dir "$DIR" "Not a directory"
+done
+
+# ╭───
+# │ Main
+# ╰───
+
+FILES=$(find "$@" -type f)
+RC=0
+
+# Use heredoc, not a pipe (subshell) so RC is still visible inside the loop.
+# 'read' splits on newlines only, files with with spaces wont trip.
+while IFS= read -r FILE; do
+  [ -z "$FILE" ] && continue
+
+  # skip any file without shebang
+  head -1 "$FILE" 2>/dev/null | grep -qEv '^#!.*[/ ](sh|bash|dash|ash)$' \
+    && continue
+
+  FILE_RC=0
+
+  shellcheck -x --source-path=SCRIPTDIR -s sh "$FILE" || {
+    _error -v script "$FILE" "shellcheck failed"
+    FILE_RC=1
+  }
+
+  dash -n "$FILE" || {
+    _error -v script "$FILE" "dash could not parse"
+    FILE_RC=1
+  }
+
+  busybox sh -n "$FILE" || {
+    _error -v script "$FILE" "busybox could not parse"
+    FILE_RC=1
+  }
+
+  case "$FILE" in
+    *.sh)
+      if [ -x "$FILE" ]; then
+        _error -v script "$FILE" "A sourced library must not be executable"
+        FILE_RC=1
+      fi
+      ;;
+    *)
+      [ -x "$FILE" ] || {
+        _error -v script "$FILE" "A command must be executable"
+        FILE_RC=1
+      }
+
+      dash "$FILE" --help >/dev/null || {
+        _error -v script "$FILE" "dash --help failed"
+        FILE_RC=1
+      }
+
+      busybox sh "$FILE" --help >/dev/null || {
+        _error -v script "$FILE" "busybox --help failed"
+        FILE_RC=1
+      }
+
+      FLAG_RC=0
+      dash "$FILE" --zz-not-a-real-flag >/dev/null 2>&1 || FLAG_RC=$?
+
+      if [ "$FLAG_RC" -ne 2 ]; then
+        _error -v script "$FILE" -v got "$FLAG_RC" "Unknown flag did not exit 2"
+        FILE_RC=1
+      fi
+      ;;
+  esac
+
+  if [ "$FILE_RC" -eq 0 ]; then
+    _ok -v script "$FILE" "Passed"
+  else
+    RC=1
+  fi
+done <<EOF
+$FILES
+EOF
+
+exit "$RC"

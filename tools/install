@@ -1,0 +1,282 @@
+#!/bin/sh
+
+set -eu
+
+# Under `curl … | sh` there is no $0 to read back, so the help lives in a
+# heredoc instead of the comment block every other script here uses.
+
+PU_REPO_URL="https://github.com/asd-xiv/posix-utils"
+PU_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/posix-utils" # -d/--data-dir
+PU_BIN_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/../bin"       # -b/--bin-dir
+PU_GROUP="cli"                                                 # -g/--group
+PU_REF="main"                                                  # -r/--ref
+
+# Fixed path, the one thing uninstall can find without being told
+PU_RECEIPT_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/posix-utils/receipt"
+
+# ╭───
+# │ Primitives
+# ╰───
+
+log() {
+  printf '[posix-utils] %s\n' "$*" >&2
+}
+
+# fail <code> <message>...
+fail() {
+  fail_code="$1"
+  shift
+
+  printf '[posix-utils] ERROR: %s\n' "$*" >&2
+  exit "$fail_code"
+}
+
+show_help() {
+  cat <<'EOF'
+NAME
+  install - Fetch posix-utils and link the commands you want
+
+SYNOPSIS
+  install [-d <dir>] [-b <dir>] [-g cli|sway|all] [-r <ref>] [-h]
+
+DESCRIPTION
+  Downloads <ref>, copies bin/ into the data dir, then symlinks the chosen
+  group into the bin dir. The folders stay nested in the data dir because each
+  script resolves ../lib.sh through its symlink, and doomst its own assets.
+
+  cli    Terminal and CI, no display server
+  sway   Sway session, needs Wayland and a notifier
+
+  The bin dir is never added to PATH. Add it yourself.
+
+OPTIONS
+  -d, --data-dir <dir>   Install the scripts here
+  -b, --bin-dir <dir>    Create the command symlinks here
+  -g, --group <name>     Which group to install: cli, sway or all
+  -r, --ref <ref>        Branch, tag or commit to fetch
+  -h, --help             Print this help
+
+ENVIRONMENT
+  XDG_DATA_HOME    Defaults the data dir to $XDG_DATA_HOME/posix-utils and the
+                   bin dir to $XDG_DATA_HOME/../bin
+  XDG_STATE_HOME   Defaults the receipt to $XDG_STATE_HOME/posix-utils/receipt
+
+FILES
+  ~/.local/state/posix-utils/receipt   Lists the two dirs below, read by
+                                       uninstall
+  <data-dir>/<group>/                  The scripts, one folder per group
+  <data-dir>/lib.sh                    Sourced by every script
+  <bin-dir>/<command>                  A symlink per command, flat for PATH
+
+EXAMPLE
+  # straight through the shell, nothing left on disk
+  curl -fsSL https://raw.githubusercontent.com/asd-xiv/posix-utils/main/install \
+    | sh -s -- --group all
+
+  # keep the script. curl writes it 0644, so sh runs it and ./install does not
+  curl -fsSL https://raw.githubusercontent.com/asd-xiv/posix-utils/main/install -o install
+  sh install --group all --ref v2.0.0
+
+EXIT CODES
+  0   Installed
+  2   Invalid usage
+  3   Could not run
+  4   The archive is missing a group
+
+SEE ALSO
+  curl, tar, gzip
+EOF
+}
+
+# unlink_group <group-dir>
+# Remove the bin links pointing into <group-dir>, so a command dropped upstream
+# disappears here too
+unlink_group() {
+  for unlink_link in "$PU_BIN_DIR"/*; do
+    [ ! -L "$unlink_link" ] && continue
+
+    case "$(readlink "$unlink_link")" in
+      "$1"/*) rm -f "$unlink_link" ;;
+    esac
+  done
+}
+
+# link_group <group-dir> <group>
+# Symlink every script in <group-dir> into PU_BIN_DIR, flat so PATH finds them
+link_group() {
+  link_count=0
+
+  for link_script in "$1"/*; do
+    # Skip the subfolders a group may hold next to its scripts, eg. assets
+    [ ! -f "$link_script" ] && continue
+
+    chmod +x "$link_script"
+    link_cmd="$PU_BIN_DIR/$(basename "$link_script")"
+
+    # Leave what someone else owns. unlink_group already removed every link of
+    # ours, so -e catches a file or dir, -L a broken link
+    if [ -e "$link_cmd" ] || [ -L "$link_cmd" ]; then
+      log "SKIP: $link_cmd already exists"
+      continue
+    fi
+
+    ln -s "$link_script" "$link_cmd"
+    link_count=$((link_count + 1))
+  done
+
+  log "Linked $link_count command(s) from $2"
+}
+
+# install_group <src> <group>
+# Copy one group into the data dir and relink its commands. Keep the folders
+# nested, each script resolves ../lib.sh through its symlink. Unlink before the
+# copy, so a failure midway leaves no link pointing at a deleted tree
+install_group() {
+  install_src_dir="$1/bin/$2"
+  install_data_dir="$PU_DATA_DIR/$2"
+
+  [ ! -d "$install_src_dir" ] \
+    && fail 4 "Expected bin/$2 in the $PU_REF archive"
+
+  unlink_group "$install_data_dir"
+
+  rm -rf "$install_data_dir"
+  cp -R "$install_src_dir" "$PU_DATA_DIR/"
+
+  link_group "$install_data_dir" "$2"
+}
+
+# write_receipt <archive-url>
+# List the install paths for uninstall to read, instead of it asking again
+write_receipt() {
+  mkdir -p "$(dirname "$PU_RECEIPT_FILE")" \
+    || fail 3 "Could not create the receipt directory"
+
+  {
+    printf 'data_dir=%s\n' "$PU_DATA_DIR"
+    printf 'bin_dir=%s\n' "$PU_BIN_DIR"
+    printf 'group=%s\n' "$PU_GROUP"
+    printf 'ref=%s\n' "$PU_REF"
+    printf 'archive_url=%s\n' "$1"
+    printf 'installed_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  } >"$PU_RECEIPT_FILE"
+}
+
+# ╭───
+# │ Bootstrap
+# ╰───
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -h | --help)
+      show_help
+      exit 0
+      ;;
+    -d | --data-dir)
+      [ "$#" -lt 2 ] && fail 2 "--data-dir needs a path"
+      PU_DATA_DIR="$2"
+      shift 2
+      ;;
+    -b | --bin-dir)
+      [ "$#" -lt 2 ] && fail 2 "--bin-dir needs a path"
+      PU_BIN_DIR="$2"
+      shift 2
+      ;;
+    -g | --group)
+      [ "$#" -lt 2 ] && fail 2 "--group needs a name"
+
+      PU_GROUP="$2"
+      case "$PU_GROUP" in
+        cli | sway | all) ;;
+        *) fail 2 "Unknown group: $PU_GROUP. Use cli, sway or all" ;;
+      esac
+
+      shift 2
+      ;;
+    -r | --ref)
+      [ "$#" -lt 2 ] && fail 2 "--ref needs a branch, tag or commit"
+      PU_REF="$2"
+      shift 2
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -?*) fail 2 "Unknown flag: $1" ;;
+    *) break ;;
+  esac
+done
+
+[ "$#" -eq 0 ] || fail 2 "install takes no arguments, got: $1"
+
+# after the help branch, so --help works with none of these installed
+for CMD in curl tar gzip mktemp; do
+  command -v "$CMD" >/dev/null 2>&1 \
+    || fail 3 "Required command not found: $CMD"
+done
+
+# ╭───
+# │ Cleanup
+# ╰───
+
+# shellcheck disable=SC2329 # called by trap
+cleanup() {
+  rm -rf "${TEMP_DIR:-}"
+}
+
+trap cleanup EXIT                                    # normal exit
+trap 'cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl-C
+trap 'cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout, CI cancel
+trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # SSH drop, closed window
+
+TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/posix-utils.XXXXXX") \
+  || fail 3 "Could not create a temporary directory"
+
+# ╭───
+# │ Main
+# ╰───
+
+ARCHIVE_URL="$PU_REPO_URL/archive/$PU_REF.tar.gz"
+
+# Write the receipt before touching anything. A run that dies halfway still
+# leaves uninstall the two paths it needs to clean up
+write_receipt "$ARCHIVE_URL"
+
+log "Downloading $ARCHIVE_URL…"
+
+curl --fail --silent --show-error --location \
+  --output "$TEMP_DIR/src.tar.gz" "$ARCHIVE_URL" \
+  || fail 3 "Could not download $PU_REF"
+
+tar -xzf "$TEMP_DIR/src.tar.gz" -C "$TEMP_DIR" \
+  || fail 3 "Could not unpack the archive"
+
+# GitHub names the directory after the ref, easier to just scan for /bin
+#  ref v1.3.0  ->  posix-utils-1.3.0/
+#  ref main    ->  posix-utils-main/
+TEMP_SRC_DIR=""
+for CANDIDATE_DIR in "$TEMP_DIR"/*/; do
+  [ -d "$CANDIDATE_DIR/bin" ] && {
+    TEMP_SRC_DIR="$CANDIDATE_DIR"
+    break
+  }
+done
+
+[ -n "$TEMP_SRC_DIR" ] || fail 3 "The archive for '$PU_REF' holds no bin directory"
+
+mkdir -p "$PU_DATA_DIR" "$PU_BIN_DIR" \
+  || fail 3 "Could not create the target directories"
+
+# Copy the shared library every group sources
+cp "$TEMP_SRC_DIR/bin/lib.sh" "$PU_DATA_DIR/lib.sh"
+
+for GROUP in cli sway; do
+  [ "$PU_GROUP" != "all" ] && [ "$PU_GROUP" != "$GROUP" ] && continue
+  install_group "$TEMP_SRC_DIR" "$GROUP"
+done
+
+log "  tree:     $PU_DATA_DIR"
+log "  commands: $PU_BIN_DIR"
+log "  receipt:  $PU_RECEIPT_FILE"
+
+exit 0
