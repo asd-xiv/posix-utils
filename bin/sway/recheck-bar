@@ -23,11 +23,19 @@ set -eu
 #   -h, --help   Print this help
 #
 # EXAMPLE
-#   "custom/recheck": {
-#     "exec": "recheck-bar",
-#     "return-type": "json",
-#     "interval": 60
-#   }
+#   In the waybar config:
+#
+#     "custom/recheck": {
+#       "exec": "recheck-bar",
+#       "return-type": "json",
+#       "interval": 60,
+#       "signal": 8,
+#       "on-click": "recheck edit"
+#     }
+#
+#   In ~/.config/recheck/on-update, to refresh the module after every change:
+#
+#     pkill -RTMIN+8 waybar
 #
 # EXIT CODES
 #   0   Line printed
