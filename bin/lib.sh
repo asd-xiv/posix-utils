@@ -51,10 +51,13 @@ _has_color() {
   [ -t 2 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != "dumb" ]
 }
 
-# _log <level> [-v <key> <val>]... <message>...
+# _log <level> [-v <key> <val>]... <message>
 #
-# Data always goes through %s. Escapes live in the format string only,
-# so a value containing a backslash prints as written.
+# Print one line to stderr at <level>. Print nothing when <level> ranks after
+# LOG_LEVEL. -v has the long form --var.
+#
+# Data always goes through %s. Only the format string holds escapes, so a
+# value containing a backslash prints as written.
 #
 # Newlines inside a <val> print as ",", so a list with one item per line
 # reads "a,b,c". <message> prints as written.
@@ -89,8 +92,7 @@ _log() {
     [ -n "${LOG_NAMESPACE:-}" ] && printf '%s: ' "$LOG_NAMESPACE" >&2
   fi
 
-  # Pairs are collected first, then printed after the message, so the
-  # message reads first and the data trails it.
+  # Collect the pairs here and print them after the message.
   log_pairs=""
   while [ "$#" -gt 1 ]; do
     case "$1" in
@@ -109,8 +111,8 @@ _log() {
     esac
   done
 
-  # What survives the pairs is the message.
-  # Join to mirror echo's behaviour and print everything.
+  # The positionals left are the message. Join them with a space, as echo
+  # does.
   printf '%s' "$*" >&2
   [ -n "$log_pairs" ] && printf '%s' "$log_pairs" >&2
   printf '\n' >&2
@@ -151,7 +153,7 @@ _fail() {
 #
 #   positive-integer   0-9, no leading zero
 #   version            0-9 and dots, eg. 1.13.4
-#   slug               A-Za-z0-9_-
+#   slug               A-Za-z0-9_-, starts with a letter or a digit
 #   identifier         A-Za-z0-9_, cannot start with a digit
 #
 # Each type rejects with a negated class, the only form that reads the whole
@@ -176,7 +178,7 @@ _is() {
       ;;
     slug)
       case "$2" in
-        *[!A-Za-z0-9_-]*) return 1 ;;
+        *[!A-Za-z0-9_-]* | [_-]*) return 1 ;;
       esac
       ;;
     identifier)
