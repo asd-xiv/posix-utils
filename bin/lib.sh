@@ -5,21 +5,31 @@
 #
 # SYNOPSIS
 #   SCRIPT_DIR=$(dirname "$(realpath "$0")")
-#   LOG_NAMESPACE="my-script"
 #   . "$SCRIPT_DIR/../lib.sh"
 #
-# DESCRIPTION
-#   A set of commonly needed, domain agnostic primitives: logging, predicates,
-#   guards, downloads, text and help. Sourced, never executed.
+#   export LOG_NAMESPACE="my-script"
+#   export LOG_LEVEL="${LOG_LEVEL:-info}"
 #
-#   A primitive that answers a question prints the answer to stdout. Everything
-#   else goes to stderr.
+# DESCRIPTION
+#   Domain-agnostic primitives: logging, predicates, guards, files, text and
+#   help. A script sources it, never executes it.
+#
+#   A primitive prints its result to stdout. A predicate answers with its
+#   status and prints nothing. Everything else goes to stderr.
+#
+#   The comment above each function lists its statuses under RETURNS and its
+#   exit codes under EXIT.
+#
+#   Only _is checks its positional count. Under set -u, a missing positional
+#   ends the script with the shell's own code.
 #
 # ENVIRONMENT
-#   LOG_LEVEL       Cut-off level to print (default: info). An unknown level
-#                   ends the script with 2 at the first log line
+#   LOG_LEVEL       Last level to print, in the order of _log (default: info).
+#                   An unknown level ends the script with 2 at the first log
+#                   line
 #   LOG_NAMESPACE   Label printed before the message
-#   NO_COLOR        If set, disables color
+#   NO_COLOR        Disables color when set and non-empty
+#   TERM            Disables color when unset, empty or "dumb"
 #
 # SEE ALSO
 #   curl(1)
@@ -28,8 +38,12 @@
 # │ Logging
 # ╰───
 
-# Ordered scale. A level prints when its rank is <= the LOG_LEVEL rank.
-# Return 1 on a level it does not know, with the reason on stderr.
+# _level_rank <level>
+#
+# Print the rank of <level>, from 0 for error to 4 for debug.
+#
+# RETURNS
+#   1   <level> is not a level or a short form, the reason is on stderr
 _level_rank() {
   case "$1" in
     error | err) printf '0' ;;
@@ -48,17 +62,24 @@ _level_rank() {
 
 # _has_color [fd]
 #
-# Return 0 when <fd> is a terminal, NO_COLOR is unset or empty and TERM is not
-# "dumb".
-# <fd> defaults to 2, stderr.
+# Tell if <fd> can show color. <fd> defaults to 2, stderr.
+#
+# RETURNS
+#   0   <fd> is a terminal, NO_COLOR is unset or empty, TERM is set and not
+#       "dumb"
+#   1   One of the three does not hold
+#   2   <fd> is not a number
 _has_color() {
   [ -t "${1:-2}" ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != "dumb" ]
 }
 
-# _log <level> [-v <key> <val>]... <message>
+# _log <level> [-v <key> <val>]... <message>...
 #
-# Print one line to stderr at <level>. Print nothing when <level> ranks after
-# LOG_LEVEL. -v has the long form --var.
+# Print one line to stderr at <level>. Print nothing when <level> comes after
+# LOG_LEVEL in this order: error < warning < success < info < debug.
+#
+# <level> also has short forms: err, wrn, warn, suc, succ, inf, dbg. -v has the
+# long form --var.
 #
 # Data always goes through %s. Only the format string holds escapes, so a
 # value containing a backslash prints as written.
@@ -66,9 +87,8 @@ _has_color() {
 # Newlines inside a <val> print as ",", so a list with one item per line
 # reads "a,b,c". <message> prints as written.
 #
-# <level> is error, warning, success, info or debug, or a short form: err,
-# wrn, warn, suc, succ, inf, dbg.
-# Exit 2 on a <level> or a LOG_LEVEL it does not know.
+# EXIT
+#   2   <level> or LOG_LEVEL is not a level or a short form
 _log() {
   log_level="$1"
   shift
@@ -124,15 +144,25 @@ _log() {
   return 0
 }
 
+# _debug, _info, _ok, _warn, _error [-v <key> <val>]... <message>...
+#
+# Call _log at one level: debug, info, success, warning, error.
+#
+# EXIT
+#   2   LOG_LEVEL is not a level or a short form
 _debug() { _log debug "$@"; }
 _info() { _log info "$@"; }
 _ok() { _log success "$@"; }
 _warn() { _log warning "$@"; }
 _error() { _log error "$@"; }
 
-# _fail <code> [-v <key> <val>]... <message>
+# _fail <code> [-v <key> <val>]... <message>...
 #
-# Print at error level, then exit with <code>. Valid exit codes between 1 and 125.
+# Print at error level, then exit with <code>.
+#
+# EXIT
+#   <code>   <code> is 1 to 125
+#   2        <code> is not 1 to 125, or LOG_LEVEL is not a level or a short form
 _fail() {
   fail_code=$(printf '%d' "${1:-}" 2>/dev/null) || fail_code=0
 
@@ -152,21 +182,27 @@ _fail() {
 
 # _is <type> <value>
 #
-# Predicate checking common value shapes.
-# Returns 1 on no, exits 3 on a type it does not know.
+# Tell if <value> has the shape of <type>.
 #
 #   positive-integer   0-9, no leading zero
-#   version            0-9 and dots, eg. 1.13.4
+#   version            0-9 in groups, one dot between two groups, eg. 1.13.4
 #   slug               A-Za-z0-9_-, starts with a letter or a digit
 #   identifier         A-Za-z0-9_, cannot start with a digit
 #
-# Each type rejects with a negated class, the only form that reads the whole
-# string. [A-Za-z_][A-Za-z0-9_]* tests two characters and lets the rest through,
-# accepting "ab; rm -rf /". Inside a class "-" goes last and "]" first.
+# RETURNS
+#   0   <value> has the shape
+#   1   <value> does not have it, or is empty
+#
+# EXIT
+#   3   <type> is not one of the four and <value> is not empty, or the call
+#       does not have two positionals
 _is() {
   [ "$#" -eq 2 ] || _fail 3 "_is needs <type> <value>"
   [ -n "$2" ] || return 1
 
+  # Reject with a negated class, which checks every character.
+  # [A-Za-z_][A-Za-z0-9_]* checks two characters and accepts "ab; rm -rf /".
+  # Inside a class, put "-" last and "]" first.
   case "$1" in
     positive-integer)
       # 0* rejects zero and every leading zero with it, so no arithmetic runs
@@ -200,7 +236,10 @@ _is() {
 
 # _require_cmd <cmd>...
 #
-# Exit 3 unless every <cmd> is on PATH.
+# End the script unless the shell finds every <cmd>.
+#
+# EXIT
+#   3   The shell cannot find a <cmd>
 _require_cmd() {
   require_missing=""
   for require_cmd in "$@"; do
@@ -216,7 +255,11 @@ _require_cmd() {
 
 # _require_var <NAME>...
 #
-# Exit 2 unless every <NAME> is set and non-empty.
+# End the script unless every <NAME> is set and non-empty.
+#
+# EXIT
+#   2   A <NAME> is unset or empty
+#   3   A <NAME> is not an identifier
 _require_var() {
   require_missing=""
   for require_name in "$@"; do
@@ -240,7 +283,10 @@ _require_var() {
 
 # _download_file <url> <output-file>
 #
-# Download <url> into <output-file>. Exit 3 when the download fails.
+# Download <url> into <output-file>.
+#
+# EXIT
+#   3   curl is not on PATH, or the download fails
 _download_file() {
   _require_cmd curl
   curl --silent --show-error --fail --location --output "$2" "$1" \
@@ -248,8 +294,13 @@ _download_file() {
 }
 
 # _resolve_bin_dir
-# Print the first writable binaries directory for the current user, as per
-# "XDG Base Directory Specification" https://specifications.freedesktop.org/basedir/latest/
+#
+# Print the first writable bin dir of /usr/local/bin and ~/.local/bin.
+# ~/.local/bin is the user bin dir in the "XDG Base Directory Specification":
+# https://specifications.freedesktop.org/basedir/latest/
+#
+# EXIT
+#   3   Neither /usr/local/bin nor ~/.local/bin is a writable directory
 _resolve_bin_dir() {
   for resolve_dir in /usr/local/bin "${HOME:-}/.local/bin"; do
     [ -d "$resolve_dir" ] && [ -w "$resolve_dir" ] && {
@@ -278,18 +329,25 @@ _end_with_newline() {
 
 # A block is the lines between two marker lines, <begin> and <end>, in a text
 # that otherwise belongs to someone else: a crontab, a shell profile. A marker
-# is a whole line, compared as written. A text has no block, or exactly one:
-# one <begin>, and one <end> below it.
+# is a whole line, compared as written. A text must hold no block, or exactly
+# one: one <begin>, and one <end> below it.
 #
-# awk reads the markers and the block lines from its environment, awk -v would
-# rewrite a backslash in them. In awk, "" after a value makes it a string: two
-# values that look like numbers are compared as numbers, and a marker "10"
-# would match a line "10.0".
+# awk reads the markers and the block lines from its environment, because
+# awk -v rewrites a backslash in them. awk compares two values that look like
+# numbers as numbers, so a marker "10" would match a line "10.0". "" after a
+# value makes it a string.
 
 # _has_valid_markers <begin> <end> <text>
 #
-# Exit 3 unless each marker is one line that is not empty. Return 1 unless
-# <text> has neither marker, or each marker once with <begin> above <end>.
+# Tell if the markers in <text> make no block, or exactly one.
+#
+# RETURNS
+#   0   <text> has neither marker, or each marker once with <begin> above <end>
+#   1   A marker is there more than once or alone, or <begin> is not above
+#       <end>
+#
+# EXIT
+#   3   A marker is empty or holds a newline
 _has_valid_markers() {
   # An empty marker matches every empty line, one with a newline matches none
   case "$1$2" in
@@ -319,8 +377,14 @@ _has_valid_markers() {
 # _find_block <begin> <end>
 #
 # Read a text from stdin, print the lines of its block without the markers.
-# Print nothing when the text has no block. Exit 3, or print nothing and return
-# 1, when _has_valid_markers does.
+# Print nothing when the text has no block.
+#
+# RETURNS
+#   1   A marker is there more than once or alone, or <begin> is not above
+#       <end>. Prints nothing
+#
+# EXIT
+#   3   A marker is empty or holds a newline
 _find_block() {
   find_text=$(cat)
   _has_valid_markers "$1" "$2" "$find_text" || return 1
@@ -343,10 +407,17 @@ _find_block() {
 # <lines>. Add the block and its markers at the end when the text has none.
 # Drop both when <lines> is empty.
 #
-# Exit 3, or print nothing and return 1, when _has_valid_markers does. Print
-# nothing and return 2 when one of <lines> is a marker. Take the result into
-# a variable and read the status before writing it anywhere: in a pipe, the
-# next command would read an empty text.
+# Take the result into a variable and read the status before writing it
+# anywhere. In a pipe, the next command reads an empty text when
+# _replace_block returns 1 or 2.
+#
+# RETURNS
+#   1   A marker is there more than once or alone, or <begin> is not above
+#       <end>. Prints nothing
+#   2   One of <lines> is a marker. Prints nothing
+#
+# EXIT
+#   3   A marker is empty or holds a newline
 _replace_block() {
   replace_text=$(cat)
   _has_valid_markers "$1" "$2" "$replace_text" || return 1
@@ -383,8 +454,10 @@ _replace_block() {
 #
 # Print what changed between two sets of lines: "- <line>" for a line only in
 # <old-text>, then "+ <line>" for a line only in <new-text>. The order of the
-# lines, repeats and empty lines do not count. Red and green when stdout
-# passes _has_color.
+# lines, repeats and empty lines do not count.
+#
+# Print the "-" lines red and the "+" lines green when stdout can show color,
+# see _has_color.
 _diff_lines() {
   diff_color=""
   if _has_color 1; then
@@ -425,7 +498,12 @@ _diff_lines() {
 # ╰───
 
 # _show_help <script-file>
-# Print the first NAME comment block of a script to stdout.
+#
+# Print the man page of <script-file>: the comment block that starts at its
+# NAME line.
+#
+# EXIT
+#   2   <script-file> is not a file
 _show_help() {
   if [ ! -f "$1" ]; then
     _fail 2 -v path "$1" "Script not found"
