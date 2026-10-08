@@ -1,0 +1,125 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   yank-symbol - Pick symbols the keyboard lacks, copy them
+#
+# SYNOPSIS
+#   yank-symbol [-h]
+#
+# DESCRIPTION
+#   Shows a grid of symbols in rofi: diacritics, currency, arrows, box
+#   drawing and more. Type a group name to find its symbols, eg. "box",
+#   "border" or "arrow". Enter copies the symbol to the clipboard.
+#   Shift+Enter picks a symbol and keeps the grid open. Enter then copies
+#   every picked symbol as one string.
+#
+#   The grid ends with a line of shortcuts, a rofi text box named
+#   "textbox-footer". Style it in your rofi theme, eg.
+#   "textbox-footer { padding: 10px 15px; }".
+#
+# OPTIONS
+#   -h, --help   Print this help
+#
+# EXAMPLE
+#   bindsym $mod+c exec yank-symbol
+#
+# EXIT CODES
+#   0   Copied
+#   2   Invalid usage
+#   3   Could not run, eg. no rofi or no display
+#   4   Nothing picked
+#
+# SEE ALSO
+#   rofi, wl-copy, awk
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../lib.sh"
+
+# lib.sh -> fancy-log settings
+export LOG_NAMESPACE="yank-symbol"
+export LOG_LEVEL="${LOG_LEVEL:-info}"
+
+# One group per line: the names that find it, then its symbols
+# shellcheck disable=SC1112 # the curly quotes are data
+SYMBOL_GROUPS='romanian,diacritic,accent ă â î ș ț Ă Â Î Ș Ț
+currency,money € £ ¥ ¢ ₿
+arrow ← ↑ → ↓ ↔ ↕ ⇐ ⇒ ⇔ ↵
+box,border,line,ascii ─ │ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼ ═ ║ ╔ ╗ ╚ ╝ ╭ ╮ ╰ ╯
+block,shade,ascii █ ▓ ▒ ░ ▀ ▄ ▌ ▐
+math ± × ÷ ≠ ≈ ≤ ≥ ∞ √ ° µ
+typo,punctuation,quote – — … « » “ ” ‘ ’ • · § © ® ™
+mark,check,star ✓ ✗ ★ ☆'
+
+INSTRUCTION="<b>$LOG_NAMESPACE</b> :: type a group name, eg. ascii or romanian"
+SHORTCUTS="[enter] copy, [shift + enter] pick multiple"
+# gruvbox bright green
+PICKED_MARK='<span foreground="#b8bb26" weight="bold">✓</span>'
+
+# rofi lays this over the theme of the user, which keeps its colors and font.
+#   mainbox          the instruction above the input, the shortcuts last
+#   textbox-footer   a text box this script adds, for the shortcuts. Its look
+#                    comes from a "textbox-footer" section in the theme
+#   element          the narrow padding leaves room for the mark next to a
+#                    picked symbol
+GRID_THEME="mainbox { children: [ message, inputbar, listview, textbox-footer ]; }
+textbox-footer { content: \"$SHORTCUTS\"; expand: false; }
+listview { columns: 12; lines: 8; flow: horizontal; }
+element { padding: 10px 4px; }
+element-text { horizontal-align: 0.5; }"
+
+# ╭───
+# │ Bootstrap
+# ╰───
+
+case "${1:-}" in
+  -h | --help)
+    _show_help "$0"
+    exit 0
+    ;;
+  "" | --) ;;
+  -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
+  *) _fail 2 -v argument "$1" "yank-symbol takes only --help" ;;
+esac
+
+_require_cmd rofi wl-copy awk
+
+# Without a display rofi exits 1, the same code as Esc
+[ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ] || _fail 3 "No Wayland or X display"
+
+# ╭───
+# │ Main
+# ╰───
+
+# A row is "<symbol> <names>". rofi shows the first column and matches
+# what the user types against the whole row
+ROFI_STATUS=0
+PICKED_ROWS=$(
+  printf '%s\n' "$SYMBOL_GROUPS" \
+    | awk '{ for (i = 2; i <= NF; i++) print $i, $1 }' \
+    | rofi -dmenu -i -no-custom -multi-select -p "" -mesg "$INSTRUCTION" \
+      -display-column-separator ' ' -display-columns 1 -markup-rows \
+      -ballot-unselected-str '' -ballot-selected-str "$PICKED_MARK" \
+      -theme-str "$GRID_THEME"
+) || ROFI_STATUS=$?
+
+# rofi exits 1 on Esc
+case "$ROFI_STATUS" in
+  0)
+    printf '%s\n' "$PICKED_ROWS" \
+      | cut -d ' ' -f 1 \
+      | tr -d '\n' \
+      | wl-copy \
+      || _fail 3 "wl-copy could not copy"
+    ;;
+  1)
+    _warn "Nothing picked"
+    exit 4
+    ;;
+  *)
+    _fail 3 -v status "$ROFI_STATUS" "rofi failed"
+    ;;
+esac
+
+exit 0
