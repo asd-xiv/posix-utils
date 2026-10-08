@@ -37,7 +37,7 @@ set -eu
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../lib.sh"
 
-# lib.sh -> fancy-log settings
+# _log reads these
 export LOG_NAMESPACE="yank-symbol"
 export LOG_LEVEL="${LOG_LEVEL:-info}"
 

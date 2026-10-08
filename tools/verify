@@ -40,7 +40,7 @@ set -eu
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../bin/lib.sh"
 
-# lib.sh -> fancy-log settings
+# _log reads it
 export LOG_NAMESPACE="verify"
 
 # ╭───
