@@ -9,11 +9,11 @@
 #   . "$SCRIPT_DIR/../lib.sh"
 #
 # DESCRIPTION
-#   Sourced, never executed. A primitive that answers a question prints the
-#   answer to stdout. Everything else goes to stderr.
+#   A set of commonly needed, domain agnostic primitives: logging, predicates,
+#   guards, downloads and help. Sourced, never executed.
 #
-#   Logging is ordered: error < warning < success < info < debug.
-#   LOG_LEVEL is the cut-off: it and everything before it print.
+#   A primitive that answers a question prints the answer to stdout. Everything
+#   else goes to stderr.
 #
 # ENVIRONMENT
 #   LOG_LEVEL       Cut-off level to print (default: info)
@@ -21,7 +21,7 @@
 #   NO_COLOR        If set, disables color
 #
 # SEE ALSO
-#   fancy-log, curl(1)
+#   curl(1)
 
 # ╭───
 # │ Logging
@@ -48,6 +48,9 @@ _has_color() {
 #
 # Data always goes through %s. Escapes live in the format string only,
 # so a value containing a backslash prints as written.
+#
+# Newlines inside a <val> print as ",", so a list with one item per line
+# reads "a,b,c". <message> prints as written.
 _log() {
   log_level="$1"
   shift
@@ -79,10 +82,12 @@ _log() {
     case "$1" in
       -v | --var)
         [ "$#" -lt 3 ] && break
+
+        log_value=$(printf '%s' "$3" | tr '\n' ',')
         if _has_color; then
-          log_pairs="${log_pairs}$(printf ' \033[90m%s=\033[0m%s' "$2" "$3")"
+          log_pairs="${log_pairs}$(printf ' \033[90m%s=\033[0m%s' "$2" "$log_value")"
         else
-          log_pairs="${log_pairs}$(printf ' %s=%s' "$2" "$3")"
+          log_pairs="${log_pairs}$(printf ' %s=%s' "$2" "$log_value")"
         fi
         shift 3
         ;;
@@ -174,6 +179,8 @@ _is() {
 }
 
 # _require_cmd <cmd>...
+#
+# Exit 3 unless every <cmd> is on PATH.
 _require_cmd() {
   require_missing=""
   for require_cmd in "$@"; do
@@ -188,6 +195,8 @@ _require_cmd() {
 }
 
 # _require_var <NAME>...
+#
+# Exit 2 unless every <NAME> is set and non-empty.
 _require_var() {
   require_missing=""
   for require_name in "$@"; do
@@ -210,6 +219,8 @@ _require_var() {
 # ╰───
 
 # _download_file <url> <output-file>
+#
+# Download <url> into <output-file>. Exit 3 when the download fails.
 _download_file() {
   _require_cmd curl
   curl --silent --show-error --fail --location --output "$2" "$1" \
