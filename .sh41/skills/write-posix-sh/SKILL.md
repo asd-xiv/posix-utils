@@ -154,38 +154,20 @@ set -eu
 
 ### 3. Domain-agnostic primitives
 
-- `_log <level> [-v <key> <val>]... <message>`, `<level>` is
-  `error|warning|success|info|debug`
-  - `_debug|_info|_ok|_warn [-v <key> <val>]... <message>`, `_log` at
-    `debug|info|success|warning`
-- `_fail <code> [-v <key> <val>]... <message>`, log at `error`, then exit
-  `<code>`
-- `_is <type> <value>`, `<type>` is `positive-integer|version|slug|identifier`
-- `_require_cmd <cmd>...`, exit 3 unless every `<cmd>` is on `PATH`
-- `_require_var <NAME>...`, exit 2 unless every `<NAME>` is set
-- `_download_file <url> <output-file>`
-- `_resolve_bin_dir`, print `/usr/local/bin` or `~/.local/bin`, the first
-  writable
-- `_show_help <script-file>`, print the man page to stdout
-
-- Levels run `error < warning < success < info < debug`
-  - Short forms work too: `err`, `wrn|warn`, `suc|succ`, `inf`, `dbg`
-  - `_log` exits 2 on a `<level>` or a `LOG_LEVEL` it does not know
-  - `LOG_LEVEL` is the cut-off: it and everything before it print.
-    `LOG_NAMESPACE` labels the line
-  - `bin/cli/fancy-log` is the same logger as a command, for when `lib.sh` is
-    not sourced
+- Read `bin/lib.sh` before you write a script and reuse what fits
 - Write a new primitive in the script. When a second script needs it, elevate it
-  to `lib.sh`: eg. `ping_service_x` -> `_http_ping <url>`, and add it to the
-  list
+  to `lib.sh` with its comment. Drop the domain from its name and prefix it with
+  `_`, eg. `ping_service_x` -> `_http_ping <url>`
+- `bin/cli/fancy-log` is the command form of `_log`, for a shell that does not
+  source `lib.sh`
 
 ```sh
-# tools/install symlinks this script, so dirname "$0" names the link. realpath
-# follows it to find lib.sh
+# tools/install symlinks this script, so "$0" names the link. realpath follows
+# it to find lib.sh
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../lib.sh"
 
-# lib.sh -> fancy-log settings
+# _log reads these
 export LOG_NAMESPACE="find-in-files"
 export LOG_LEVEL="${LOG_LEVEL:-info}"
 ```
@@ -202,13 +184,16 @@ MAX_COUNT=""   # -m/--max, a positive integer
 
 ### 5. Domain primitives
 
-- A primitive takes per-call data as positionals. A flag sets a setting once,
-  never use one to pass data between functions
+- A primitive takes per-call data as positionals. A flag sets a setting once.
+  Never use a setting to pass data between functions
 - `return` ends the function, `_fail` ends the script
-- A function owns its positional list. `shift` and `set --` inside it never
-  touch the caller's `"$@"`
-- Read a command's status before acting on it, so "no match" never reads as
-  "broken"
+- Each function has its own positional list. `shift` and `set --` inside it
+  never change the caller's `"$@"`
+- Tell a command's statuses apart before you act on one, so the script never
+  treats "no match" as "broken"
+- Above a function, write its signature and what it does, then `RETURNS` with
+  each status and `EXIT` with each exit code, as in a man page. Leave out a 0
+  that only says the work is done
 
 ```sh
 # ╭───
@@ -216,13 +201,19 @@ MAX_COUNT=""   # -m/--max, a positive integer
 # ╰───
 
 # search_file <pattern> <file>
-# Print the matching lines. Return 0 for a match, 1 for none, 2 when grep failed.
+#
+# Print the lines of <file> that match <pattern>.
+#
+# RETURNS
+#   0   A line matched
+#   1   No line matched
+#   2   grep failed
 search_file() {
   search_status=0
   grep ${IGNORE_CASE:+-i} ${MAX_COUNT:+-m "$MAX_COUNT"} -- "$1" "$2" \
     || search_status=$?
 
-  # POSIX promises only >1 for a failure, so fold every failure into 2
+  # POSIX defines only >1 for a failure, so return 2 for each one
   case "$search_status" in
     0 | 1) return "$search_status" ;;
     *) return 2 ;;
@@ -257,6 +248,8 @@ _require_cmd grep
 ### 7. Flags and positionals
 
 - Flags first, then the positionals
+  - Exception is a command word which comes before its flags, eg. 
+    `recheck ls --color`, `fancy-log info --no-color`
 - Always handle `--`, always catch `-?*`. The `?` lets a lone `-` through
 - Guard before every `shift 2`. `dash` aborts with
   `shift: can't shift that many`
