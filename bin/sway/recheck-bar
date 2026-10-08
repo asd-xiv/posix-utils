@@ -1,0 +1,106 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   recheck-bar - Print the count of checks per state, as JSON for waybar
+#
+# SYNOPSIS
+#   recheck-bar [-h]
+#
+# DESCRIPTION
+#   Counts the enabled checks per state and prints one JSON line for a waybar
+#   module with "return-type": "json".
+#
+#     text      Green and red counts, eg. "✓ 2 ✗ 1". Adds "? 1" for broken
+#               checks. Empty when recheck has no check, enabled or
+#               disabled, so waybar hides the module
+#     tooltip   What "recheck ls" prints, with " | " between the columns
+#     class     red when a check is red, else broken when a check is broken,
+#               else green. Empty when recheck has no check
+#
+# OPTIONS
+#   -h, --help   Print this help
+#
+# EXAMPLE
+#   "custom/recheck": {
+#     "exec": "recheck-bar",
+#     "return-type": "json",
+#     "interval": 60
+#   }
+#
+# EXIT CODES
+#   0   Line printed
+#   2   Invalid usage
+#   3   Could not run, eg. recheck failed
+#
+# SEE ALSO
+#   recheck, awk, waybar-custom(5)
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../lib.sh"
+
+# lib.sh -> fancy-log settings
+export LOG_NAMESPACE="recheck-bar"
+export LOG_LEVEL="${LOG_LEVEL:-info}"
+
+# ╭───
+# │ Bootstrap
+# ╰───
+
+case "${1:-}" in
+  -h | --help)
+    _show_help "$0"
+    exit 0
+    ;;
+  "" | --) ;;
+  -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
+  *) _fail 2 -v argument "$1" "recheck-bar takes only --help" ;;
+esac
+
+_require_cmd awk
+
+# ╭───
+# │ Main
+# ╰───
+
+RECHECK_FILE="$SCRIPT_DIR/../cli/recheck"
+
+# status exits 1 when a check is red or broken, which is an answer here
+STATUS=0
+COUNTS=$("$RECHECK_FILE" status) || STATUS=$?
+[ "$STATUS" -le 1 ] || _fail 3 "recheck status failed"
+
+# shellcheck disable=SC2086 # split "<green> <red> <broken>" on purpose
+set -- $COUNTS
+[ "$#" -eq 3 ] || _fail 3 -v got "$COUNTS" "recheck status printed no counts"
+GREEN_COUNT="$1" RED_COUNT="$2" BROKEN_COUNT="$3"
+
+# ls prints slugs, cron patterns and fixed words. Only its tabs and newlines
+# would break the JSON
+CHECKS=$("$RECHECK_FILE" ls) || _fail 3 "recheck ls failed"
+TOOLTIP=$(printf '%s' "$CHECKS" | awk '
+  {
+    gsub(/\t/, " | ")
+    printf "%s%s", separator, $0
+    separator = "\\n"
+  }')
+
+TEXT=""
+CLASS=""
+if [ -n "$TOOLTIP" ]; then
+  TEXT="✓ $GREEN_COUNT ✗ $RED_COUNT"
+  CLASS="green"
+
+  if [ "$BROKEN_COUNT" -gt 0 ]; then
+    TEXT="$TEXT ? $BROKEN_COUNT"
+    CLASS="broken"
+  fi
+
+  if [ "$RED_COUNT" -gt 0 ]; then
+    CLASS="red"
+  fi
+fi
+
+printf '{"text":"%s","tooltip":"%s","class":"%s"}\n' \
+  "$TEXT" "$TOOLTIP" "$CLASS"

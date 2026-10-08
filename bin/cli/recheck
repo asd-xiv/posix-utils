@@ -1,0 +1,678 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   recheck - A terminal UI for cron: run checks, keep the last state of each
+#
+# SYNOPSIS
+#   recheck ls [--cron]
+#   recheck enable [id...]
+#   recheck disable [id...]
+#   recheck sync
+#   recheck run [id...]
+#   recheck status
+#   recheck log
+#   recheck edit
+#   recheck -h | --help
+#
+# DESCRIPTION
+#   A check is a script in ~/.config/recheck/checks. Its file name is its id,
+#   a slug: letters, digits, "_" and "-", starting with a letter or a digit.
+#   A "_" in front of the file name disables the check and is not part of the
+#   id. The exit code of a check is the answer:
+#
+#     0       green
+#     1       red
+#     other   broken, the check could not answer. recheck keeps the last
+#             green or red, to compare with the next run
+#
+#   A check holds its cron pattern, five fields, in a comment line:
+#
+#     # CRON: 0 * * * *
+#
+#   The crontab holds one line per enabled check, inside a block that recheck
+#   rewrites on every sync.
+#
+#     ls        Print every check: state, on or off, id, cron pattern
+#     enable    Remove the "_" from the file name, then sync. With no id at
+#               a terminal, pick from the disabled checks in fzf
+#     disable   Put a "_" in front of the file name, then sync. With no id
+#               at a terminal, pick from the enabled checks in fzf
+#     sync      Make every check executable, then rewrite the crontab block
+#               from the check files. Run it after a new check, a rename by
+#               hand or a changed cron pattern
+#     run       Run every enabled check, or only the ones named. Skip a
+#               disabled check. cron calls it. At a terminal, also print
+#               what each check printed, to stderr
+#     status    Print the count of enabled checks per state, as
+#               "<green> <red> <broken>"
+#     log       Print the last 10 runs, and the log file path to stderr
+#     edit      Open ~/.config/recheck in Neovim, in a new Alacritty window.
+#               Sync when Neovim closes
+#
+#   When the state of a check changes from green to red or back, recheck runs
+#   the on-change hook, ~/.config/recheck/on-change <id> <old-state>
+#   <new-state>, if that file is executable.
+#
+#   After run, enable, disable and sync, recheck runs the on-update hook,
+#   ~/.config/recheck/on-update, if that file is executable. recheck passes
+#   it no arguments. The call means a check or a state may have changed.
+#
+#   cron runs a job without the variables of your login shell. When
+#   ~/.config/recheck/env exists, recheck sources it before each check and
+#   each hook.
+#
+#   recheck keeps the last exit code, the last green or red, and the last
+#   output of a check in
+#   ~/.local/state/recheck/<id>/. It appends one line per run to
+#   ~/.local/state/recheck/log: time, state, exit code, seconds the run took
+#   and id.
+#
+# ARGUMENTS
+#   id   Check to act on, repeatable
+#
+# OPTIONS
+#   --cron       With ls, print the crontab line of each enabled check instead
+#   -h, --help   Print this help
+#
+# ENVIRONMENT
+#   XDG_CONFIG_HOME   Parent of the recheck config (default: ~/.config)
+#   XDG_STATE_HOME    Parent of the recheck state (default: ~/.local/state)
+#
+# EXAMPLE
+#   recheck enable typescript-eslint-accepts-typescript-7
+#   recheck run && recheck ls
+#
+# EXIT CODES
+#   0   Done. For status, no enabled check is red or broken
+#   1   For status, at least one enabled check is red or broken
+#   2   Invalid usage
+#   3   Could not run, eg. no crontab command or a check without a cron pattern
+#   4   For enable and disable, nothing to pick or nothing picked in fzf
+#
+# SEE ALSO
+#   crontab, recheck-bar, alacritty, nvim, fzf
+
+# tools/install symlinks this script, so dirname "$0" names the link. realpath
+# follows it to find lib.sh
+SCRIPT_FILE=$(realpath "$0")
+SCRIPT_DIR=$(dirname "$SCRIPT_FILE")
+. "$SCRIPT_DIR/../lib.sh"
+
+# lib.sh -> fancy-log settings
+export LOG_NAMESPACE="recheck"
+export LOG_LEVEL="${LOG_LEVEL:-info}"
+
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/recheck"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/recheck"
+CHECKS_DIR="$CONFIG_DIR/checks"
+ENV_FILE="$CONFIG_DIR/env"
+CHANGE_HOOK_FILE="$CONFIG_DIR/on-change"
+UPDATE_HOOK_FILE="$CONFIG_DIR/on-update"
+RUN_LOG_FILE="$STATE_DIR/log"
+BLOCK_START="# recheck:start"
+BLOCK_END="# recheck:end"
+
+# ╭───
+# │ Primitives
+# ╰───
+
+# find_ids
+# Print the id of every check, one per line. The id is the file name without
+# the "_" that disables a check.
+find_ids() {
+  for find_file in "$CHECKS_DIR"/*; do
+    [ -f "$find_file" ] || continue
+
+    find_name=$(basename "$find_file")
+    find_id="${find_name#_}"
+
+    if ! _is slug "$find_id"; then
+      _warn -v id "$find_id" -v path "$find_file" "Id is not a slug, skipping"
+    elif [ "$find_name" != "$find_id" ] && [ -f "$CHECKS_DIR/$find_id" ]; then
+      _warn -v path "$find_file" "The same check is also enabled, skipping"
+    else
+      printf '%s\n' "$find_id"
+    fi
+  done
+}
+
+# is_enabled <id>
+# Return 0 when the check file has no "_" in front of its name.
+is_enabled() {
+  [ -f "$CHECKS_DIR/$1" ]
+}
+
+# find_enabled_ids
+# Print the id of every enabled check, one per line.
+find_enabled_ids() {
+  for enabled_id in $(find_ids); do
+    if is_enabled "$enabled_id"; then
+      printf '%s\n' "$enabled_id"
+    fi
+  done
+}
+
+# find_disabled_ids
+# Print the id of every disabled check, one per line.
+find_disabled_ids() {
+  for disabled_id in $(find_ids); do
+    if ! is_enabled "$disabled_id"; then
+      printf '%s\n' "$disabled_id"
+    fi
+  done
+}
+
+# pick_ids
+# Read ids from stdin, let the user pick some in fzf, print the picked ones.
+# Exit 4 when the user picks nothing, 3 when fzf fails.
+pick_ids() {
+  pick_status=0
+  fzf --multi || pick_status=$?
+
+  # fzf: 1 is Enter with no match, 130 is Esc or Ctrl-C
+  case "$pick_status" in
+    0) return 0 ;;
+    1 | 130)
+      _warn "Nothing picked"
+      exit 4
+      ;;
+    *) _fail 3 -v status "$pick_status" "fzf failed" ;;
+  esac
+}
+
+# find_check_file <id>
+# Print the file of a check, enabled or disabled. Return 1 when it has none.
+find_check_file() {
+  for check_file in "$CHECKS_DIR/$1" "$CHECKS_DIR/_$1"; do
+    if [ -f "$check_file" ]; then
+      printf '%s' "$check_file"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+# guard_id <id>
+# Exit 2 unless <id> names a check.
+guard_id() {
+  # Both are no slug either. Each gets the message that says what to fix
+  case "$1" in
+    -*) _fail 2 -v flag "$1" "Unknown flag" ;;
+    _*) _fail 2 -v id "$1" "An id does not start with _" ;;
+  esac
+
+  _is slug "$1" || _fail 2 -v id "$1" "Not a slug"
+  find_check_file "$1" >/dev/null || _fail 2 -v id "$1" "No such check"
+
+  return 0
+}
+
+# find_cron_pattern <id>
+# Print the cron pattern of a check. Return 1 unless it has five fields of
+# digits, "*", "/", "," and "-". Names and "@daily" differ between crons.
+find_cron_pattern() {
+  pattern_file=$(find_check_file "$1") || return 1
+  pattern_line=$(sed -n 's/^# CRON:[[:space:]]*//p' "$pattern_file" | head -n 1)
+
+  # No globbing while splitting, most fields are "*"
+  set -f
+  # shellcheck disable=SC2086 # split into fields on purpose
+  set -- $pattern_line
+  set +f
+
+  [ "$#" -eq 5 ] || return 1
+
+  for pattern_field in "$@"; do
+    case "$pattern_field" in
+      *[!0-9*/,-]*) return 1 ;;
+    esac
+  done
+
+  printf '%s' "$*"
+}
+
+# map_state <exit-code>
+# Print the state an exit code of a check means: green, red or broken.
+map_state() {
+  case "$1" in
+    0) printf 'green' ;;
+    1) printf 'red' ;;
+    *) printf 'broken' ;;
+  esac
+}
+
+# find_state <id>
+# Print the state of a check. Print "-" before its first run.
+find_state() {
+  if [ ! -f "$STATE_DIR/$1/exit" ]; then
+    printf '%s' "-"
+    return 0
+  fi
+
+  map_state "$(cat -- "$STATE_DIR/$1/exit")"
+}
+
+# run_with_env <command> [arg...]
+# Run a command in a subshell, with the env file sourced first.
+run_with_env() (
+  # The user writes the env file. It may fail under -e and -u, eg. nvm.sh
+  set +eu
+
+  if [ -f "$ENV_FILE" ]; then
+    # shellcheck source=/dev/null
+    . "$ENV_FILE"
+  fi
+
+  exec "$@"
+)
+
+# run_hook <hook-file> [arg...]
+# Run a hook with the env file sourced, when the hook is executable. A hook
+# that fails is a warning, the work it follows is already done.
+run_hook() {
+  [ -x "$1" ] || return 0
+
+  run_with_env "$@" >&2 || _warn -v hook "$1" "The hook failed"
+
+  return 0
+}
+
+# log_run <state> <exit-code> <seconds> <id>
+# Append one line to the log, with the time first.
+log_run() {
+  printf '%s\t%s\t%s\t%ss\t%s\n' "$(date +%Y-%m-%dT%H:%M:%S%z)" "$@" \
+    >>"$RUN_LOG_FILE"
+}
+
+# run_check <id>
+# Run a check and print "<id> <state>". Keep its exit code, state and output,
+# and log the run.
+run_check() {
+  run_dir="$STATE_DIR/$1"
+  mkdir -p -- "$run_dir"
+
+  run_old_state=""
+  if [ -f "$run_dir/state" ]; then
+    run_old_state=$(cat -- "$run_dir/state")
+  fi
+
+  run_start_seconds=$(date +%s)
+  run_status=0
+  run_with_env "$CHECKS_DIR/$1" </dev/null >"$run_dir/output" 2>&1 \
+    || run_status=$?
+  run_seconds=$(($(date +%s) - run_start_seconds))
+  printf '%s\n' "$run_status" >"$run_dir/exit"
+
+  # Show the output to a person at a terminal. cron mails what goes to stderr
+  if [ -t 2 ]; then
+    cat -- "$run_dir/output" >&2
+  fi
+
+  run_new_state=$(map_state "$run_status")
+
+  log_run "$run_new_state" "$run_status" "$run_seconds" "$1"
+  printf '%s\t%s\n' "$1" "$run_new_state"
+
+  # Broken is no answer. recheck keeps the last green or red and runs no hook
+  if [ "$run_new_state" = "broken" ]; then
+    return 0
+  fi
+
+  printf '%s\n' "$run_new_state" >"$run_dir/state"
+
+  if [ -n "$run_old_state" ] && [ "$run_old_state" != "$run_new_state" ]; then
+    run_hook "$CHANGE_HOOK_FILE" "$1" "$run_old_state" "$run_new_state"
+  fi
+
+  return 0
+}
+
+# guard_script_file
+# Exit 3 unless this script's path is safe to write unquoted. A crontab line
+# and the edit window both hold it. cron reads "%" as a newline, and a shell
+# would split or expand most other characters.
+guard_script_file() {
+  case "$SCRIPT_FILE" in
+    *[!A-Za-z0-9_@+=:,./-]*)
+      _fail 3 -v path "$SCRIPT_FILE" \
+        "The script path has a character that breaks a crontab line"
+      ;;
+  esac
+
+  return 0
+}
+
+# read_crontab
+# Print the crontab without the recheck block. Print nothing when the user has
+# no crontab yet.
+read_crontab() {
+  # crontab reports "no crontab yet" as a failure with a message. Any other
+  # failure must stop here, or sync writes back a crontab without the user's
+  # own lines
+  read_crontab_text=$(LC_ALL=C crontab -l 2>&1) || {
+    case "$read_crontab_text" in
+      *"no crontab"*) return 0 ;;
+      *) _fail 3 -v error "$read_crontab_text" "Could not read the crontab" ;;
+    esac
+  }
+
+  [ -n "$read_crontab_text" ] || return 0
+
+  printf '%s\n' "$read_crontab_text" \
+    | sed "/^${BLOCK_START}\$/,/^${BLOCK_END}\$/d"
+}
+
+# list_cron_lines
+# Print the crontab line of each enabled check. Warn about a check without a
+# valid cron pattern and leave it out.
+list_cron_lines() {
+  for cron_id in $(find_enabled_ids); do
+    if cron_pattern=$(find_cron_pattern "$cron_id"); then
+      # cron mails what a job prints. Drop the results, keep the errors
+      printf '%s %s run %s >/dev/null\n' "$cron_pattern" "$SCRIPT_FILE" "$cron_id"
+    else
+      _warn -v id "$cron_id" "No valid cron pattern in a '# CRON:' line, skipping"
+    fi
+  done
+
+  return 0
+}
+
+# sync_crontab
+# Make every check executable. Rewrite the recheck block of the crontab, one
+# line per enabled check with a valid cron pattern, then run the on-update
+# hook.
+sync_crontab() {
+  _require_cmd crontab
+  guard_script_file
+
+  # Make every check executable, or recheck cannot run it. A check written in
+  # `recheck edit` starts without +x
+  for sync_file in "$CHECKS_DIR"/*; do
+    [ -f "$sync_file" ] || continue
+    [ -x "$sync_file" ] && continue
+
+    chmod a+x -- "$sync_file"
+    _info -v path "$sync_file" "Made executable"
+  done
+
+  sync_crontab_text=$(read_crontab)
+  sync_block=$(list_cron_lines)
+
+  sync_output=$(
+    {
+      if [ -n "$sync_crontab_text" ]; then
+        printf '%s\n' "$sync_crontab_text"
+      fi
+      if [ -n "$sync_block" ]; then
+        printf '%s\n%s\n%s\n' "$BLOCK_START" "$sync_block" "$BLOCK_END"
+      fi
+    } | crontab - 2>&1
+  ) || _fail 3 -v error "$sync_output" "Could not write the crontab"
+
+  run_hook "$UPDATE_HOOK_FILE"
+
+  _ok "Crontab updated"
+  return 0
+}
+
+# ╭───
+# │ Commands
+# ╰───
+
+# list_checks
+# Print every check: state, on or off, id, cron pattern.
+list_checks() {
+  for list_id in $(find_ids); do
+    list_pattern=$(find_cron_pattern "$list_id") || list_pattern="-"
+
+    list_switch="off"
+    if is_enabled "$list_id"; then
+      list_switch="on"
+    fi
+
+    printf '%s\t%s\t%s\t%s\n' \
+      "$(find_state "$list_id")" "$list_switch" "$list_id" "$list_pattern"
+  done
+
+  return 0
+}
+
+# enable_checks <id>...
+# Remove the "_" from the file name of each check, then sync.
+enable_checks() {
+  # Guard everything before the first rename, so a failure changes nothing
+  for enable_id in "$@"; do
+    guard_id "$enable_id"
+    find_cron_pattern "$enable_id" >/dev/null \
+      || _fail 3 -v id "$enable_id" "No valid cron pattern in a '# CRON:' line"
+  done
+  _require_cmd crontab
+
+  for enable_id in "$@"; do
+    is_enabled "$enable_id" && continue
+    mv -- "$CHECKS_DIR/_$enable_id" "$CHECKS_DIR/$enable_id"
+    _ok -v id "$enable_id" "Check enabled"
+  done
+
+  sync_crontab
+}
+
+# disable_checks <id>...
+# Put a "_" in front of the file name of each check, then sync.
+disable_checks() {
+  # Guard everything before the first rename, so a failure changes nothing
+  for disable_id in "$@"; do
+    guard_id "$disable_id"
+
+    if is_enabled "$disable_id" && [ -f "$CHECKS_DIR/_$disable_id" ]; then
+      _fail 3 -v id "$disable_id" \
+        "A disabled copy exists, the rename would replace it"
+    fi
+  done
+  _require_cmd crontab
+
+  for disable_id in "$@"; do
+    is_enabled "$disable_id" || continue
+    mv -- "$CHECKS_DIR/$disable_id" "$CHECKS_DIR/_$disable_id"
+    _ok -v id "$disable_id" "Check disabled"
+  done
+
+  sync_crontab
+}
+
+# run_checks <id>...
+# Run each named check, then run the on-update hook. Skip a disabled check.
+run_checks() {
+  for run_id in "$@"; do
+    guard_id "$run_id"
+  done
+
+  for run_id in "$@"; do
+    if is_enabled "$run_id"; then
+      run_check "$run_id"
+    else
+      _info -v id "$run_id" "Disabled, skipping"
+    fi
+  done
+
+  run_hook "$UPDATE_HOOK_FILE"
+
+  return 0
+}
+
+# count_states
+# Print the count of enabled checks per state, as "<green> <red> <broken>".
+# Return 1 when a check is red or broken.
+count_states() {
+  count_green=0
+  count_red=0
+  count_broken=0
+
+  for count_id in $(find_enabled_ids); do
+    case "$(find_state "$count_id")" in
+      green) count_green=$((count_green + 1)) ;;
+      red) count_red=$((count_red + 1)) ;;
+      broken) count_broken=$((count_broken + 1)) ;;
+    esac
+  done
+
+  printf '%s %s %s\n' "$count_green" "$count_red" "$count_broken"
+
+  if [ "$count_red" -gt 0 ] || [ "$count_broken" -gt 0 ]; then
+    return 1
+  fi
+
+  return 0
+}
+
+# show_log
+# Print the last 10 lines of the log, and the log file path to stderr.
+show_log() {
+  _info -v path "$RUN_LOG_FILE" "Log file"
+
+  if [ -f "$RUN_LOG_FILE" ]; then
+    tail -n 10 -- "$RUN_LOG_FILE"
+  fi
+
+  return 0
+}
+
+# edit_checks
+# Open the config folder in Neovim, in a new Alacritty window. Sync when
+# Neovim closes.
+edit_checks() {
+  mkdir -p -- "$CHECKS_DIR"
+
+  # Neovim starts in the config folder with the nvim-tree pane open, when
+  # that plugin is there. The window stays open until Enter, so the user can
+  # read what sync printed
+  edit_script="nvim -c 'silent! NvimTreeFocus' && $SCRIPT_FILE sync"
+  edit_script="$edit_script; printf 'Press Enter to close '; read -r REPLY"
+
+  alacritty \
+    --class "center-float" \
+    --title "recheck - $CONFIG_DIR" \
+    --working-directory "$CONFIG_DIR" \
+    --command sh -c "$edit_script" \
+    || _fail 3 "Could not open the Alacritty window"
+}
+
+# ╭───
+# │ Bootstrap
+# ╰───
+
+case "${1:-}" in
+  -h | --help)
+    _show_help "$0"
+    exit 0
+    ;;
+  "")
+    _show_help "$0"
+    exit 2
+    ;;
+  --) shift ;;
+  -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
+esac
+
+[ "$#" -eq 0 ] && _fail 2 "No command given"
+
+COMMAND="$1"
+shift
+
+# "recheck disable -- foo" works like "recheck disable foo"
+if [ "${1:-}" = "--" ]; then
+  shift
+fi
+
+# ╭───
+# │ Main
+# ╰───
+
+case "$COMMAND" in
+  ls)
+    case "${1:-}" in
+      "") list_checks ;;
+      --cron)
+        [ "$#" -eq 1 ] || _fail 2 '"ls --cron" takes no arguments'
+        list_cron_lines
+        ;;
+      *) _fail 2 -v argument "$1" '"ls" takes only --cron' ;;
+    esac
+    ;;
+  enable)
+    if [ "$#" -eq 0 ] && [ -t 0 ]; then
+      DISABLED_IDS=$(find_disabled_ids)
+      if [ -z "$DISABLED_IDS" ]; then
+        _warn "Nothing to enable"
+        exit 4
+      fi
+
+      _require_cmd fzf
+
+      # Not inlined in 'set --', which ignores the status of a substitution.
+      # A lone assignment passes on the exit from pick_ids
+      PICKED_IDS=$(printf '%s\n' "$DISABLED_IDS" | pick_ids)
+
+      # shellcheck disable=SC2086 # ids are slugs, safe to split
+      set -- $PICKED_IDS
+    fi
+
+    [ "$#" -gt 0 ] || _fail 2 '"enable" needs at least one id'
+    enable_checks "$@"
+    ;;
+  disable)
+    if [ "$#" -eq 0 ] && [ -t 0 ]; then
+      ENABLED_IDS=$(find_enabled_ids)
+      if [ -z "$ENABLED_IDS" ]; then
+        _warn "Nothing to disable"
+        exit 4
+      fi
+
+      _require_cmd fzf
+
+      # Not inlined in 'set --', which ignores the status of a substitution.
+      # A lone assignment passes on the exit from pick_ids
+      PICKED_IDS=$(printf '%s\n' "$ENABLED_IDS" | pick_ids)
+
+      # shellcheck disable=SC2086 # ids are slugs, safe to split
+      set -- $PICKED_IDS
+    fi
+
+    [ "$#" -gt 0 ] || _fail 2 '"disable" needs at least one id'
+    disable_checks "$@"
+    ;;
+  sync)
+    [ "$#" -eq 0 ] || _fail 2 '"sync" takes no arguments'
+    sync_crontab
+    ;;
+  run)
+    if [ "$#" -eq 0 ]; then
+      # shellcheck disable=SC2046 # ids are slugs, safe to split
+      set -- $(find_enabled_ids)
+    fi
+    run_checks "$@"
+    ;;
+  status)
+    [ "$#" -eq 0 ] || _fail 2 '"status" takes no arguments'
+    count_states || exit 1
+    ;;
+  log)
+    [ "$#" -eq 0 ] || _fail 2 '"log" takes no arguments'
+    show_log
+    ;;
+  edit)
+    [ "$#" -eq 0 ] || _fail 2 '"edit" takes no arguments'
+    _require_cmd alacritty nvim
+    guard_script_file
+    edit_checks &
+    ;;
+  *)
+    _fail 2 -v command "$COMMAND" "Unknown command"
+    ;;
+esac
+
+exit 0
