@@ -13,8 +13,8 @@ set -eu
 #   module with "return-type": "json".
 #
 #     text      Green and red counts, eg. "✓ 2 ✗ 1". Adds "? 1" for broken
-#               checks. Empty when recheck has no check, enabled or
-#               disabled, so waybar hides the module
+#               checks and "⟳ 1" while a check runs. Empty when recheck has
+#               no check, enabled or disabled, so waybar hides the module
 #     tooltip   What "recheck ls" prints, with " | " between the columns
 #     class     red when a check is red, else broken when a check is broken,
 #               else green. Empty when recheck has no check
@@ -30,8 +30,13 @@ set -eu
 #       "return-type": "json",
 #       "interval": 60,
 #       "signal": 8,
-#       "on-click": "recheck edit"
+#       "on-click": "alacritty --command recheck show &",
+#       "on-click-right": "alacritty --command recheck edit &"
 #     }
+#
+#   End each click command with "&". waybar does not refresh a module while
+#   one of its click commands runs, and "recheck show" runs until its fzf
+#   window closes.
 #
 #   In ~/.config/recheck/on-update, to refresh the module after every change:
 #
@@ -73,16 +78,18 @@ _require_cmd awk
 # ╰───
 
 RECHECK_FILE="$SCRIPT_DIR/../cli/recheck"
+[ -x "$RECHECK_FILE" ] \
+  || _fail 3 -v path "$RECHECK_FILE" "recheck not found, install the cli group"
 
 # status exits 1 when a check is red or broken, which is an answer here
 STATUS=0
 COUNTS=$("$RECHECK_FILE" status) || STATUS=$?
 [ "$STATUS" -le 1 ] || _fail 3 "recheck status failed"
 
-# shellcheck disable=SC2086 # split "<green> <red> <broken>" on purpose
+# shellcheck disable=SC2086 # split the four counts on purpose
 set -- $COUNTS
-[ "$#" -eq 3 ] || _fail 3 -v got "$COUNTS" "recheck status printed no counts"
-GREEN_COUNT="$1" RED_COUNT="$2" BROKEN_COUNT="$3"
+[ "$#" -eq 4 ] || _fail 3 -v got "$COUNTS" "recheck status did not print four counts"
+GREEN_COUNT="$1" RED_COUNT="$2" BROKEN_COUNT="$3" RUNNING_COUNT="$4"
 
 # ls prints slugs, cron patterns and fixed words. Only its tabs and newlines
 # would break the JSON
@@ -108,7 +115,13 @@ if [ -n "$TOOLTIP" ]; then
   if [ "$RED_COUNT" -gt 0 ]; then
     CLASS="red"
   fi
+
+  if [ "$RUNNING_COUNT" -gt 0 ]; then
+    TEXT="$TEXT ⟳ $RUNNING_COUNT"
+  fi
 fi
 
 printf '{"text":"%s","tooltip":"%s","class":"%s"}\n' \
   "$TEXT" "$TOOLTIP" "$CLASS"
+
+exit 0
