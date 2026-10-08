@@ -16,7 +16,8 @@
 #   else goes to stderr.
 #
 # ENVIRONMENT
-#   LOG_LEVEL       Cut-off level to print (default: info)
+#   LOG_LEVEL       Cut-off level to print (default: info). An unknown level
+#                   ends the script with 2 at the first log line
 #   LOG_NAMESPACE   Label printed before the message
 #   NO_COLOR        If set, disables color
 #
@@ -28,14 +29,20 @@
 # ╰───
 
 # Ordered scale. A level prints when its rank is <= the LOG_LEVEL rank.
+# Return 1 on a level it does not know, with the reason on stderr.
 _level_rank() {
   case "$1" in
-    error) echo 0 ;;
-    warning) echo 1 ;;
-    success) echo 2 ;;
-    info) echo 3 ;;
-    debug) echo 4 ;;
-    *) echo 99 ;;
+    error | err) echo 0 ;;
+    warning | wrn | warn) echo 1 ;;
+    success | suc | succ) echo 2 ;;
+    info | inf) echo 3 ;;
+    debug | dbg) echo 4 ;;
+    *)
+      # Not through _log, which calls back here
+      printf 'lib.sh/_level_rank: Unknown log level "%s". Use error, warning, success, info or debug\n' \
+        "$1" >&2
+      return 1
+      ;;
   esac
 }
 
@@ -51,18 +58,25 @@ _has_color() {
 #
 # Newlines inside a <val> print as ",", so a list with one item per line
 # reads "a,b,c". <message> prints as written.
+#
+# <level> is error, warning, success, info or debug, or a short form: err,
+# wrn, warn, suc, succ, inf, dbg.
+# Exit 2 on a <level> or a LOG_LEVEL it does not know.
 _log() {
   log_level="$1"
   shift
 
-  [ "$(_level_rank "$log_level")" -le "$(_level_rank "${LOG_LEVEL:-info}")" ] || return 0
+  log_rank=$(_level_rank "$log_level") || exit 2
+  log_cutoff=$(_level_rank "${LOG_LEVEL:-info}") || exit 2
+
+  [ "$log_rank" -le "$log_cutoff" ] || return 0
 
   case "$log_level" in
-    error) log_label="ERR" log_color=31 ;;
-    warning) log_label="WRN" log_color=33 ;;
-    success) log_label="SUC" log_color=32 ;;
-    info) log_label="INF" log_color=34 ;;
-    *) log_label="DBG" log_color=90 ;;
+    error | err) log_label="ERR" log_color=31 ;;
+    warning | wrn | warn) log_label="WRN" log_color=33 ;;
+    success | suc | succ) log_label="SUC" log_color=32 ;;
+    info | inf) log_label="INF" log_color=34 ;;
+    debug | dbg) log_label="DBG" log_color=90 ;;
   esac
 
   if _has_color; then
