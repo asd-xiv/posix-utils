@@ -286,11 +286,11 @@ _end_with_newline() {
 # values that look like numbers are compared as numbers, and a marker "10"
 # would match a line "10.0".
 
-# _guard_markers <begin> <end> <text>
+# _has_valid_markers <begin> <end> <text>
 #
 # Exit 3 unless each marker is one line that is not empty. Return 1 unless
 # <text> has neither marker, or each marker once with <begin> above <end>.
-_guard_markers() {
+_has_valid_markers() {
   # An empty marker matches every empty line, one with a newline matches none
   case "$1$2" in
     *"
@@ -302,16 +302,16 @@ _guard_markers() {
   fi
 
   # The line number of each marker. -F -x is the whole line, as written
-  guard_begin=$(printf '%s\n' "$3" | grep -n -F -x -e "$1" | cut -d ':' -f 1)
-  guard_end=$(printf '%s\n' "$3" | grep -n -F -x -e "$2" | cut -d ':' -f 1)
+  markers_begin=$(printf '%s\n' "$3" | grep -n -F -x -e "$1" | cut -d ':' -f 1)
+  markers_end=$(printf '%s\n' "$3" | grep -n -F -x -e "$2" | cut -d ':' -f 1)
 
   # Each is one number, when its marker is there once
-  case "$guard_begin:$guard_end" in
+  case "$markers_begin:$markers_end" in
     :) return 0 ;;                   # neither marker
     *[!0-9:]* | :* | *:) return 1 ;; # one is there twice, or one is missing
   esac
 
-  [ "$guard_begin" -lt "$guard_end" ] || return 1
+  [ "$markers_begin" -lt "$markers_end" ] || return 1
 
   return 0
 }
@@ -320,10 +320,10 @@ _guard_markers() {
 #
 # Read a text from stdin, print the lines of its block without the markers.
 # Print nothing when the text has no block. Exit 3, or print nothing and return
-# 1, when _guard_markers does.
+# 1, when _has_valid_markers does.
 _find_block() {
   find_text=$(cat)
-  _guard_markers "$1" "$2" "$find_text" || return 1
+  _has_valid_markers "$1" "$2" "$find_text" || return 1
 
   printf '%s\n' "$find_text" \
     | BLOCK_BEGIN_MARKER="$1" BLOCK_END_MARKER="$2" awk '
@@ -343,13 +343,13 @@ _find_block() {
 # <lines>. Add the block and its markers at the end when the text has none.
 # Drop both when <lines> is empty.
 #
-# Exit 3, or print nothing and return 1, when _guard_markers does. Print
+# Exit 3, or print nothing and return 1, when _has_valid_markers does. Print
 # nothing and return 2 when one of <lines> is a marker. Take the result into
 # a variable and read the status before writing it anywhere: in a pipe, the
 # next command would read an empty text.
 _replace_block() {
   replace_text=$(cat)
-  _guard_markers "$1" "$2" "$replace_text" || return 1
+  _has_valid_markers "$1" "$2" "$replace_text" || return 1
 
   # A marker inside the block would make two blocks of it
   if printf '%s\n' "$3" | grep -q -F -x -e "$1" -e "$2"; then
