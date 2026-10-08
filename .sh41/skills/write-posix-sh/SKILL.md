@@ -16,7 +16,7 @@ Sources used for various decisions in this skill:
 - XDG Base Directory Specification: https://specifications.freedesktop.org/basedir/latest/
 -->
 
-## Placement
+## Files
 
 ```text
 <posix-utils-root>/
@@ -48,8 +48,8 @@ When editing this skill, use these terms consistently.
 ## Conventions
 
 <!--
-Intentionaly using "Literate style" jargon to prime LLM for better
-progresive disclosure and colocation.
+Intentionaly using "Literate style" jargon to prime LLM for better progresive
+disclosure and colocation.
 -->
 
 Literate style, on one script: `find-in-files`.
@@ -64,7 +64,8 @@ Apply these everywhere:
 - Name by case: `lower_snake` for functions and the variables used only inside
   them, `UPPER_SNAKE` for the rest
   - POSIX has no `local`, every variable is global. Prefix a function's
-    variables with its verb, eg. `search_status` in `search_file`
+    variables with its verb, eg. `search_status` in `search_file`. The prefix
+    must be unique to the function
   - Never shadow a builtin or a shell variable: `type`, `test`, `read`, `PATH`,
     `IFS`, `TMPDIR`
 - Name a path variable for what it holds, `_dir` or `_file`, unless its noun
@@ -168,6 +169,8 @@ set -eu
 - `_show_help <script-file>`, print the man page to stdout
 
 - Levels run `error < warning < success < info < debug`
+  - Short forms work too: `err`, `wrn|warn`, `suc|succ`, `inf`, `dbg`
+  - `_log` exits 2 on a `<level>` or a `LOG_LEVEL` it does not know
   - `LOG_LEVEL` is the cut-off: it and everything before it print.
     `LOG_NAMESPACE` labels the line
   - `bin/cli/fancy-log` is the same logger as a command, for when `lib.sh` is
@@ -379,3 +382,13 @@ fi
 _info -v pattern "$PATTERN" "Nothing matched"
 exit 1
 ```
+
+## Verify
+
+Run `npm run lint`, or directly `./tools/verify ./bin ./tools`, before handing
+over. It checks every script with:
+
+- `shellcheck -s sh`
+- `dash -n` and `busybox sh -n`
+- `--help` exits 0, an unknown flag exits 2
+- a command has `+x`, a `*.sh` library does not
