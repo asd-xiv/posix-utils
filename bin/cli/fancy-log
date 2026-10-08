@@ -3,24 +3,28 @@
 set -eu
 
 # NAME
-#   fancy-log - Dated, colored, namespaced log messages
+#   fancy-log - Print a log line with its time, level and namespace, in color
 #
 # SYNOPSIS
 #   fancy-log <level> [--no-color] [-v <key> <val>]... <message>...
+#   fancy-log -h | --help
 #
 # DESCRIPTION
-#   The command form of the lib.sh logging helpers. Use it from shells and
-#   pipelines that do not source lib.sh. A script that sources lib.sh calls
-#   _info, _ok, _warn, _debug and _fail instead — one process fewer per line.
+#   The command form of _log. Use it from a shell or a pipeline that does not
+#   source lib.sh. A script that sources lib.sh calls _log, or _debug, _info,
+#   _ok, _warn and _error, instead. Each call saves one process.
 #
-#   fancy-log owns --no-color and --help, which must come first. Everything
-#   after them, -v pairs and the message, goes to the logger untouched.
+#   <level> is a command word, so it comes before the flags. fancy-log reads
+#   --help in place of <level>, and --no-color right after <level>. It passes
+#   the rest, the -v pairs and the message, to _log as written.
 #
-#   All output goes to stderr, so stdout stays free for the script result.
+#   fancy-log prints the log line to stderr, never to stdout. stdout holds
+#   only the result of the calling script.
 #
 # ARGUMENTS
-#   level     - error, warning, success, info or debug
-#   message   - text to print, last argument
+#   level     One of error, warning, success, info, debug, or a short form:
+#             err, wrn, warn, suc, succ, inf, dbg
+#   message   Text to print, repeatable. Joined with a space
 #
 # OPTIONS
 #   -v, --var <key> <val>   Append a key=val pair after the message
@@ -28,17 +32,20 @@ set -eu
 #   -h, --help              Print this help
 #
 # ENVIRONMENT
-#   LOG_LEVEL       Cut-off level to print (default: info)
+#   LOG_LEVEL       Last level to print, in the order under ARGUMENTS
+#                   (default: info). An unknown level ends fancy-log with 2
 #   LOG_NAMESPACE   Label printed before the message
-#   NO_COLOR        If set, disables color
+#   NO_COLOR        Disables color when set and non-empty
+#   TERM            Disables color when unset, empty or "dumb"
 #
 # EXAMPLE
-#   fancy-log error -v param "bad" "Invalid parameter."
-#   LOG_LEVEL=debug fancy-log debug "Cache miss."
+#   fancy-log error -v param "bad" "Invalid parameter"
+#   LOG_LEVEL=debug fancy-log debug "Cache miss"
 #
 # EXIT CODES
-#   0   Printed, or below LOG_LEVEL and dropped
-#   2   Invalid usage
+#   0   Printed, or dropped because <level> comes after LOG_LEVEL
+#   2   Invalid usage: no message, an unknown flag, or an unknown <level> or
+#       LOG_LEVEL
 #
 # SEE ALSO
 #   lib.sh
@@ -57,14 +64,8 @@ case "${1:-}" in
     ;;
 esac
 
-case "$1" in
-  err | error) LEVEL="error" ;;
-  warn | warning) LEVEL="warning" ;;
-  succ | success) LEVEL="success" ;;
-  info) LEVEL="info" ;;
-  debug) LEVEL="debug" ;;
-  *) _fail 2 -v level "$1" "Unknown level." ;;
-esac
+# _log knows the levels and their short forms, and exits 2 on any other
+LEVEL="$1"
 shift
 
 # Strip the flags this command owns, pass the rest to _log untouched.
@@ -82,12 +83,12 @@ while [ "$#" -gt 0 ]; do
       break
       ;;
     -?*)
-      _fail 2 -v flag "$1" "Unknown flag."
+      _fail 2 -v flag "$1" "Unknown flag"
       ;;
     *) break ;;
   esac
 done
 
-[ "$#" -eq 0 ] && _fail 2 "No message given."
+[ "$#" -eq 0 ] && _fail 2 "No message given"
 
 _log "$LEVEL" "$@"
