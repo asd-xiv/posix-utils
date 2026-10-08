@@ -10,7 +10,7 @@
 #
 # DESCRIPTION
 #   A set of commonly needed, domain agnostic primitives: logging, predicates,
-#   guards, downloads and help. Sourced, never executed.
+#   guards, downloads, text and help. Sourced, never executed.
 #
 #   A primitive that answers a question prints the answer to stdout. Everything
 #   else goes to stderr.
@@ -32,11 +32,11 @@
 # Return 1 on a level it does not know, with the reason on stderr.
 _level_rank() {
   case "$1" in
-    error | err) echo 0 ;;
-    warning | wrn | warn) echo 1 ;;
-    success | suc | succ) echo 2 ;;
-    info | inf) echo 3 ;;
-    debug | dbg) echo 4 ;;
+    error | err) printf '0' ;;
+    warning | wrn | warn) printf '1' ;;
+    success | suc | succ) printf '2' ;;
+    info | inf) printf '3' ;;
+    debug | dbg) printf '4' ;;
     *)
       # Not through _log, which calls back here
       printf 'lib.sh/_level_rank: Unknown log level "%s". Use error, warning, success, info or debug\n' \
@@ -46,9 +46,13 @@ _level_rank() {
   esac
 }
 
-# Color only when stderr is a terminal that wants it.
+# _has_color [fd]
+#
+# Return 0 when <fd> is a terminal, NO_COLOR is unset or empty and TERM is not
+# "dumb".
+# <fd> defaults to 2, stderr.
 _has_color() {
-  [ -t 2 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != "dumb" ]
+  [ -t "${1:-2}" ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != "dumb" ]
 }
 
 # _log <level> [-v <key> <val>]... <message>
@@ -256,6 +260,164 @@ _resolve_bin_dir() {
 
   _fail 3 -v current_user "$(whoami)" \
     "No writable bin dir (/usr/local/bin, ~/.local/bin)"
+}
+
+# ╭───
+# │ Text
+# ╰───
+
+# _end_with_newline <text>
+#
+# Print <text> with a newline at its end, the one $(...) strips. Print nothing
+# when <text> is empty, where a plain printf would print one empty line.
+_end_with_newline() {
+  if [ -n "$1" ]; then
+    printf '%s\n' "$1"
+  fi
+}
+
+# A block is the lines between two marker lines, <begin> and <end>, in a text
+# that otherwise belongs to someone else: a crontab, a shell profile. A marker
+# is a whole line, compared as written. A text has no block, or exactly one:
+# one <begin>, and one <end> below it.
+#
+# awk reads the markers and the block lines from its environment, awk -v would
+# rewrite a backslash in them. In awk, "" after a value makes it a string: two
+# values that look like numbers are compared as numbers, and a marker "10"
+# would match a line "10.0".
+
+# _guard_markers <begin> <end> <text>
+#
+# Exit 3 unless each marker is one line that is not empty. Return 1 unless
+# <text> has neither marker, or each marker once with <begin> above <end>.
+_guard_markers() {
+  # An empty marker matches every empty line, one with a newline matches none
+  case "$1$2" in
+    *"
+"*) _fail 3 "A marker is one line" ;;
+  esac
+
+  if [ -z "$1" ] || [ -z "$2" ]; then
+    _fail 3 "A marker cannot be empty"
+  fi
+
+  # The line number of each marker. -F -x is the whole line, as written
+  guard_begin=$(printf '%s\n' "$3" | grep -n -F -x -e "$1" | cut -d ':' -f 1)
+  guard_end=$(printf '%s\n' "$3" | grep -n -F -x -e "$2" | cut -d ':' -f 1)
+
+  # Each is one number, when its marker is there once
+  case "$guard_begin:$guard_end" in
+    :) return 0 ;;                   # neither marker
+    *[!0-9:]* | :* | *:) return 1 ;; # one is there twice, or one is missing
+  esac
+
+  [ "$guard_begin" -lt "$guard_end" ] || return 1
+
+  return 0
+}
+
+# _find_block <begin> <end>
+#
+# Read a text from stdin, print the lines of its block without the markers.
+# Print nothing when the text has no block. Exit 3, or print nothing and return
+# 1, when _guard_markers does.
+_find_block() {
+  find_text=$(cat)
+  _guard_markers "$1" "$2" "$find_text" || return 1
+
+  printf '%s\n' "$find_text" \
+    | BLOCK_BEGIN_MARKER="$1" BLOCK_END_MARKER="$2" awk '
+      BEGIN {
+        begin = ENVIRON["BLOCK_BEGIN_MARKER"] ""
+        end = ENVIRON["BLOCK_END_MARKER"] ""
+      }
+
+      $0 == begin { is_inside = 1; next }
+      $0 == end { is_inside = 0 }
+      is_inside { print }'
+}
+
+# _replace_block <begin> <end> <lines>
+#
+# Read a text from stdin, print it with the lines of its block replaced by
+# <lines>. Add the block and its markers at the end when the text has none.
+# Drop both when <lines> is empty.
+#
+# Exit 3, or print nothing and return 1, when _guard_markers does. Print
+# nothing and return 2 when one of <lines> is a marker. Take the result into
+# a variable and read the status before writing it anywhere: in a pipe, the
+# next command would read an empty text.
+_replace_block() {
+  replace_text=$(cat)
+  _guard_markers "$1" "$2" "$replace_text" || return 1
+
+  # A marker inside the block would make two blocks of it
+  if printf '%s\n' "$3" | grep -q -F -x -e "$1" -e "$2"; then
+    return 2
+  fi
+
+  _end_with_newline "$replace_text" | BLOCK_BEGIN_MARKER="$1" BLOCK_END_MARKER="$2" BLOCK_LINES="$3" awk '
+    function put_block() {
+      if (lines != "") {
+        print begin
+        print lines
+        print end
+      }
+      is_put = 1
+    }
+
+    BEGIN {
+      begin = ENVIRON["BLOCK_BEGIN_MARKER"] ""
+      end = ENVIRON["BLOCK_END_MARKER"] ""
+      lines = ENVIRON["BLOCK_LINES"] ""
+    }
+
+    $0 == begin { is_inside = 1; next }
+    $0 == end { is_inside = 0; put_block(); next }
+    !is_inside { print }
+
+    END { if (!is_put) put_block() }'
+}
+
+# _diff_lines <old-text> <new-text>
+#
+# Print what changed between two sets of lines: "- <line>" for a line only in
+# <old-text>, then "+ <line>" for a line only in <new-text>. The order of the
+# lines, repeats and empty lines do not count. Red and green when stdout
+# passes _has_color.
+_diff_lines() {
+  diff_color=""
+  if _has_color 1; then
+    diff_color="true"
+  fi
+
+  DIFF_OLD_TEXT="$1" DIFF_NEW_TEXT="$2" awk -v color="$diff_color" '
+    BEGIN {
+      old_count = split(ENVIRON["DIFF_OLD_TEXT"], old_lines, "\n")
+      new_count = split(ENVIRON["DIFF_NEW_TEXT"], new_lines, "\n")
+
+      minus = color ? "\033[31m- %s\033[0m\n" : "- %s\n"
+      plus = color ? "\033[32m+ %s\033[0m\n" : "+ %s\n"
+
+      for (i = 1; i <= old_count; i++) is_old[old_lines[i]] = 1
+      for (i = 1; i <= new_count; i++) is_new[new_lines[i]] = 1
+
+      for (i = 1; i <= old_count; i++) {
+        line = old_lines[i]
+        if (line != "" && !(line in is_new) && !(line in is_printed)) {
+          printf minus, line
+          is_printed[line] = 1
+        }
+      }
+
+      for (i = 1; i <= new_count; i++) {
+        line = new_lines[i]
+        if (line != "" && !(line in is_old) && !(line in is_printed)) {
+          printf plus, line
+          is_printed[line] = 1
+        }
+      }
+    }'
 }
 
 # ╭───
