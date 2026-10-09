@@ -1,0 +1,94 @@
+#!/bin/sh
+
+# recheck browse
+#
+# Open the browser: every check in fzf, with its last run as the preview.
+# recheck runs this file, never call it directly.
+
+set -eu
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/checks.sh"
+
+TERMINAL_COMMAND="${RECHECK_TERMINAL:-}"
+
+# ╭───
+# │ Commands
+# ╰───
+
+# browse_checks
+# Open the browser: every check in fzf, with its last run as the preview.
+# Enter runs the check under the cursor again, Alt+Enter edits it in a new
+# window, Esc closes. The list reloads every second, so a run shows as it
+# starts and as it ends, also one that cron started.
+browse_checks() {
+  set_title "recheck :: browser"
+
+  # The editor needs a window of its own, and only the user knows how their
+  # terminal opens one. Without RECHECK_TERMINAL, Alt+Enter only writes what
+  # is missing into the preview label
+  browse_edit="change-preview-label( [alt + enter] needs RECHECK_TERMINAL, see recheck --help )"
+  if [ -n "$TERMINAL_COMMAND" ]; then
+    # The "action:" form runs to the end of the string, so the user's command
+    # may hold parentheses
+    browse_edit="execute-silent:nohup $TERMINAL_COMMAND $RECHECK_FILE edit {3} >/dev/null 2>&1 &"
+  fi
+
+  browse_status=0
+  # A row is "<dot> [on] <id>", so fzf finds the id as its third field.
+  #   --track       keeps the cursor on its row, which it knows by its text
+  #   reload-sync   swaps the list only when the new one is complete. With a
+  #                 plain reload the list is short for a moment, and Enter
+  #                 can then run the check of another row
+  #   nohup         lets a run, or an editor window, outlive the window that
+  #                 started it
+  #   --info        hidden, or fzf shows its spinner without pause: for fzf a
+  #                 reload is always in progress
+  #   alt-enter     fzf cannot tell Shift+Enter from Enter
+  #   --preview-label   the shortcuts, on the bottom border of the preview. A
+  #                 header or a footer is as narrow as the list and cuts them
+  "$RECHECK_FILE" ls --color \
+    | fzf --ansi --layout reverse --info hidden \
+      --preview "$RECHECK_FILE show --color {3}" \
+      --preview-window "right,65%,wrap" \
+      --preview-label " [enter] run, [tab] on/off, [alt + enter] edit, [esc] close " \
+      --preview-label-pos "0:bottom" \
+      --track \
+      --bind "enter:execute-silent(nohup $RECHECK_FILE run {3} >/dev/null 2>&1 &)" \
+      --bind "load:reload-sync(sleep 1; $RECHECK_FILE ls --color)+refresh-preview" \
+      --bind "tab:execute-silent(nohup $RECHECK_FILE toggle {3} >/dev/null 2>&1 &)" \
+      --bind "alt-enter:$browse_edit" \
+    || browse_status=$?
+
+  # fzf: 1 is no match, 130 is Esc or Ctrl-C. Closing the browser is no error
+  case "$browse_status" in
+    0 | 1 | 130) return 0 ;;
+    *) _fail 3 -v status "$browse_status" "fzf failed" ;;
+  esac
+}
+
+# ╭───
+# │ Cleanup
+# ╰───
+
+# shellcheck disable=SC2329 # called by trap
+cleanup() {
+  restore_title
+}
+
+trap cleanup EXIT                                    # normal exit
+trap 'cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl-C
+trap 'cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout
+trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
+
+# ╭───
+# │ Main
+# ╰───
+
+[ "$#" -eq 0 ] || _fail 2 '"browse" takes no arguments'
+_require_cmd fzf
+guard_script_file
+[ -t 0 ] || _fail 3 '"browse" needs a terminal'
+browse_checks
+
+exit 0

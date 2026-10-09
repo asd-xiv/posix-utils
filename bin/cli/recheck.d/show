@@ -1,0 +1,97 @@
+#!/bin/sh
+
+# recheck show [--color] <id>
+#
+# Print a check as properties between "---" lines, then the output of its
+# last run, or of the run in progress.
+# recheck runs this file, never call it directly.
+
+set -eu
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/checks.sh"
+
+SHOULD_COLOR="" # --color after show, "true" or ""
+
+# ╭───
+# │ Commands
+# ╰───
+
+# print_property <name> <value>
+# Print "<name>: <value>", the name in bold when SHOULD_COLOR is set.
+print_property() {
+  if [ -n "$SHOULD_COLOR" ]; then
+    printf '\033[1m%s\033[0m: %s\n' "$1" "$2"
+  else
+    printf '%s: %s\n' "$1" "$2"
+  fi
+}
+
+# show_check <id>
+# Print a check as properties between "---" lines, as in front matter, then
+# the output of its last run, or of the run in progress.
+show_check() {
+  show_enabled="false"
+  if is_enabled "$1"; then
+    show_enabled="true"
+  fi
+
+  show_pattern=$(find_cron_pattern "$1") || show_pattern="-"
+
+  # The file "last" is one line: time, state, exit code, seconds
+  show_time=""
+  show_state="no run yet"
+  if [ -f "$STATE_DIR/$1/last" ]; then
+    IFS="$TAB" read -r show_time show_state show_code show_seconds \
+      <"$STATE_DIR/$1/last" || true
+  fi
+
+  printf '%s\n' "---"
+  print_property "id" "$1"
+  print_property "state" "$show_state"
+  print_property "enabled" "$show_enabled"
+  # In quotes. Front matter is YAML, which reads a leading "*" as an alias
+  print_property "cron" "\"$show_pattern\""
+
+  if [ -n "$show_time" ]; then
+    # 2026-10-08T12:00:03+0200 -> 2026-10-08 12:00:03
+    show_clock="${show_time#*T}"
+
+    print_property "exit_code" "$show_code"
+    print_property "last_run" "${show_time%%T*} ${show_clock%[+-]*}"
+    print_property "duration" "$show_seconds"
+  fi
+
+  show_output_file="$STATE_DIR/$1/output"
+  if show_run_start=$(find_run_start "$1"); then
+    print_property "running_since" "$show_run_start"
+
+    if [ -f "$show_output_file.new" ]; then
+      show_output_file="$show_output_file.new"
+    fi
+  fi
+
+  printf '%s\n' "---"
+
+  if [ -f "$show_output_file" ]; then
+    printf '\n'
+    cat -- "$show_output_file"
+  fi
+
+  return 0
+}
+
+# ╭───
+# │ Main
+# ╰───
+
+if [ "${1:-}" = "--color" ]; then
+  SHOULD_COLOR="true"
+  shift
+fi
+
+[ "$#" -eq 1 ] || _fail 2 '"show" needs one id'
+guard_id "$1"
+show_check "$1"
+
+exit 0

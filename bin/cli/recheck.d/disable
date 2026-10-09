@@ -1,0 +1,66 @@
+#!/bin/sh
+
+# recheck disable [id...]
+#
+# Put a "_" in front of the file name of each check, then sync.
+# recheck runs this file, never call it directly.
+
+set -eu
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/checks.sh"
+
+# ╭───
+# │ Commands
+# ╰───
+
+# disable_checks <id>...
+# Put a "_" in front of the file name of each check, then sync.
+disable_checks() {
+  # Guard everything before the first rename, so a failure changes nothing
+  guard_id "$@"
+  for disable_id in "$@"; do
+    if is_enabled "$disable_id" && [ -f "$CHECKS_DIR/_$disable_id" ]; then
+      _fail 3 -v id "$disable_id" \
+        "A disabled copy exists, the rename would replace it"
+    fi
+  done
+  guard_sync
+
+  for disable_id in "$@"; do
+    is_enabled "$disable_id" || continue
+    mv -- "$CHECKS_DIR/$disable_id" "$CHECKS_DIR/_$disable_id"
+    _ok -v id "$disable_id" "Check disabled"
+  done
+
+  "$RECHECK_FILE" sync
+}
+
+# ╭───
+# │ Main
+# ╰───
+
+if [ "$#" -eq 0 ] && [ -t 0 ]; then
+  PICKABLE_IDS=$(find_enabled_ids)
+
+  if [ -z "$PICKABLE_IDS" ]; then
+    _warn "Nothing to disable"
+    exit 4
+  fi
+
+  _require_cmd fzf
+
+  # Not written inside 'set --', which ignores the status of a
+  # substitution. A lone assignment fails with the status of pick_ids,
+  # and 'set -e' ends the script with it
+  PICKED_IDS=$(printf '%s\n' "$PICKABLE_IDS" | pick_ids)
+
+  # shellcheck disable=SC2086 # ids are slugs, safe to split
+  set -- $PICKED_IDS
+fi
+
+[ "$#" -gt 0 ] || _fail 2 '"disable" needs at least one id'
+
+disable_checks "$@"
+
+exit 0

@@ -1,0 +1,81 @@
+#!/bin/sh
+
+# recheck ls [--cron | --color]
+#
+# Print every check: state, on or off, id, cron pattern. With --cron, print
+# the crontab line of each enabled check. With --color, print for a person.
+# recheck runs this file, never call it directly.
+
+set -eu
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/checks.sh"
+
+# ╭───
+# │ Commands
+# ╰───
+
+# list_checks
+# Print every check: state, on or off, id, cron pattern.
+list_checks() {
+  for list_id in $(find_ids); do
+    list_pattern=$(find_cron_pattern "$list_id") || list_pattern="-"
+
+    list_switch="off"
+    if is_enabled "$list_id"; then
+      list_switch="on"
+    fi
+
+    printf '%s\t%s\t%s\t%s\n' \
+      "$(find_state "$list_id")" "$list_switch" "$list_id" "$list_pattern"
+  done
+
+  return 0
+}
+
+# list_colored_checks
+# Print every check for a person: a dot in the color of its state, on or off,
+# id. The dot is blue while the check runs. The colors are the terminal's
+# own, so they follow its palette.
+list_colored_checks() {
+  for color_id in $(find_ids); do
+    case "$(find_state "$color_id")" in
+      green) color_code=32 ;;
+      red) color_code=31 ;;
+      broken) color_code=33 ;;
+      *) color_code=90 ;;
+    esac
+
+    # Only the color says "running". fzf keeps the cursor on a row by its
+    # text, so the text must not change when a run starts or ends
+    if is_running "$color_id"; then
+      color_code=34
+    fi
+
+    # The space after "on" keeps the ids in one column
+    color_switch="[off]"
+    if is_enabled "$color_id"; then
+      color_switch="[on] "
+    fi
+
+    printf '\033[%sm●\033[0m %s %s\n' \
+      "$color_code" "$color_switch" "$color_id"
+  done
+
+  return 0
+}
+
+# ╭───
+# │ Main
+# ╰───
+
+[ "$#" -le 1 ] || _fail 2 '"ls" takes one of --cron or --color'
+case "${1:-}" in
+  "") list_checks ;;
+  # It returns 1 after a warning, which is no failure for a listing
+  --cron) list_cron_lines || true ;;
+  --color) list_colored_checks ;;
+  *) _fail 2 -v argument "$1" '"ls" takes only --cron or --color' ;;
+esac
+
+exit 0
