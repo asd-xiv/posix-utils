@@ -1,0 +1,180 @@
+#!/bin/sh
+
+# recheck run [id...]
+#
+# Run every enabled check, or only the ones named, then run the on-update
+# hook.
+# recheck runs this file, never call it directly.
+
+set -eu
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/checks.sh"
+
+CHANGE_HOOK_FILE="$CONFIG_DIR/on-change"
+RUNNING_FILE="" # the marker this process wrote, for unmark_run and cleanup
+
+# ╭───
+# │ Primitives
+# ╰───
+
+# map_state <exit-code>
+# Print the state an exit code of a check means: green, red or broken.
+map_state() {
+  case "$1" in
+    0) printf 'green' ;;
+    1) printf 'red' ;;
+    *) printf 'broken' ;;
+  esac
+}
+
+# mark_run <id>
+# Write the marker of a run. Return 1 when another run of the check holds it.
+mark_run() {
+  mark_file="$STATE_DIR/$1/running"
+
+  if [ -f "$mark_file" ]; then
+    is_running "$1" && return 1
+
+    # The marker of a run that died
+    rm -f -- "$mark_file"
+  fi
+
+  # With noclobber, only one of two runs that start together creates the file
+  (set -C && printf '%s %s\n' "$$" "$(date +%T)" >"$mark_file") 2>/dev/null \
+    || return 1
+
+  RUNNING_FILE="$mark_file"
+}
+
+# unmark_run
+# Remove the marker this process wrote.
+unmark_run() {
+  rm -f -- "$RUNNING_FILE"
+  RUNNING_FILE=""
+}
+
+# record_run <id> <exit-code> <seconds>
+# Keep a finished run and print "<id>", a tab and "<state>". Run the on-change
+# hook when the check went from green to red or back.
+record_run() {
+  record_dir="$STATE_DIR/$1"
+  record_state=$(map_state "$2")
+  record_line=$(
+    printf '%s\t%s\t%s\t%ss' \
+      "$(date +%Y-%m-%dT%H:%M:%S%z)" "$record_state" "$2" "$3"
+  )
+
+  # The same line twice: "last" is what recheck reads, the log is for a
+  # person to see that the checks ran. Nothing reads the log back
+  printf '%s\n' "$record_line" >"$record_dir/last"
+  printf '%s\t%s\n' "$record_line" "$1" >>"$RUN_LOG_FILE"
+
+  printf '%s\t%s\n' "$1" "$record_state"
+
+  # Broken is no answer. recheck keeps the last green or red and runs no hook
+  if [ "$record_state" = "broken" ]; then
+    return 0
+  fi
+
+  record_old_state=""
+  if [ -f "$record_dir/state" ]; then
+    record_old_state=$(cat -- "$record_dir/state")
+  fi
+
+  printf '%s\n' "$record_state" >"$record_dir/state"
+
+  if [ -n "$record_old_state" ] && [ "$record_old_state" != "$record_state" ]; then
+    run_hook "$CHANGE_HOOK_FILE" "$1" "$record_old_state" "$record_state"
+  fi
+
+  return 0
+}
+
+# run_check <id>
+# Run a check and record the run. Do nothing when the check is already
+# running.
+run_check() {
+  run_dir="$STATE_DIR/$1"
+  mkdir -p -- "$run_dir"
+
+  if ! mark_run "$1"; then
+    _info -v id "$1" "Already running, skipping"
+    return 0
+  fi
+
+  # In the background, so a slow hook does not delay the check
+  run_hook "$UPDATE_HOOK_FILE" &
+
+  # Into output.new, so an interrupted run leaves the last output in place
+  run_start_seconds=$(date +%s)
+  run_status=0
+  run_with_env "$CHECKS_DIR/$1" </dev/null >"$run_dir/output.new" 2>&1 \
+    || run_status=$?
+  run_seconds=$(($(date +%s) - run_start_seconds))
+
+  mv -- "$run_dir/output.new" "$run_dir/output"
+  unmark_run
+
+  # Show the output to a person at a terminal. cron mails what goes to stderr
+  if [ -t 2 ]; then
+    cat -- "$run_dir/output" >&2
+  fi
+
+  record_run "$1" "$run_status" "$run_seconds"
+}
+
+# ╭───
+# │ Commands
+# ╰───
+
+# run_checks <id>...
+# Run each named check, then run the on-update hook. Skip a disabled check.
+run_checks() {
+  guard_id "$@"
+
+  for named_id in "$@"; do
+    if is_enabled "$named_id"; then
+      run_check "$named_id"
+    else
+      _info -v id "$named_id" "Disabled, skipping"
+    fi
+  done
+
+  run_hook "$UPDATE_HOOK_FILE"
+
+  return 0
+}
+
+# ╭───
+# │ Cleanup
+# ╰───
+
+# An interrupted run leaves no trace: no marker, no half output. The last
+# full run stays as it was. The bar learns it through the on-update hook, the
+# browser through its reload
+# shellcheck disable=SC2329 # called by trap
+cleanup() {
+  [ -n "$RUNNING_FILE" ] || return 0
+
+  rm -f -- "${RUNNING_FILE%/running}/output.new"
+  unmark_run
+  run_hook "$UPDATE_HOOK_FILE"
+}
+
+trap cleanup EXIT                                    # normal exit
+trap 'cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl-C
+trap 'cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout
+trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
+
+# ╭───
+# │ Main
+# ╰───
+
+if [ "$#" -eq 0 ]; then
+  # shellcheck disable=SC2046 # ids are slugs, safe to split
+  set -- $(find_enabled_ids)
+fi
+run_checks "$@"
+
+exit 0

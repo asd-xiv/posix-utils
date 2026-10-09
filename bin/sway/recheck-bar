@@ -30,12 +30,12 @@ set -eu
 #       "return-type": "json",
 #       "interval": 60,
 #       "signal": 8,
-#       "on-click": "alacritty --command recheck show &",
+#       "on-click": "alacritty --command recheck browse &",
 #       "on-click-right": "alacritty --command recheck edit &"
 #     }
 #
 #   End each click command with "&". waybar does not refresh a module while
-#   one of its click commands runs, and "recheck show" runs until its fzf
+#   one of its click commands runs, and "recheck browse" runs until its fzf
 #   window closes.
 #
 #   In ~/.config/recheck/on-update, to refresh the module after every change:
