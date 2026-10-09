@@ -17,6 +17,9 @@ set -eu
 #     --help            must exit 0
 #     an unknown flag   must exit 2
 #
+#   A private command, a command under a *.d directory, skips the smoke test.
+#   Only its public command runs it, so it has no man page.
+#
 #   CI and a developer run the same checks through this one script.
 #
 # ARGUMENTS
@@ -42,6 +45,26 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 
 # _log reads it
 export LOG_NAMESPACE="verify"
+
+# ╭───
+# │ Primitives
+# ╰───
+
+# is_private_command <file>
+#
+# Tell if <file> is under a directory whose name ends in .d. Only its public
+# command runs it, so it has no man page and no --help.
+#
+# RETURNS
+#   0   A directory above <file> ends in .d
+#   1   None does
+is_private_command() {
+  case "$1" in
+    *.d/*) return 0 ;;
+  esac
+
+  return 1
+}
 
 # ╭───
 # │ Bootstrap
@@ -114,22 +137,25 @@ while IFS= read -r FILE; do
         FILE_RC=1
       }
 
-      dash "$FILE" --help >/dev/null || {
-        _error -v script "$FILE" "dash --help failed"
-        FILE_RC=1
-      }
+      if ! is_private_command "$FILE"; then
+        dash "$FILE" --help >/dev/null || {
+          _error -v script "$FILE" "dash --help failed"
+          FILE_RC=1
+        }
 
-      busybox sh "$FILE" --help >/dev/null || {
-        _error -v script "$FILE" "busybox --help failed"
-        FILE_RC=1
-      }
+        busybox sh "$FILE" --help >/dev/null || {
+          _error -v script "$FILE" "busybox --help failed"
+          FILE_RC=1
+        }
 
-      FLAG_RC=0
-      dash "$FILE" --zz-not-a-real-flag >/dev/null 2>&1 || FLAG_RC=$?
+        FLAG_RC=0
+        dash "$FILE" --zz-not-a-real-flag >/dev/null 2>&1 || FLAG_RC=$?
 
-      if [ "$FLAG_RC" -ne 2 ]; then
-        _error -v script "$FILE" -v got "$FLAG_RC" "Unknown flag did not exit 2"
-        FILE_RC=1
+        if [ "$FLAG_RC" -ne 2 ]; then
+          _error -v script "$FILE" -v got "$FLAG_RC" \
+            "Unknown flag did not exit 2"
+          FILE_RC=1
+        fi
       fi
       ;;
   esac

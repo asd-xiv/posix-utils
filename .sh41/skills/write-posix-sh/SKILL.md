@@ -384,4 +384,5 @@ over. It checks every script with:
 - `shellcheck -s sh`
 - `dash -n` and `busybox sh -n`
 - `--help` exits 0, an unknown flag exits 2
+  - it skips both for a private command, a command under a `*.d` directory
 - a command has `+x`, a `*.sh` library does not
