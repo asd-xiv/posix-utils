@@ -11,37 +11,27 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/checks.sh"
 
 # ╭───
-# │ Commands
-# ╰───
-
-# disable_checks <id>...
-# Put a "_" in front of the file name of each check, then sync.
-disable_checks() {
-  # Guard everything before the first rename, so a failure changes nothing
-  guard_id "$@"
-  for disable_id in "$@"; do
-    if is_enabled "$disable_id" && [ -f "$CHECKS_DIR/_$disable_id" ]; then
-      _fail 3 -v id "$disable_id" \
-        "A disabled copy exists, the rename would replace it"
-    fi
-  done
-  guard_sync
-
-  for disable_id in "$@"; do
-    is_enabled "$disable_id" || continue
-    mv -- "$CHECKS_DIR/$disable_id" "$CHECKS_DIR/_$disable_id"
-    _ok -v id "$disable_id" "Check disabled"
-  done
-
-  "$RECHECK_FILE" sync
-}
-
-# ╭───
 # │ Main
 # ╰───
 
 [ "$#" -gt 0 ] || _fail 2 '"disable" needs at least one id'
 
-disable_checks "$@"
+# Guard everything before the first rename, so a failure changes nothing
+guard_id "$@"
+for ID in "$@"; do
+  if is_enabled "$ID" && [ -f "$CHECKS_DIR/_$ID" ]; then
+    _fail 3 -v id "$ID" \
+      "A disabled copy exists, the rename would replace it"
+  fi
+done
+guard_sync
+
+for ID in "$@"; do
+  is_enabled "$ID" || continue
+  mv -- "$CHECKS_DIR/$ID" "$CHECKS_DIR/_$ID"
+  _ok -v id "$ID" "Check disabled"
+done
+
+"$RECHECK_FILE" sync
 
 exit 0

@@ -2,7 +2,9 @@
 
 # recheck status
 #
-# Print the count of enabled checks per state, then how many are running.
+# Print the count of enabled checks per state, then how many are running, as
+# "<green> <red> <broken> <running>". A running check also counts under the
+# state of its last run. Exit 1 when a check is red or broken.
 # recheck runs this file, never call it directly.
 
 set -eu
@@ -11,46 +13,33 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/checks.sh"
 
 # ╭───
-# │ Commands
-# ╰───
-
-# count_states
-# Print the count of enabled checks per state, then how many are running, as
-# "<green> <red> <broken> <running>". A running check also counts under the
-# state of its last run. Return 1 when a check is red or broken.
-count_states() {
-  count_green=0
-  count_red=0
-  count_broken=0
-  count_running=0
-
-  for count_id in $(find_enabled_ids); do
-    if is_running "$count_id"; then
-      count_running=$((count_running + 1))
-    fi
-
-    case "$(find_state "$count_id")" in
-      green) count_green=$((count_green + 1)) ;;
-      red) count_red=$((count_red + 1)) ;;
-      broken) count_broken=$((count_broken + 1)) ;;
-    esac
-  done
-
-  printf '%s %s %s %s\n' \
-    "$count_green" "$count_red" "$count_broken" "$count_running"
-
-  if [ "$count_red" -gt 0 ] || [ "$count_broken" -gt 0 ]; then
-    return 1
-  fi
-
-  return 0
-}
-
-# ╭───
 # │ Main
 # ╰───
 
 [ "$#" -eq 0 ] || _fail 2 '"status" takes no arguments'
-count_states || exit 1
+
+GREEN_COUNT=0
+RED_COUNT=0
+BROKEN_COUNT=0
+RUNNING_COUNT=0
+
+for ID in $(find_enabled_ids); do
+  if is_running "$ID"; then
+    RUNNING_COUNT=$((RUNNING_COUNT + 1))
+  fi
+
+  case "$(find_state "$ID")" in
+    green) GREEN_COUNT=$((GREEN_COUNT + 1)) ;;
+    red) RED_COUNT=$((RED_COUNT + 1)) ;;
+    broken) BROKEN_COUNT=$((BROKEN_COUNT + 1)) ;;
+  esac
+done
+
+printf '%s %s %s %s\n' \
+  "$GREEN_COUNT" "$RED_COUNT" "$BROKEN_COUNT" "$RUNNING_COUNT"
+
+if [ "$RED_COUNT" -gt 0 ] || [ "$BROKEN_COUNT" -gt 0 ]; then
+  exit 1
+fi
 
 exit 0
