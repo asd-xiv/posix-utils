@@ -11,35 +11,25 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/checks.sh"
 
 # ╭───
-# │ Commands
-# ╰───
-
-# enable_checks <id>...
-# Remove the "_" from the file name of each check, then sync.
-enable_checks() {
-  # Guard everything before the first rename, so a failure changes nothing
-  guard_id "$@"
-  for enable_id in "$@"; do
-    find_cron_pattern "$enable_id" >/dev/null \
-      || _fail 3 -v id "$enable_id" "No valid cron pattern in a '# CRON:' line"
-  done
-  guard_sync
-
-  for enable_id in "$@"; do
-    is_enabled "$enable_id" && continue
-    mv -- "$CHECKS_DIR/_$enable_id" "$CHECKS_DIR/$enable_id"
-    _ok -v id "$enable_id" "Check enabled"
-  done
-
-  "$RECHECK_FILE" sync
-}
-
-# ╭───
 # │ Main
 # ╰───
 
 [ "$#" -gt 0 ] || _fail 2 '"enable" needs at least one id'
 
-enable_checks "$@"
+# Guard everything before the first rename, so a failure changes nothing
+guard_id "$@"
+for ID in "$@"; do
+  find_cron_pattern "$ID" >/dev/null \
+    || _fail 3 -v id "$ID" "No valid cron pattern in a '# CRON:' line"
+done
+guard_sync
+
+for ID in "$@"; do
+  is_enabled "$ID" && continue
+  mv -- "$CHECKS_DIR/_$ID" "$CHECKS_DIR/$ID"
+  _ok -v id "$ID" "Check enabled"
+done
+
+"$RECHECK_FILE" sync
 
 exit 0

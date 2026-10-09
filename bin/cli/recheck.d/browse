@@ -3,8 +3,11 @@
 # recheck browse
 #
 # Open the browser: every check in fzf, with its last run as the preview.
-# Tab marks a check. Enter runs the marked checks, Alt+E enables them and
-# Alt+X disables them.
+# Tab marks a check. Enter runs the marked checks again, Alt+E enables them
+# and Alt+X disables them. With no check marked, the three act on the check
+# under the cursor. Alt+T toggles the check under the cursor, Alt+Enter edits
+# it in a new window, Esc closes. The list reloads every second, so a run
+# shows as it starts and as it ends, also one that cron started.
 # recheck runs this file, never call it directly.
 
 set -eu
@@ -41,77 +44,6 @@ guard_fzf_version() {
 }
 
 # ╭───
-# │ Commands
-# ╰───
-
-# browse_checks
-# Open the browser: every check in fzf, with its last run as the preview.
-# Tab marks a check. Enter runs the marked checks again, Alt+E enables them
-# and Alt+X disables them. With no check marked, the three act on the check
-# under the cursor. Alt+T toggles the check under the cursor, Alt+Enter edits
-# it in a new window, Esc closes. The list reloads every second, so a run
-# shows as it starts and as it ends, also one that cron started.
-browse_checks() {
-  set_title "recheck :: browser"
-
-  # The editor needs a window of its own, and only the user knows how their
-  # terminal opens one. Without RECHECK_TERMINAL, Alt+Enter only writes what
-  # is missing into the preview label
-  browse_edit="change-preview-label( [alt + enter] needs RECHECK_TERMINAL, see recheck --help )"
-  if [ -n "$TERMINAL_COMMAND" ]; then
-    # The "action:" form runs to the end of the string, so the user's command
-    # may hold parentheses
-    browse_edit="execute-silent:nohup $TERMINAL_COMMAND $RECHECK_FILE edit {3} >/dev/null 2>&1 &"
-  fi
-
-  browse_status=0
-  # A row is "<dot> [on] <id>", so fzf finds the id as its third field.
-  #   --id-nth      tells fzf that a row is the same check when its id is the
-  #                 same. With it, --track keeps the cursor on its check and
-  #                 --multi keeps the marks when the list reloads. A reload
-  #                 still removes the mark of a row the query hides
-  #   every(1)      reloads the list each second. fzf ignores a key pressed
-  #                 while a reload is in progress, so the reload command must
-  #                 be short: no sleep in it. After a reload fzf runs the
-  #                 preview again, so the output of a running check grows
-  #   reload-sync   swaps the list only when the new one is complete. A plain
-  #                 reload loses the marks
-  #   {+3}          the ids of the marked rows, or the id under the cursor
-  #                 when no row is marked. {3} is always the id under the
-  #                 cursor
-  #   clear-multi   removes every mark. deselect-all leaves the mark of a
-  #                 row the query hides
-  #   nohup         lets a run, or an editor window, outlive the window that
-  #                 started it
-  #   --info        hidden, or the info line shows a spinner and "+T*" for a
-  #                 moment at each reload
-  #   alt-x         disables, because fzf binds alt-d to kill-word
-  #   alt-enter     fzf cannot tell Shift+Enter from Enter
-  #   --preview-label   the shortcuts, on the bottom border of the preview. A
-  #                 header or a footer is as narrow as the list and cuts them
-  "$RECHECK_FILE" ls --color \
-    | fzf --ansi --layout reverse --info hidden \
-      --preview "$RECHECK_FILE show --color {3}" \
-      --preview-window "right,65%,wrap" \
-      --preview-label " [tab] mark, [enter] run, [alt + e/x/t] on/off/toggle, [alt + enter] edit " \
-      --preview-label-pos "0:bottom" \
-      --multi --track --id-nth 3 \
-      --bind "every(1):reload-sync($RECHECK_FILE ls --color)" \
-      --bind "enter:execute-silent(nohup $RECHECK_FILE run {+3} >/dev/null 2>&1 &)" \
-      --bind "alt-e:execute-silent(nohup $RECHECK_FILE enable {+3} >/dev/null 2>&1 &)+clear-multi" \
-      --bind "alt-x:execute-silent(nohup $RECHECK_FILE disable {+3} >/dev/null 2>&1 &)+clear-multi" \
-      --bind "alt-t:execute-silent(nohup $RECHECK_FILE toggle {3} >/dev/null 2>&1 &)" \
-      --bind "alt-enter:$browse_edit" \
-    || browse_status=$?
-
-  # fzf: 1 is no match, 130 is Esc or Ctrl-C. Closing the browser is no error
-  case "$browse_status" in
-    0 | 1 | 130) return 0 ;;
-    *) _fail 3 -v status "$browse_status" "fzf failed" ;;
-  esac
-}
-
-# ╭───
 # │ Cleanup
 # ╰───
 
@@ -134,6 +66,61 @@ _require_cmd fzf
 guard_fzf_version
 guard_script_file
 [ -t 0 ] || _fail 3 '"browse" needs a terminal'
-browse_checks
 
-exit 0
+set_title "recheck :: browser"
+
+# The editor needs a window of its own, and only the user knows how their
+# terminal opens one. Without RECHECK_TERMINAL, Alt+Enter only writes what
+# is missing into the preview label
+EDIT_ACTION="change-preview-label( [alt + enter] needs RECHECK_TERMINAL, see recheck --help )"
+if [ -n "$TERMINAL_COMMAND" ]; then
+  # The "action:" form runs to the end of the string, so the user's command
+  # may hold parentheses
+  EDIT_ACTION="execute-silent:nohup $TERMINAL_COMMAND $RECHECK_FILE edit {3} >/dev/null 2>&1 &"
+fi
+
+STATUS=0
+# A row is "<dot> [on] <id>", so fzf finds the id as its third field.
+#   --id-nth      tells fzf that a row is the same check when its id is the
+#                 same. With it, --track keeps the cursor on its check and
+#                 --multi keeps the marks when the list reloads. A reload
+#                 still removes the mark of a row the query hides
+#   every(1)      reloads the list each second. fzf ignores a key pressed
+#                 while a reload is in progress, so the reload command must
+#                 be short: no sleep in it. After a reload fzf runs the
+#                 preview again, so the output of a running check grows
+#   reload-sync   swaps the list only when the new one is complete. A plain
+#                 reload loses the marks
+#   {+3}          the ids of the marked rows, or the id under the cursor
+#                 when no row is marked. {3} is always the id under the
+#                 cursor
+#   clear-multi   removes every mark. deselect-all leaves the mark of a
+#                 row the query hides
+#   nohup         lets a run, or an editor window, outlive the window that
+#                 started it
+#   --info        hidden, or the info line shows a spinner and "+T*" for a
+#                 moment at each reload
+#   alt-x         disables, because fzf binds alt-d to kill-word
+#   alt-enter     fzf cannot tell Shift+Enter from Enter
+#   --preview-label   the shortcuts, on the bottom border of the preview. A
+#                 header or a footer is as narrow as the list and cuts them
+"$RECHECK_FILE" ls --color \
+  | fzf --ansi --layout reverse --info hidden \
+    --preview "$RECHECK_FILE show --color {3}" \
+    --preview-window "right,65%,wrap" \
+    --preview-label " [tab] mark, [enter] run, [alt + e/x/t] on/off/toggle, [alt + enter] edit " \
+    --preview-label-pos "0:bottom" \
+    --multi --track --id-nth 3 \
+    --bind "every(1):reload-sync($RECHECK_FILE ls --color)" \
+    --bind "enter:execute-silent(nohup $RECHECK_FILE run {+3} >/dev/null 2>&1 &)" \
+    --bind "alt-e:execute-silent(nohup $RECHECK_FILE enable {+3} >/dev/null 2>&1 &)+clear-multi" \
+    --bind "alt-x:execute-silent(nohup $RECHECK_FILE disable {+3} >/dev/null 2>&1 &)+clear-multi" \
+    --bind "alt-t:execute-silent(nohup $RECHECK_FILE toggle {3} >/dev/null 2>&1 &)" \
+    --bind "alt-enter:$EDIT_ACTION" \
+  || STATUS=$?
+
+# fzf: 1 is no match, 130 is Esc or Ctrl-C. Closing the browser is no error
+case "$STATUS" in
+  0 | 1 | 130) exit 0 ;;
+  *) _fail 3 -v status "$STATUS" "fzf failed" ;;
+esac

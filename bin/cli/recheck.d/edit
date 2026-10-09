@@ -3,53 +3,13 @@
 # recheck edit [id]
 #
 # Start Neovim in the config folder, or on the file of one check. Sync when
-# Neovim closes.
+# Neovim closes. Exit with the status of the sync.
 # recheck runs this file, never call it directly.
 
 set -eu
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/checks.sh"
-
-# ╭───
-# │ Commands
-# ╰───
-
-# edit_checks [id]
-# Start Neovim in the config folder, or on the file of one check. Sync when
-# Neovim closes. Return the status of the sync.
-edit_checks() {
-  mkdir -p -- "$CHECKS_DIR"
-  cd -- "$CONFIG_DIR"
-
-  # What Neovim opens: one file, or the folder with the nvim-tree pane, when
-  # that plugin is there
-  if [ "$#" -eq 1 ]; then
-    edit_file=$(find_check_file "$1")
-    edit_title="recheck :: editor - $1"
-    set -- -- "checks/${edit_file##*/}"
-  else
-    edit_title="recheck :: editor"
-    set -- -c 'silent! NvimTreeFocus'
-  fi
-
-  # Neovim with its 'title' option on renames the window. Hand it the same
-  # title, so the window keeps one name. An id is a slug, safe between quotes
-  set_title "$edit_title"
-  nvim -c "let &titlestring = '$edit_title'" "$@" \
-    || _fail 3 "Neovim ended with an error, not synced"
-
-  # A window opened only for this command closes with it, so wait for Enter
-  # when there is something to read. "sync --wait" waits after it printed the
-  # lines that changed or a warning. When sync fails, it ends before that
-  # wait, so edit waits here. A sync that printed neither returns at once and
-  # the window closes
-  "$RECHECK_FILE" sync --wait || {
-    edit_status=$?
-    wait_for_enter
-    return "$edit_status"
-  }
-}
 
 # ╭───
 # │ Cleanup
@@ -74,6 +34,36 @@ guard_id "$@"
 _require_cmd nvim
 guard_sync
 [ -t 0 ] || _fail 3 '"edit" needs a terminal'
-edit_checks "$@"
+
+mkdir -p -- "$CHECKS_DIR"
+cd -- "$CONFIG_DIR"
+
+# What Neovim opens: one file, or the folder with the nvim-tree pane, when
+# that plugin is there
+if [ "$#" -eq 1 ]; then
+  FILE=$(find_check_file "$1")
+  TITLE="recheck :: editor - $1"
+  set -- -- "checks/${FILE##*/}"
+else
+  TITLE="recheck :: editor"
+  set -- -c 'silent! NvimTreeFocus'
+fi
+
+# Neovim with its 'title' option on renames the window. Hand it the same
+# title, so the window keeps one name. An id is a slug, safe between quotes
+set_title "$TITLE"
+nvim -c "let &titlestring = '$TITLE'" "$@" \
+  || _fail 3 "Neovim ended with an error, not synced"
+
+# A window opened only for this command closes with it, so wait for Enter
+# when there is something to read. "sync --wait" waits after it printed the
+# lines that changed or a warning. When sync fails, it ends before that
+# wait, so edit waits here. A sync that printed neither returns at once and
+# the window closes
+"$RECHECK_FILE" sync --wait || {
+  STATUS=$?
+  wait_for_enter
+  exit "$STATUS"
+}
 
 exit 0

@@ -2,8 +2,11 @@
 
 # recheck sync [--wait]
 #
-# Make every check executable, then rewrite the crontab block from the check
-# files.
+# Make every check executable. Replace the recheck block of the crontab with
+# one line per enabled check that has a valid cron pattern, print what
+# changed, then run the on-update hook. When the block is already the same,
+# write no crontab and run no hook. With --wait, wait for Enter after it
+# printed something to read: the lines that changed, or a warning.
 # recheck runs this file, never call it directly.
 
 set -eu
@@ -34,73 +37,6 @@ read_crontab() {
   printf '%s' "$read_crontab_text"
 }
 
-# sync_crontab [--wait]
-# Make every check executable. Replace the recheck block of the crontab with
-# one line per enabled check that has a valid cron pattern, print what
-# changed, then run the on-update hook. When the block is already the same,
-# write no crontab and run no hook. With --wait, wait for Enter after it
-# printed something to read: the lines that changed, or a warning.
-sync_crontab() {
-  guard_sync
-
-  # Make every file in the checks folder executable, or recheck cannot run
-  # it. A check written in `recheck edit` starts without +x
-  for sync_file in "$CHECKS_DIR"/*; do
-    [ -f "$sync_file" ] || continue
-    [ -x "$sync_file" ] && continue
-
-    chmod a+x -- "$sync_file" \
-      || _fail 3 -v path "$sync_file" "Could not make executable"
-    _info -v path "$sync_file" "Made executable"
-  done
-
-  # A lone assignment fails with the status of read_crontab, and 'set -e'
-  # ends the script with it. The write below must never run on a text that
-  # is not the whole crontab
-  sync_crontab_text=$(read_crontab)
-
-  # Two blocks, or a marker without its pair: stop, the block has no known
-  # bounds. Fixing that by hand is safer than a guess in someone's crontab
-  sync_old_block=$(
-    printf '%s\n' "$sync_crontab_text" \
-      | _find_block "$BLOCK_BEGIN" "$BLOCK_END"
-  ) || _fail 3 -v begin "$BLOCK_BEGIN" -v end "$BLOCK_END" \
-    "The crontab must hold each marker once, the begin marker above the end marker"
-
-  # A check left out is a warning, not a failure. With --wait it must be read
-  sync_wait=""
-  sync_new_block=$(list_cron_lines) || sync_wait="${1:-}"
-
-  if [ "$sync_old_block" = "$sync_new_block" ]; then
-    _info "Crontab unchanged"
-
-    if [ "$sync_wait" = "--wait" ]; then
-      wait_for_enter
-    fi
-
-    return 0
-  fi
-
-  sync_new_text=$(
-    printf '%s\n' "$sync_crontab_text" \
-      | _replace_block "$BLOCK_BEGIN" "$BLOCK_END" "$sync_new_block"
-  ) || _fail 3 "Could not build the new crontab"
-
-  sync_output=$(_end_with_newline "$sync_new_text" | crontab - 2>&1) \
-    || _fail 3 -v error "$sync_output" "Could not write the crontab"
-
-  _diff_lines "$sync_old_block" "$sync_new_block" >&2
-  run_hook "$UPDATE_HOOK_FILE"
-
-  _ok "Crontab updated"
-
-  if [ "${1:-}" = "--wait" ]; then
-    wait_for_enter
-  fi
-
-  return 0
-}
-
 # ╭───
 # │ Main
 # ╰───
@@ -109,6 +45,61 @@ if [ "$#" -gt 1 ] || { [ "$#" -eq 1 ] && [ "$1" != "--wait" ]; }; then
   _fail 2 '"sync" takes only --wait'
 fi
 
-sync_crontab "$@"
+guard_sync
+
+# Make every file in the checks folder executable, or recheck cannot run
+# it. A check written in `recheck edit` starts without +x
+for FILE in "$CHECKS_DIR"/*; do
+  [ -f "$FILE" ] || continue
+  [ -x "$FILE" ] && continue
+
+  chmod a+x -- "$FILE" \
+    || _fail 3 -v path "$FILE" "Could not make executable"
+  _info -v path "$FILE" "Made executable"
+done
+
+# A lone assignment fails with the status of read_crontab, and 'set -e'
+# ends the script with it. The write below must never run on a text that
+# is not the whole crontab
+CRONTAB_TEXT=$(read_crontab)
+
+# Two blocks, or a marker without its pair: stop, the block has no known
+# bounds. Fixing that by hand is safer than a guess in someone's crontab
+OLD_BLOCK=$(
+  printf '%s\n' "$CRONTAB_TEXT" \
+    | _find_block "$BLOCK_BEGIN" "$BLOCK_END"
+) || _fail 3 -v begin "$BLOCK_BEGIN" -v end "$BLOCK_END" \
+  "The crontab must hold each marker once, the begin marker above the end marker"
+
+# A check left out is a warning, not a failure. With --wait it must be read
+WAIT_FLAG=""
+NEW_BLOCK=$(list_cron_lines) || WAIT_FLAG="${1:-}"
+
+if [ "$OLD_BLOCK" = "$NEW_BLOCK" ]; then
+  _info "Crontab unchanged"
+
+  if [ "$WAIT_FLAG" = "--wait" ]; then
+    wait_for_enter
+  fi
+
+  exit 0
+fi
+
+NEW_TEXT=$(
+  printf '%s\n' "$CRONTAB_TEXT" \
+    | _replace_block "$BLOCK_BEGIN" "$BLOCK_END" "$NEW_BLOCK"
+) || _fail 3 "Could not build the new crontab"
+
+OUTPUT=$(_end_with_newline "$NEW_TEXT" | crontab - 2>&1) \
+  || _fail 3 -v error "$OUTPUT" "Could not write the crontab"
+
+_diff_lines "$OLD_BLOCK" "$NEW_BLOCK" >&2
+run_hook "$UPDATE_HOOK_FILE"
+
+_ok "Crontab updated"
+
+if [ "${1:-}" = "--wait" ]; then
+  wait_for_enter
+fi
 
 exit 0

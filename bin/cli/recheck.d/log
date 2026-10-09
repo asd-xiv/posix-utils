@@ -2,7 +2,8 @@
 
 # recheck log
 #
-# Print the last 10 runs, and the log file path to stderr.
+# Print the last 10 lines of the log, one per run, and the log file path to
+# stderr.
 # recheck runs this file, never call it directly.
 
 set -eu
@@ -11,26 +12,15 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/checks.sh"
 
 # ╭───
-# │ Commands
-# ╰───
-
-# show_log
-# Print the last 10 lines of the log, and the log file path to stderr.
-show_log() {
-  _info -v path "$RUN_LOG_FILE" "Log file"
-
-  if [ -f "$RUN_LOG_FILE" ]; then
-    tail -n 10 -- "$RUN_LOG_FILE"
-  fi
-
-  return 0
-}
-
-# ╭───
 # │ Main
 # ╰───
 
 [ "$#" -eq 0 ] || _fail 2 '"log" takes no arguments'
-show_log
+
+_info -v path "$RUN_LOG_FILE" "Log file"
+
+if [ -f "$RUN_LOG_FILE" ]; then
+  tail -n 10 -- "$RUN_LOG_FILE"
+fi
 
 exit 0

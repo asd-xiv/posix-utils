@@ -11,30 +11,18 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/checks.sh"
 
 # ╭───
-# │ Commands
-# ╰───
-
-# toggle_checks <id>...
-# Disable each check that is enabled, enable each that is not.
-toggle_checks() {
-  guard_id "$@"
-
-  for toggle_id in "$@"; do
-    if is_enabled "$toggle_id"; then
-      "$RECHECK_FILE" disable "$toggle_id"
-    else
-      "$RECHECK_FILE" enable "$toggle_id"
-    fi
-  done
-
-  return 0
-}
-
-# ╭───
 # │ Main
 # ╰───
 
 [ "$#" -gt 0 ] || _fail 2 '"toggle" needs at least one id'
-toggle_checks "$@"
+guard_id "$@"
+
+for ID in "$@"; do
+  if is_enabled "$ID"; then
+    "$RECHECK_FILE" disable "$ID"
+  else
+    "$RECHECK_FILE" enable "$ID"
+  fi
+done
 
 exit 0
