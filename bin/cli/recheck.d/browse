@@ -3,6 +3,8 @@
 # recheck browse
 #
 # Open the browser: every check in fzf, with its last run as the preview.
+# Tab marks a check. Enter runs the marked checks, Alt+E enables them and
+# Alt+X disables them.
 # recheck runs this file, never call it directly.
 
 set -eu
@@ -13,14 +15,42 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 TERMINAL_COMMAND="${RECHECK_TERMINAL:-}"
 
 # ╭───
+# │ Primitives
+# ╰───
+
+# guard_fzf_version
+# Exit 3 unless fzf is 0.73.0 or newer. The browser needs --id-nth, new in
+# fzf 0.71.0, and the "every" event, new in fzf 0.73.0.
+guard_fzf_version() {
+  # fzf prints "0.74.4 (a140afeb)", or "0.74" when built without a tag
+  fzf_version=$(fzf --version) || _fail 3 '"fzf --version" failed'
+  fzf_version="${fzf_version%% *}"
+  _is version "$fzf_version" \
+    || _fail 3 -v version "$fzf_version" "Could not read the fzf version"
+
+  fzf_major="${fzf_version%%.*}"
+  fzf_minor="${fzf_version#*.}"
+  fzf_minor="${fzf_minor%%.*}"
+
+  if [ "$fzf_major" -eq 0 ] && [ "$fzf_minor" -lt 73 ]; then
+    _fail 3 -v version "$fzf_version" \
+      "fzf is too old, the browser needs 0.73.0 or newer"
+  fi
+
+  return 0
+}
+
+# ╭───
 # │ Commands
 # ╰───
 
 # browse_checks
 # Open the browser: every check in fzf, with its last run as the preview.
-# Enter runs the check under the cursor again, Alt+Enter edits it in a new
-# window, Esc closes. The list reloads every second, so a run shows as it
-# starts and as it ends, also one that cron started.
+# Tab marks a check. Enter runs the marked checks again, Alt+E enables them
+# and Alt+X disables them. With no check marked, the three act on the check
+# under the cursor. Alt+T toggles the check under the cursor, Alt+Enter edits
+# it in a new window, Esc closes. The list reloads every second, so a run
+# shows as it starts and as it ends, also one that cron started.
 browse_checks() {
   set_title "recheck :: browser"
 
@@ -36,14 +66,26 @@ browse_checks() {
 
   browse_status=0
   # A row is "<dot> [on] <id>", so fzf finds the id as its third field.
-  #   --track       keeps the cursor on its row, which it knows by its text
-  #   reload-sync   swaps the list only when the new one is complete. With a
-  #                 plain reload the list is short for a moment, and Enter
-  #                 can then run the check of another row
+  #   --id-nth      tells fzf that a row is the same check when its id is the
+  #                 same. With it, --track keeps the cursor on its check and
+  #                 --multi keeps the marks when the list reloads. A reload
+  #                 still removes the mark of a row the query hides
+  #   every(1)      reloads the list each second. fzf ignores a key pressed
+  #                 while a reload is in progress, so the reload command must
+  #                 be short: no sleep in it. After a reload fzf runs the
+  #                 preview again, so the output of a running check grows
+  #   reload-sync   swaps the list only when the new one is complete. A plain
+  #                 reload loses the marks
+  #   {+3}          the ids of the marked rows, or the id under the cursor
+  #                 when no row is marked. {3} is always the id under the
+  #                 cursor
+  #   clear-multi   removes every mark. deselect-all leaves the mark of a
+  #                 row the query hides
   #   nohup         lets a run, or an editor window, outlive the window that
   #                 started it
-  #   --info        hidden, or fzf shows its spinner without pause: for fzf a
-  #                 reload is always in progress
+  #   --info        hidden, or the info line shows a spinner and "+T*" for a
+  #                 moment at each reload
+  #   alt-x         disables, because fzf binds alt-d to kill-word
   #   alt-enter     fzf cannot tell Shift+Enter from Enter
   #   --preview-label   the shortcuts, on the bottom border of the preview. A
   #                 header or a footer is as narrow as the list and cuts them
@@ -51,12 +93,14 @@ browse_checks() {
     | fzf --ansi --layout reverse --info hidden \
       --preview "$RECHECK_FILE show --color {3}" \
       --preview-window "right,65%,wrap" \
-      --preview-label " [enter] run, [tab] on/off, [alt + enter] edit, [esc] close " \
+      --preview-label " [tab] mark, [enter] run, [alt + e/x/t] on/off/toggle, [alt + enter] edit " \
       --preview-label-pos "0:bottom" \
-      --track \
-      --bind "enter:execute-silent(nohup $RECHECK_FILE run {3} >/dev/null 2>&1 &)" \
-      --bind "load:reload-sync(sleep 1; $RECHECK_FILE ls --color)+refresh-preview" \
-      --bind "tab:execute-silent(nohup $RECHECK_FILE toggle {3} >/dev/null 2>&1 &)" \
+      --multi --track --id-nth 3 \
+      --bind "every(1):reload-sync($RECHECK_FILE ls --color)" \
+      --bind "enter:execute-silent(nohup $RECHECK_FILE run {+3} >/dev/null 2>&1 &)" \
+      --bind "alt-e:execute-silent(nohup $RECHECK_FILE enable {+3} >/dev/null 2>&1 &)+clear-multi" \
+      --bind "alt-x:execute-silent(nohup $RECHECK_FILE disable {+3} >/dev/null 2>&1 &)+clear-multi" \
+      --bind "alt-t:execute-silent(nohup $RECHECK_FILE toggle {3} >/dev/null 2>&1 &)" \
       --bind "alt-enter:$browse_edit" \
     || browse_status=$?
 
@@ -87,6 +131,7 @@ trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
 
 [ "$#" -eq 0 ] || _fail 2 '"browse" takes no arguments'
 _require_cmd fzf
+guard_fzf_version
 guard_script_file
 [ -t 0 ] || _fail 3 '"browse" needs a terminal'
 browse_checks
