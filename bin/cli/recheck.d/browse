@@ -2,12 +2,13 @@
 
 # recheck browse
 #
-# Open the browser: every check in fzf, with its last run as the preview.
+# Open the browser: every check in fzf, with "show <id>" as the preview.
 # Tab marks a check. Enter runs the marked checks again, Alt+E enables them
 # and Alt+X disables them. With no check marked, the three act on the check
 # under the cursor. Alt+T toggles the check under the cursor, Alt+Enter edits
-# it in a new window, Esc closes. The list reloads every second, so a run
-# shows as it starts and as it ends, also one that cron started.
+# it in a new window and needs RECHECK_TERMINAL. Esc closes the browser. The
+# list reloads every second. It shows each run when it starts and when it ends,
+# also a run that cron started.
 # recheck runs this file, never call it directly.
 
 set -eu
@@ -53,7 +54,7 @@ cleanup() {
 }
 
 trap cleanup EXIT                                    # normal exit
-trap 'cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl-C
+trap 'cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl+C
 trap 'cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout
 trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
 
@@ -64,7 +65,7 @@ trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
 [ "$#" -eq 0 ] || _fail 2 '"browse" takes no arguments'
 _require_cmd fzf
 guard_fzf_version
-guard_script_file
+guard_recheck_file
 [ -t 0 ] || _fail 3 '"browse" needs a terminal'
 
 set_title "recheck :: browser"
@@ -96,12 +97,11 @@ STATUS=0
 #                 cursor
 #   clear-multi   removes every mark. deselect-all leaves the mark of a
 #                 row the query hides
-#   nohup         lets a run, or an editor window, outlive the window that
-#                 started it
+#   nohup         lets a command the browser started outlive the browser window
 #   --info        hidden, or the info line shows a spinner and "+T*" for a
 #                 moment at each reload
 #   alt-x         disables, because fzf binds alt-d to kill-word
-#   alt-enter     fzf cannot tell Shift+Enter from Enter
+#   alt-enter     edits, because fzf cannot tell Shift+Enter from Enter
 #   --preview-label   the shortcuts, on the bottom border of the preview. A
 #                 header or a footer is as narrow as the list and cuts them
 "$RECHECK_FILE" ls --color \
@@ -119,7 +119,7 @@ STATUS=0
     --bind "alt-enter:$EDIT_ACTION" \
   || STATUS=$?
 
-# fzf: 1 is no match, 130 is Esc or Ctrl-C. Closing the browser is no error
+# fzf: 1 is no match, 130 is Esc or Ctrl+C. Closing the browser is no error
 case "$STATUS" in
   0 | 1 | 130) exit 0 ;;
   *) _fail 3 -v status "$STATUS" "fzf failed" ;;

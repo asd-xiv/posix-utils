@@ -65,8 +65,8 @@ record_run() {
       "$(date +%Y-%m-%dT%H:%M:%S%z)" "$record_state" "$2" "$3"
   )
 
-  # The same line twice: "last" is what recheck reads, the log is for a
-  # person to see that the checks ran. Nothing reads the log back
+  # The same line in two files, the log adds the id. recheck reads "last".
+  # The log is for a person: "recheck log" prints it, nothing parses it
   printf '%s\n' "$record_line" >"$record_dir/last"
   printf '%s\t%s\n' "$record_line" "$1" >>"$RUN_LOG_FILE"
 
@@ -124,10 +124,6 @@ run_check() {
   record_run "$1" "$run_status" "$run_seconds"
 }
 
-# ╭───
-# │ Commands
-# ╰───
-
 # run_checks <id>...
 # Run each named check, then run the on-update hook. Skip a disabled check.
 run_checks() {
@@ -163,7 +159,7 @@ cleanup() {
 }
 
 trap cleanup EXIT                                    # normal exit
-trap 'cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl-C
+trap 'cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl+C
 trap 'cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout
 trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
 

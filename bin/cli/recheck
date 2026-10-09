@@ -41,20 +41,19 @@ set -eu
 #     enable    Remove the "_" from the file name, then sync
 #     disable   Put a "_" in front of the file name, then sync
 #     toggle    Disable each check that is enabled, enable each that is not
-#     sync      Make every check executable, then rewrite the crontab block
-#               from the check files. Print the lines that changed. Run it
-#               after a change made outside "recheck edit": a new check, a
-#               rename by hand or a changed cron pattern. With --wait, wait
-#               for Enter after it printed the lines that changed or a
-#               warning
+#     sync      Make every check executable, then rewrite the recheck block of
+#               the crontab from the check files. Print the lines that
+#               changed. Run it after a change made outside "recheck edit": a
+#               new check, a rename by hand or a changed cron pattern
 #     run       Run every enabled check, or only the ones named. Skip a
 #               disabled check and a check that is already running. Print
 #               "<id>", a tab and "<state>" per check. cron calls it. At a
 #               terminal, also print what each check printed, to stderr
 #     status    Print the count of enabled checks per state, then how many
 #               are running now, as "<green> <red> <broken> <running>". A
-#               running check also counts under its last state
-#     log       Print the last 10 runs, and the log file path to stderr
+#               running check also counts under the state of its last run
+#     log       Print the last 10 runs, one line each, and the log file path
+#               to stderr.
 #     show      Print a check as properties between "---" lines, as in
 #               front matter, then the output of its last run, or of the
 #               run in progress
@@ -74,10 +73,11 @@ set -eu
 #   the on-change hook, ~/.config/recheck/on-change <id> <old-state>
 #   <new-state>, if that file is executable.
 #
-#   When a run starts, after run, and after a sync that changed the crontab,
-#   recheck runs the on-update hook, ~/.config/recheck/on-update, if that
-#   file is executable. recheck passes it no arguments. The call means a
-#   check, a state or the running checks may have changed.
+#   When the run of a check starts, when the run command ends, and after a
+#   sync that changed the crontab, recheck runs the on-update hook,
+#   ~/.config/recheck/on-update, if that file is executable. recheck passes it
+#   no arguments. The call means a check, a state or the running checks may
+#   have changed.
 #
 #   cron runs a job without the variables of your login shell. When
 #   ~/.config/recheck/env exists, recheck sources it before each check and
@@ -92,13 +92,14 @@ set -eu
 #   id   Check to act on. Repeatable for enable, disable and run
 #
 # OPTIONS
-#   --cron       With ls, print the crontab line of each enabled check instead
+#   --cron       With ls, print the crontab line of each enabled check with a
+#                valid cron pattern instead
 #   --color      With ls, print for a person: a dot in the color of the state,
 #                on or off, id. Green, red, yellow for broken, gray before
 #                the first run, blue while the check runs.
 #                With show, print the property names in bold
-#   --wait       With sync, wait for Enter after it printed the lines that
-#                changed or a warning
+#   --wait       With sync, wait for Enter after sync printed the lines that
+#                changed, or the warning for a check it left out
 #   -h, --help   Print this help
 #
 # ENVIRONMENT
@@ -121,13 +122,14 @@ set -eu
 #   0   Done. For status, no enabled check is red or broken
 #   1   For status, at least one enabled check is red or broken
 #   2   Invalid usage
-#   3   Could not run, eg. no crontab command or a check without a cron pattern
+#   3   Could not run, eg. no crontab command or a check without a valid cron
+#       pattern
 #
 # SEE ALSO
 #   crontab, recheck-bar, nvim, fzf, awk
 
 # tools/install symlinks this script, so "$0" names the link. realpath follows
-# it to find lib.sh
+# it to find lib.sh and recheck.d
 SCRIPT_FILE=$(realpath "$0")
 SCRIPT_DIR=$(dirname "$SCRIPT_FILE")
 . "$SCRIPT_DIR/../lib.sh"

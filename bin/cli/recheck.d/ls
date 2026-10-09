@@ -3,7 +3,8 @@
 # recheck ls [--cron | --color]
 #
 # Print every check: state, on or off, id, cron pattern. With --cron, print
-# the crontab line of each enabled check. With --color, print for a person.
+# the crontab line of each enabled check with a valid cron pattern. With
+# --color, print for a person.
 # recheck runs this file, never call it directly.
 
 set -eu
@@ -12,7 +13,7 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/checks.sh"
 
 # ╭───
-# │ Commands
+# │ Primitives
 # ╰───
 
 # list_checks
@@ -69,7 +70,7 @@ list_colored_checks() {
 # │ Main
 # ╰───
 
-[ "$#" -le 1 ] || _fail 2 '"ls" takes one of --cron or --color'
+[ "$#" -le 1 ] || _fail 2 '"ls" takes at most one of --cron or --color'
 case "${1:-}" in
   "") list_checks ;;
   # It returns 1 after a warning, which is no failure for a listing

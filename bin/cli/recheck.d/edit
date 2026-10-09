@@ -2,8 +2,9 @@
 
 # recheck edit [id]
 #
-# Start Neovim in the config folder, or on the file of one check. Sync when
-# Neovim closes. Exit with the status of the sync.
+# Start Neovim in the config folder. With an id, open only the file of that
+# check. Sync when Neovim closes without an error, then exit with the status of
+# the sync. Exit 3 when Neovim fails.
 # recheck runs this file, never call it directly.
 
 set -eu
@@ -21,7 +22,7 @@ cleanup() {
 }
 
 trap cleanup EXIT                                    # normal exit
-trap 'cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl-C
+trap 'cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl+C
 trap 'cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout
 trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
 
@@ -55,11 +56,11 @@ set_title "$TITLE"
 nvim -c "let &titlestring = '$TITLE'" "$@" \
   || _fail 3 "Neovim ended with an error, not synced"
 
-# A window opened only for this command closes with it, so wait for Enter
-# when there is something to read. "sync --wait" waits after it printed the
-# lines that changed or a warning. When sync fails, it ends before that
-# wait, so edit waits here. A sync that printed neither returns at once and
-# the window closes
+# A window opened only for this command closes with it, before the user reads
+# what it shows. So wait for Enter when there is something to read. "sync
+# --wait" waits after sync printed the lines that changed, or the warning for a
+# check it left out. When sync fails, it ends before that wait, so edit waits
+# here. A sync that printed neither exits at once and the window closes
 "$RECHECK_FILE" sync --wait || {
   STATUS=$?
   wait_for_enter

@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # The settings and primitives that two or more recheck commands use. Each
-# file in recheck.d sets SCRIPT_DIR, then sources this file.
+# command file sets SCRIPT_DIR, then sources this file.
 
 . "$SCRIPT_DIR/../../lib.sh"
 
@@ -9,7 +9,7 @@
 export LOG_NAMESPACE="recheck"
 export LOG_LEVEL="${LOG_LEVEL:-info}"
 
-# The public command. A file in recheck.d runs another command only through it
+# The public command. A command file runs another command only through it
 RECHECK_FILE=$(realpath "$SCRIPT_DIR/../recheck")
 
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/recheck"
@@ -189,11 +189,11 @@ run_hook() {
   return 0
 }
 
-# guard_script_file
+# guard_recheck_file
 # Exit 3 unless RECHECK_FILE, the path of recheck, is safe to write unquoted.
 # A crontab line and the fzf commands of the browser hold it. cron reads "%"
 # as a newline, and a shell would split or expand most other characters.
-guard_script_file() {
+guard_recheck_file() {
   case "$RECHECK_FILE" in
     *[!A-Za-z0-9_@+=:,./-]*)
       _fail 3 -v path "$RECHECK_FILE" \
@@ -206,11 +206,11 @@ guard_script_file() {
 
 # guard_sync
 # Exit 3 unless a sync can run: the commands it needs are there, and the
-# script path can stand in a crontab line. Called before anything is renamed
-# or edited, so a failure changes nothing.
+# path of recheck can stand in a crontab line. sync, enable, disable and edit
+# call it before they change anything, so a failure changes nothing.
 guard_sync() {
   _require_cmd crontab awk
-  guard_script_file
+  guard_recheck_file
 }
 
 # list_cron_lines
@@ -238,8 +238,8 @@ list_cron_lines() {
 }
 
 # wait_for_enter
-# Stop until the user presses Enter. A window opened only for this command
-# closes with it, and would take what it shows along.
+# Stop until the user presses Enter. A window opened only for the calling
+# command closes with it, before the user reads what it shows.
 wait_for_enter() {
   printf 'Press Enter to close ' >&2
   # shellcheck disable=SC2034 # read needs a name, nobody reads it
