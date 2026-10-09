@@ -3,10 +3,10 @@
 # recheck sync [--wait]
 #
 # Make every check executable. Replace the recheck block of the crontab with
-# one line per enabled check that has a valid cron pattern, print what
-# changed, then run the on-update hook. When the block is already the same,
-# write no crontab and run no hook. With --wait, wait for Enter after it
-# printed something to read: the lines that changed, or a warning.
+# one line per enabled check that has a valid cron pattern, print the lines
+# that changed, then run the on-update hook. When the block is already the
+# same, write no crontab and run no hook. With --wait, wait for Enter after
+# sync printed the lines that changed, or the warning for a check it left out.
 # recheck runs this file, never call it directly.
 
 set -eu
@@ -69,9 +69,10 @@ OLD_BLOCK=$(
   printf '%s\n' "$CRONTAB_TEXT" \
     | _find_block "$BLOCK_BEGIN" "$BLOCK_END"
 ) || _fail 3 -v begin "$BLOCK_BEGIN" -v end "$BLOCK_END" \
-  "The crontab must hold each marker once, the begin marker above the end marker"
+  "The crontab must hold both markers once or neither, the begin marker above the end marker"
 
-# A check left out is a warning, not a failure. With --wait it must be read
+# A check left out is a warning, not a failure. With --wait, sync waits so the
+# user reads it
 WAIT_FLAG=""
 NEW_BLOCK=$(list_cron_lines) || WAIT_FLAG="${1:-}"
 

@@ -3,7 +3,8 @@
 # recheck show [--color] <id>
 #
 # Print a check as properties between "---" lines, as in front matter, then
-# the output of its last run, or of the run in progress.
+# the output of its last run, or of the run in progress. With --color, print
+# the property names in bold.
 # recheck runs this file, never call it directly.
 
 set -eu

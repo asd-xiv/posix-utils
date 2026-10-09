@@ -2,9 +2,9 @@
 
 # recheck status
 #
-# Print the count of enabled checks per state, then how many are running, as
-# "<green> <red> <broken> <running>". A running check also counts under the
-# state of its last run. Exit 1 when a check is red or broken.
+# Print the count of enabled checks per state, then how many are running now,
+# as "<green> <red> <broken> <running>". A running check also counts under the
+# state of its last run. Exit 1 when an enabled check is red or broken.
 # recheck runs this file, never call it directly.
 
 set -eu

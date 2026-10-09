@@ -2,8 +2,7 @@
 
 # recheck log
 #
-# Print the last 10 lines of the log, one per run, and the log file path to
-# stderr.
+# Print the last 10 runs, one line each, and the log file path to stderr.
 # recheck runs this file, never call it directly.
 
 set -eu
