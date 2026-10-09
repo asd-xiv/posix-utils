@@ -7,8 +7,8 @@ set -eu
 #
 # SYNOPSIS
 #   recheck ls [--cron | --color]
-#   recheck enable [id...]
-#   recheck disable [id...]
+#   recheck enable <id>...
+#   recheck disable <id>...
 #   recheck toggle <id>...
 #   recheck sync [--wait]
 #   recheck run [id...]
@@ -38,10 +38,8 @@ set -eu
 #   inside a block that sync keeps equal to the check files.
 #
 #     ls        Print every check: state, on or off, id, cron pattern
-#     enable    Remove the "_" from the file name, then sync. With no id at
-#               a terminal, pick from the disabled checks in fzf
-#     disable   Put a "_" in front of the file name, then sync. With no id
-#               at a terminal, pick from the enabled checks in fzf
+#     enable    Remove the "_" from the file name, then sync
+#     disable   Put a "_" in front of the file name, then sync
 #     toggle    Disable each check that is enabled, enable each that is not
 #     sync      Make every check executable, then rewrite the crontab block
 #               from the check files. Print the lines that changed. Run it
@@ -121,7 +119,6 @@ set -eu
 #   1   For status, at least one enabled check is red or broken
 #   2   Invalid usage
 #   3   Could not run, eg. no crontab command or a check without a cron pattern
-#   4   For enable and disable, nothing to pick or nothing picked in fzf
 #
 # SEE ALSO
 #   crontab, recheck-bar, nvim, fzf, awk

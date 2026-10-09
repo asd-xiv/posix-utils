@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# recheck disable [id...]
+# recheck disable <id>...
 #
 # Put a "_" in front of the file name of each check, then sync.
 # recheck runs this file, never call it directly.
@@ -39,25 +39,6 @@ disable_checks() {
 # ╭───
 # │ Main
 # ╰───
-
-if [ "$#" -eq 0 ] && [ -t 0 ]; then
-  PICKABLE_IDS=$(find_enabled_ids)
-
-  if [ -z "$PICKABLE_IDS" ]; then
-    _warn "Nothing to disable"
-    exit 4
-  fi
-
-  _require_cmd fzf
-
-  # Not written inside 'set --', which ignores the status of a
-  # substitution. A lone assignment fails with the status of pick_ids,
-  # and 'set -e' ends the script with it
-  PICKED_IDS=$(printf '%s\n' "$PICKABLE_IDS" | pick_ids)
-
-  # shellcheck disable=SC2086 # ids are slugs, safe to split
-  set -- $PICKED_IDS
-fi
 
 [ "$#" -gt 0 ] || _fail 2 '"disable" needs at least one id'
 

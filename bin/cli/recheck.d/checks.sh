@@ -63,24 +63,6 @@ find_enabled_ids() {
   done
 }
 
-# pick_ids
-# Read ids from stdin, let the user pick some in fzf, print the picked ones.
-# Exit 4 when the user picks nothing, 3 when fzf fails.
-pick_ids() {
-  pick_status=0
-  fzf --multi || pick_status=$?
-
-  # fzf: 1 is Enter with no match, 130 is Esc or Ctrl-C
-  case "$pick_status" in
-    0) return 0 ;;
-    1 | 130)
-      _warn "Nothing picked"
-      exit 4
-      ;;
-    *) _fail 3 -v status "$pick_status" "fzf failed" ;;
-  esac
-}
-
 # find_check_file <id>
 # Print the file of a check, enabled or disabled. Return 1 when it has none.
 find_check_file() {
