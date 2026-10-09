@@ -59,8 +59,11 @@ set -eu
 #               front matter, then the output of its last run, or of the
 #               run in progress
 #     browse    Open the browser: every check in fzf, with "show <id>" as
-#               the preview. There, Enter runs the check again and Tab
-#               toggles it. Alt+Enter edits it in a new window and needs
+#               the preview. There, Tab marks a check. Enter runs the
+#               marked checks again, Alt+E enables them and Alt+X disables
+#               them. With no check marked, the three act on the check
+#               under the cursor. Alt+T toggles the check under the cursor.
+#               Alt+Enter edits it in a new window and needs
 #               RECHECK_TERMINAL
 #     edit      Start Neovim in ~/.config/recheck, in this terminal. With an
 #               id, open only the file of that check. Sync when Neovim

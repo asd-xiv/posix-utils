@@ -46,8 +46,8 @@ list_colored_checks() {
       *) color_code=90 ;;
     esac
 
-    # Only the color says "running". fzf keeps the cursor on a row by its
-    # text, so the text must not change when a run starts or ends
+    # Only the color says "running". The browser knows a row by its id, which
+    # it reads as the third field, so the id must stay the third field
     if is_running "$color_id"; then
       color_code=34
     fi
