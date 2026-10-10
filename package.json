@@ -24,11 +24,13 @@
   ],
   "files": [
     "/bin",
+    "!/bin/**/*.t",
     "/.sh41/skills/write-posix-sh/SKILL.md"
   ],
   "scripts": {
     "prepare": "git config --local core.hooksPath .githook",
     "lint": "./tools/verify ./bin ./tools",
+    "test": "./tools/test",
     "format": "shfmt --write ./bin ./tools"
   },
   "devDependencies": {
