@@ -1,10 +1,11 @@
 #!/bin/sh
 
-# recheck ls [--cron | --color]
+# recheck ls [--cron | --color | --delimiter <text>]
 #
-# Print every check: state, on or off, id, cron pattern. With --cron, print
-# the crontab line of each enabled check with a valid cron pattern. With
-# --color, print for a person.
+# Print every check: state, on or off, id, cron pattern, last line. With
+# --cron, print the crontab line of each enabled check with a valid cron
+# pattern. With --color, print for a person. With --delimiter, print <text>
+# between the columns instead of a tab.
 # recheck runs this file, never call it directly.
 
 set -eu
@@ -12,12 +13,36 @@ set -eu
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/checks.sh"
 
+DELIMITER="$TAB" # --delimiter, the text between the columns of list_checks
+MODE=""          # --cron or --color, "" for the plain list
+HAS_DELIMITER="" # "true" once the caller passes --delimiter
+
 # ╭───
 # │ Primitives
 # ╰───
 
+# find_last_line <id>
+# From the output of a check, print the last line that holds more than spaces
+# and tabs, with each tab as a space. Print "-" when the check has no output
+# file or the file has no such line.
+find_last_line() {
+  last_file="$STATE_DIR/$1/output"
+
+  if [ ! -f "$last_file" ]; then
+    printf '%s' "-"
+    return 0
+  fi
+
+  awk '
+    /[^ \t]/ { line = $0 }
+    END {
+      gsub(/\t/, " ", line)
+      printf "%s", (line == "" ? "-" : line)
+    }' "$last_file"
+}
+
 # list_checks
-# Print every check: state, on or off, id, cron pattern.
+# Print every check: state, on or off, id, cron pattern, last line.
 list_checks() {
   for list_id in $(find_ids); do
     list_pattern=$(find_cron_pattern "$list_id") || list_pattern="-"
@@ -27,8 +52,12 @@ list_checks() {
       list_switch="on"
     fi
 
-    printf '%s\t%s\t%s\t%s\n' \
-      "$(find_state "$list_id")" "$list_switch" "$list_id" "$list_pattern"
+    # The delimiter and the last line go in as arguments, so printf never reads
+    # them as a format
+    printf '%s%s%s%s%s%s%s%s%s\n' \
+      "$(find_state "$list_id")" "$DELIMITER" "$list_switch" "$DELIMITER" \
+      "$list_id" "$DELIMITER" "$list_pattern" "$DELIMITER" \
+      "$(find_last_line "$list_id")"
   done
 
   return 0
@@ -48,7 +77,7 @@ list_colored_checks() {
     esac
 
     # Only the color says "running". The browser knows a row by its id, which
-    # it reads as the third field, so the id must stay the third field
+    # it reads as the third column, so the id must stay the third column
     if is_running "$color_id"; then
       color_code=34
     fi
@@ -70,13 +99,41 @@ list_colored_checks() {
 # │ Main
 # ╰───
 
-[ "$#" -le 1 ] || _fail 2 '"ls" takes at most one of --cron or --color'
-case "${1:-}" in
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --cron | --color)
+      [ -z "$MODE" ] || _fail 2 '"ls" takes at most one of --cron or --color'
+      MODE="${1#--}"
+      shift
+      ;;
+    --delimiter)
+      [ "$#" -ge 2 ] || _fail 2 "--delimiter needs a text"
+      DELIMITER="$2"
+      HAS_DELIMITER="true"
+      shift 2
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
+    *) break ;;
+  esac
+done
+
+[ "$#" -eq 0 ] || _fail 2 -v argument "$1" '"ls" takes only flags'
+
+# --cron prints crontab lines. The browser reads the id from each --color row.
+# Neither format takes a delimiter
+if [ -n "$HAS_DELIMITER" ] && [ -n "$MODE" ]; then
+  _fail 2 '"ls" takes --delimiter only without --cron or --color'
+fi
+
+case "$MODE" in
   "") list_checks ;;
-  # It returns 1 after a warning, which is no failure for a listing
-  --cron) list_cron_lines || true ;;
-  --color) list_colored_checks ;;
-  *) _fail 2 -v argument "$1" '"ls" takes only --cron or --color' ;;
+  # list_cron_lines returns 1 after a warning, which is no failure for ls
+  cron) list_cron_lines || true ;;
+  color) list_colored_checks ;;
 esac
 
 exit 0

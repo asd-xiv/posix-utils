@@ -71,6 +71,14 @@ add_check() {
   chmod +x "config/recheck/checks/$1"
 }
 
+# add_output <id> <printf-format>
+# Write the output file of a check, as a run would, without running it.
+add_output() {
+  mkdir -p "state/recheck/$1"
+  # shellcheck disable=SC2059 # the format is the argument
+  printf "$2" >"state/recheck/$1/output"
+}
+
 # add_hook
 # Write an on-update hook that appends a line to hook.log in the current
 # folder.
