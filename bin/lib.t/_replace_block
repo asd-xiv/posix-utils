@@ -1,0 +1,62 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../lib.sh"
+
+_describe "lib.sh :: _replace_block"
+
+# Every test of this group starts from the same text
+before_each() { printf 'top\n# start\nold\n# end\nbottom\n' >input; }
+
+_test 'given [a block and two new lines] should [put them between the markers]'
+prepare() { cat input; }
+actual() { _replace_block '# start' '# end' 'new 1
+new 2'; }
+_expect eq actual.exit 0
+_expect eq actual.stdout 'top
+# start
+new 1
+new 2
+# end
+bottom'
+
+_test 'given [no new lines] should [drop the block and its markers]'
+prepare() { cat input; }
+actual() { _replace_block '# start' '# end' ''; }
+_expect eq actual.exit 0
+_expect eq actual.stdout 'top
+bottom'
+
+_test 'given [a new line that is the end marker] should [print nothing and return 2]'
+prepare() { cat input; }
+actual() { _replace_block '# start' '# end' '# end'; }
+_expect eq actual.exit 2
+_expect eq actual.stdout ''
+
+_test 'given [a new line that is the begin marker] should [print nothing and return 2]'
+prepare() { cat input; }
+actual() { _replace_block '# start' '# end' '# start'; }
+_expect eq actual.exit 2
+_expect eq actual.stdout ''
+
+_test 'given [markers that are not valid] should [print nothing and return 1]'
+prepare() {
+  cat input
+  printf '# start\n'
+}
+actual() { _replace_block '# start' '# end' new; }
+_expect eq actual.exit 1
+_expect eq actual.stdout ''
+
+_describe "lib.sh :: _replace_block :: a text with no block"
+
+_test 'given [a text with no markers] should [add the block and its markers at the end]'
+prepare() { printf 'keep\n'; }
+actual() { _replace_block '# start' '# end' new; }
+_expect eq actual.exit 0
+_expect eq actual.stdout 'keep
+# start
+new
+# end'

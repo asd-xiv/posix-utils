@@ -1,0 +1,44 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../lib.sh"
+
+_describe "lib.sh :: _has_valid_markers"
+
+_test 'given [a text with neither marker] should [return 0]'
+prepare() { printf 'top\nbottom\n'; }
+actual() { _has_valid_markers '# start' '# end' "$(cat)"; }
+_expect eq actual.exit 0
+
+_test 'given [each marker once, begin above end] should [return 0]'
+prepare() { printf 'top\n# start\nold\n# end\nbottom\n'; }
+actual() { _has_valid_markers '# start' '# end' "$(cat)"; }
+_expect eq actual.exit 0
+
+_test 'given [a marker twice] should [return 1]'
+prepare() { printf '# start\nold\n# start\n# end\n'; }
+actual() { _has_valid_markers '# start' '# end' "$(cat)"; }
+_expect eq actual.exit 1
+
+_test 'given [a marker alone] should [return 1]'
+prepare() { printf 'top\n# start\nold\n'; }
+actual() { _has_valid_markers '# start' '# end' "$(cat)"; }
+_expect eq actual.exit 1
+
+_test 'given [the end marker above the begin marker] should [return 1]'
+prepare() { printf '# end\nold\n# start\n'; }
+actual() { _has_valid_markers '# start' '# end' "$(cat)"; }
+_expect eq actual.exit 1
+
+_test 'given [an empty marker] should [exit 3]'
+prepare() { printf 'top\n'; }
+actual() { _has_valid_markers '' '# end' "$(cat)"; }
+_expect eq actual.exit 3
+
+_test 'given [a marker that holds a newline] should [exit 3]'
+prepare() { printf 'top\n'; }
+actual() { _has_valid_markers '# start
+# more' '# end' "$(cat)"; }
+_expect eq actual.exit 3
