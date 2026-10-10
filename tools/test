@@ -1,0 +1,165 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   test - Run the test files under each installed shell
+#
+# SYNOPSIS
+#   test [-h] [file...]
+#
+# DESCRIPTION
+#   Runs each test file under dash, BusyBox sh and bash, the ones installed,
+#   in a row. Prints one line per file and shell: the verdict,
+#   the shell, the file, and the counts of ok, not ok and skipped tests. A
+#   file that skips itself as a whole has the verdict SKIP and a skipped
+#   count of 1. Prints the full TAP output of a failed run.
+#
+#   With no file, it runs every test file: an executable file in a folder under
+#   bin whose name ends in .t. A test file sources tools/test-lib.sh itself,
+#   so a shell runs one alone: dash bin/lib.t/_replace_block.
+#
+# ARGUMENTS
+#   file   Test file to run, repeatable
+#
+# OPTIONS
+#   -h, --help    Print this help
+#
+# EXAMPLE
+#   test
+#   test bin/lib.t/_replace_block
+#
+# EXIT CODES
+#   0   Every run passed or was skipped
+#   1   At least one run failed
+#   2   Invalid usage
+#   3   Could not run, eg. no shell installed
+#
+# SEE ALSO
+#   dash, busybox, bash
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../bin/lib.sh"
+
+# _log reads it
+export LOG_NAMESPACE="test"
+
+ROOT_DIR=$(dirname "$SCRIPT_DIR")
+OUT_FILE="" # the TAP output of the run in progress, removed on exit
+HAS_FAILED=""
+
+# ╭───
+# │ Cleanup
+# ╰───
+
+# shellcheck disable=SC2329 # called by trap
+cleanup() {
+  [ -z "$OUT_FILE" ] || rm -f -- "$OUT_FILE"
+}
+
+trap cleanup EXIT                                    # normal exit
+trap 'cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl-C
+trap 'cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout, CI cancel
+trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
+
+# ╭───
+# │ Primitives
+# ╰───
+
+# count_lines <pattern>
+# Print how many lines of OUT_FILE match <pattern>.
+count_lines() {
+  grep -c -e "$1" "$OUT_FILE" || true
+}
+
+# run_file <shell> <file>
+# Run one test file under one shell, print its summary line. Print the TAP of
+# a failed run. Set HAS_FAILED when it failed.
+run_file() {
+  run_status=0
+  case "$1" in
+    busybox)
+      busybox sh "$2" >"$OUT_FILE" 2>&1 \
+        || run_status=$?
+      ;;
+    *)
+      "$1" "$2" >"$OUT_FILE" 2>&1 \
+        || run_status=$?
+      ;;
+  esac
+
+  run_ok=$(count_lines '^ok ')
+  run_failed=$(count_lines '^not ok ')
+  run_skipped=$(count_lines '^1\.\.0 # SKIP')
+
+  run_verdict="PASS"
+  if [ "$run_status" -ne 0 ] || [ "$run_failed" -ne 0 ]; then
+    run_verdict="FAIL"
+    HAS_FAILED="true"
+  elif [ "$run_skipped" -ne 0 ]; then
+    run_verdict="SKIP"
+  fi
+
+  printf '%s  %-7s %-34s ok %s, not ok %s, skipped %s\n' \
+    "$run_verdict" "$1" "${2#"$ROOT_DIR"/}" "$run_ok" "$run_failed" \
+    "$run_skipped"
+
+  if [ "$run_verdict" = "FAIL" ]; then
+    sed 's/^/    /' "$OUT_FILE"
+  fi
+}
+
+# ╭───
+# │ Bootstrap
+# ╰───
+
+case "${1:-}" in
+  -h | --help)
+    _show_help "$0"
+    exit 0
+    ;;
+  --) shift ;;
+  -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
+esac
+
+_require_cmd mktemp grep sed find sort
+
+for FILE in "$@"; do
+  [ -f "$FILE" ] || _fail 2 -v file "$FILE" "Not a file"
+done
+
+OUT_FILE=$(mktemp "${TMPDIR:-/tmp}/test.XXXXXX") \
+  || _fail 3 "Could not create a temporary file"
+
+# ╭───
+# │ Main
+# ╰───
+
+if [ "$#" -eq 0 ]; then
+  FILES=$(find "$ROOT_DIR/bin" -path '*.t/*' -type f -perm -100 | sort)
+else
+  FILES=$(printf '%s\n' "$@")
+fi
+
+HAS_RUN=""
+
+# A heredoc, not a pipe, so HAS_FAILED survives the loop. read splits on
+# newlines only, a file name with spaces does not trip it
+for SHELL_NAME in dash busybox bash; do
+  command -v "$SHELL_NAME" >/dev/null 2>&1 || continue
+  HAS_RUN="true"
+
+  while IFS= read -r FILE; do
+    [ -n "$FILE" ] || continue
+    run_file "$SHELL_NAME" "$FILE"
+  done <<EOF
+$FILES
+EOF
+done
+
+[ -n "$HAS_RUN" ] || _fail 3 "No shell found: dash, busybox or bash"
+
+if [ -n "$HAS_FAILED" ]; then
+  exit 1
+fi
+exit 0
