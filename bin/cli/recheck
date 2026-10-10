@@ -6,7 +6,7 @@ set -eu
 #   recheck - A terminal UI for cron: run checks, keep the last state of each
 #
 # SYNOPSIS
-#   recheck ls [--cron | --color | --delimiter <text>]
+#   recheck ls [--cron | --color | [--columns <names>] [--delimiter <text>]]
 #   recheck enable <id>...
 #   recheck disable <id>...
 #   recheck toggle <id>...
@@ -41,7 +41,8 @@ set -eu
 #   inside a block that sync keeps equal to the check files.
 #
 #     ls        Print every check: state, on or off, id, cron pattern, and
-#               the last non-empty line of its output
+#               the last non-empty line of its output. With --columns, print
+#               only the named columns
 #     enable    Remove the "_" from the file name, then sync
 #     disable   Put a "_" in front of the file name, then sync
 #     toggle    Disable each check that is enabled, enable each that is not
@@ -102,6 +103,13 @@ set -eu
 #                on or off, id. Green, red, yellow for broken, gray before
 #                the first run, blue while the check runs.
 #                With show, print the property names in bold
+#   --columns <names>
+#                With ls, print only the named columns, in the order of
+#                <names>. <names> holds column names with a comma between
+#                them. The names are state, switch (on or off), id, pattern
+#                (the cron pattern) and last-line (the last non-empty line of
+#                the output). Default: all five, in that order. Not with
+#                --cron or --color
 #   --delimiter <text>
 #                With ls, print <text> between the columns instead of a tab.
 #                Not with --cron or --color

@@ -55,3 +55,26 @@ _test 'given [--delimiter with --color] should [exit 2]'
 prepare() { add_check a 0; }
 actual() { "$RECHECK" ls --color --delimiter ,; }
 _expect equal actual.exit 2
+
+_test 'given [--columns last-line,id] should [print those two columns in that order]'
+prepare() {
+  add_check a 0
+  add_output a 'x\n'
+}
+actual() { "$RECHECK" ls --columns last-line,id; }
+_expect equal actual.stdout 'x	a'
+
+_test 'given [--columns with a name that is not a column] should [exit 2]'
+prepare() { add_check a 0; }
+actual() { "$RECHECK" ls --columns state,color; }
+_expect equal actual.exit 2
+
+_test 'given [--columns with no names] should [exit 2]'
+prepare() { add_check a 0; }
+actual() { "$RECHECK" ls --columns; }
+_expect equal actual.exit 2
+
+_test 'given [--columns with --cron] should [exit 2]'
+prepare() { add_check a 0; }
+actual() { "$RECHECK" ls --cron --columns id; }
+_expect equal actual.exit 2
