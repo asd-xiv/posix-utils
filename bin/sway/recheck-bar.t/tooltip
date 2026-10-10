@@ -1,0 +1,36 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../../cli/recheck.t/sandbox.sh"
+
+# recheck-bar finds recheck itself, so the RECHECK of sandbox.sh stays unused
+RECHECK_BAR="$SCRIPT_DIR/../recheck-bar"
+
+_describe "recheck-bar :: tooltip"
+
+before_each() { build_sandbox; }
+
+_test 'given [a last line with quotes, "&", "<" and a backslash] should [print one JSON line with the tooltip escaped for JSON and for markup]'
+prepare() {
+  add_check a 0
+  add_output a 'say "hi" & <b> \\ it\n'
+}
+actual() { "$RECHECK_BAR"; }
+_expect equal actual.stdout '{"text":"✓ 0 ✗ 0","tooltip":"- | on | a | * * * * * | say &quot;hi&quot; &amp; &lt;b&gt; \\ it","class":"green"}'
+
+_test 'given [two checks] should [join their lines with \n in the tooltip]'
+prepare() {
+  add_check a 0
+  add_check b 0
+  add_output a 'one\n'
+  add_output b 'two\n'
+}
+actual() { "$RECHECK_BAR"; }
+_expect equal actual.stdout '{"text":"✓ 0 ✗ 0","tooltip":"- | on | a | * * * * * | one\n- | on | b | * * * * * | two","class":"green"}'
+
+_test 'given [no check] should [print empty text, tooltip and class]'
+prepare() { :; }
+actual() { "$RECHECK_BAR"; }
+_expect equal actual.stdout '{"text":"","tooltip":"","class":""}'

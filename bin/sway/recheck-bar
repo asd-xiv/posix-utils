@@ -15,7 +15,9 @@ set -eu
 #     text      Green and red counts, eg. "✓ 2 ✗ 1". Adds "? 1" for broken
 #               checks and "⟳ 1" while a check runs. Empty when recheck has
 #               no check, enabled or disabled, so waybar hides the module
-#     tooltip   What "recheck ls" prints, with " | " between the columns
+#     tooltip   What "recheck ls" prints, with " | " between the columns. The
+#               last line of the output of each check is part of it. recheck-bar
+#               escapes the tooltip for JSON and for markup
 #     class     red when a check is red, else broken when a check is broken,
 #               else green. Empty when recheck has no check
 #
@@ -48,7 +50,7 @@ set -eu
 #   3   Could not run, eg. recheck failed
 #
 # SEE ALSO
-#   recheck, awk, waybar-custom(5)
+#   recheck, jq, waybar-custom(5)
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../lib.sh"
@@ -71,7 +73,7 @@ case "${1:-}" in
   *) _fail 2 -v argument "$1" "recheck-bar takes only --help" ;;
 esac
 
-_require_cmd awk
+_require_cmd jq
 
 # ╭───
 # │ Main
@@ -91,15 +93,7 @@ set -- $COUNTS
 [ "$#" -eq 4 ] || _fail 3 -v got "$COUNTS" "recheck status did not print four counts"
 GREEN_COUNT="$1" RED_COUNT="$2" BROKEN_COUNT="$3" RUNNING_COUNT="$4"
 
-# ls prints slugs, cron patterns and fixed words. Only its tabs and newlines
-# would break the JSON
-CHECKS=$("$RECHECK_FILE" ls) || _fail 3 "recheck ls failed"
-TOOLTIP=$(printf '%s' "$CHECKS" | awk '
-  {
-    gsub(/\t/, " | ")
-    printf "%s%s", separator, $0
-    separator = "\\n"
-  }')
+TOOLTIP=$("$RECHECK_FILE" ls --delimiter ' | ') || _fail 3 "recheck ls failed"
 
 TEXT=""
 CLASS=""
@@ -121,7 +115,10 @@ if [ -n "$TOOLTIP" ]; then
   fi
 fi
 
-printf '{"text":"%s","tooltip":"%s","class":"%s"}\n' \
-  "$TEXT" "$TOOLTIP" "$CLASS"
+# The last line of the output of a check is free text. jq escapes it for the
+# JSON, and @html escapes it for the markup of the tooltip
+jq --null-input --compact-output \
+  --arg text "$TEXT" --arg tooltip "$TOOLTIP" --arg class "$CLASS" \
+  '{text: $text, tooltip: ($tooltip | @html), class: $class}'
 
 exit 0
