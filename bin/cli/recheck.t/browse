@@ -21,4 +21,4 @@ actual() {
   "$RECHECK" ls
 }
 _expect equal actual.exit 0
-_expect equal actual.stdout "$(printf '%s\toff\t%s\t* * * * *\n' - a - b)"
+_expect equal actual.stdout "$(printf '%s\toff\t%s\t* * * * *\t-\n' - a - b)"

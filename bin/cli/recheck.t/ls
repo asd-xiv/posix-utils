@@ -1,0 +1,57 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/sandbox.sh"
+
+_describe "recheck :: ls"
+
+before_each() { build_sandbox; }
+
+_test 'given [an output of several lines] should [print the last one in column 5]'
+prepare() {
+  add_check a 0
+  add_output a 'first\nsecond\n9.39.2\n'
+}
+actual() { "$RECHECK" ls | cut -f 5; }
+_expect equal actual.stdout '9.39.2'
+
+_test 'given [an output that ends with empty lines and a line of spaces] should [print the last line above them]'
+prepare() {
+  add_check a 0
+  add_output a 'first\nlast\n\n  \n\n'
+}
+actual() { "$RECHECK" ls | cut -f 5; }
+_expect equal actual.stdout 'last'
+
+_test 'given [a check that never ran] should [print "-" in column 5]'
+prepare() { add_check a 0; }
+actual() { "$RECHECK" ls | cut -f 5; }
+_expect equal actual.stdout '-'
+
+_test 'given [a last line with a tab] should [print the tab as a space, keep five columns]'
+prepare() {
+  add_check a 0
+  add_output a 'x\ty\n'
+}
+actual() { "$RECHECK" ls | awk -F '\t' '{ print NF ":" $5 }'; }
+_expect equal actual.stdout '5:x y'
+
+_test 'given [--delimiter " | "] should [print the five columns with it between them]'
+prepare() {
+  add_check a 0
+  add_output a 'x\n'
+}
+actual() { "$RECHECK" ls --delimiter ' | '; }
+_expect equal actual.stdout '- | on | a | * * * * * | x'
+
+_test 'given [--delimiter with no text] should [exit 2]'
+prepare() { add_check a 0; }
+actual() { "$RECHECK" ls --delimiter; }
+_expect equal actual.exit 2
+
+_test 'given [--delimiter with --color] should [exit 2]'
+prepare() { add_check a 0; }
+actual() { "$RECHECK" ls --color --delimiter ,; }
+_expect equal actual.exit 2

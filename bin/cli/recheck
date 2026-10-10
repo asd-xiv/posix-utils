@@ -6,7 +6,7 @@ set -eu
 #   recheck - A terminal UI for cron: run checks, keep the last state of each
 #
 # SYNOPSIS
-#   recheck ls [--cron | --color]
+#   recheck ls [--cron | --color | --delimiter <text>]
 #   recheck enable <id>...
 #   recheck disable <id>...
 #   recheck toggle <id>...
@@ -30,6 +30,9 @@ set -eu
 #     other   broken, the check could not answer. recheck keeps the last
 #             green or red, to compare with the next run
 #
+#   ls prints the last non-empty line of the output of each check. End a check
+#   with the line ls should print. ls prints a tab in it as a space.
+#
 #   A check holds its cron pattern, five fields, in a comment line:
 #
 #     # CRON: 0 * * * *
@@ -37,7 +40,8 @@ set -eu
 #   The crontab holds one line per enabled check with a valid cron pattern,
 #   inside a block that sync keeps equal to the check files.
 #
-#     ls        Print every check: state, on or off, id, cron pattern
+#     ls        Print every check: state, on or off, id, cron pattern, and
+#               the last non-empty line of its output
 #     enable    Remove the "_" from the file name, then sync
 #     disable   Put a "_" in front of the file name, then sync
 #     toggle    Disable each check that is enabled, enable each that is not
@@ -98,6 +102,9 @@ set -eu
 #                on or off, id. Green, red, yellow for broken, gray before
 #                the first run, blue while the check runs.
 #                With show, print the property names in bold
+#   --delimiter <text>
+#                With ls, print <text> between the columns instead of a tab.
+#                Not with --cron or --color
 #   --wait       With sync, wait for Enter after sync printed the lines that
 #                changed, or the warning for a check it left out
 #   -h, --help   Print this help
