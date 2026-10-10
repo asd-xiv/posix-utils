@@ -15,9 +15,9 @@ set -eu
 #     text      Green and red counts, eg. "✓ 2 ✗ 1". Adds "? 1" for broken
 #               checks and "⟳ 1" while a check runs. Empty when recheck has
 #               no check, enabled or disabled, so waybar hides the module
-#     tooltip   What "recheck ls" prints, with " | " between the columns. The
-#               last line of the output of each check is part of it. recheck-bar
-#               escapes the tooltip for JSON and for markup
+#     tooltip   Per check, its state, its id and the last line of its output,
+#               with " | " between them. recheck-bar escapes the tooltip for
+#               JSON and for markup
 #     class     red when a check is red, else broken when a check is broken,
 #               else green. Empty when recheck has no check
 #
@@ -93,7 +93,8 @@ set -- $COUNTS
 [ "$#" -eq 4 ] || _fail 3 -v got "$COUNTS" "recheck status did not print four counts"
 GREEN_COUNT="$1" RED_COUNT="$2" BROKEN_COUNT="$3" RUNNING_COUNT="$4"
 
-TOOLTIP=$("$RECHECK_FILE" ls --delimiter ' | ') || _fail 3 "recheck ls failed"
+TOOLTIP=$("$RECHECK_FILE" ls --columns state,id,last-line \
+  --delimiter ' | ') || _fail 3 "recheck ls failed"
 
 TEXT=""
 CLASS=""
