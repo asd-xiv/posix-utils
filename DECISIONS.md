@@ -1,5 +1,47 @@
 # Decisions
 
+## Tests use a home-made harness, POSIX sh only
+
+**2026-10-10**
+
+- `tools/test-lib.sh` is the harness, `tools/test` is the runner
+- The package colocates a test file with the code it proves, one per function
+  or command: `bin/lib.t/<function>`, `bin/cli/recheck.t/<command>`
+- A test file sources the harness and runs alone:
+  `dash bin/lib.t/_replace_block`
+- A test defines `actual`, and `prepare` when it needs one. The harness keeps
+  the exit code, stdout and stderr of each as a file
+- A test states what it expects with `_expect [!] <verb> <file> <value>` and
+  nothing else. The verbs are `equal`, `contain`, `start-with` and `end-with`
+- `_send_keys` runs a command in a pseudo-terminal, through `busybox script`
+- The runner runs every test file under dash, BusyBox and bash
+
+**Rejected:**
+
+- bats-core: needs bash
+- ShellSpec: last release in January 2021
+- Python for the pseudo-terminal: a second language
+
+**Left for later:**
+
+- `_expect` fails on a missing file, negated or not. No verb passes on one
+  - **Revisit when** a test must prove that a file is absent
+- The tests run on the host, not in a container
+  - A file in `recheck.d` runs under the `/bin/sh` of the host, whatever shell
+    runs the test file
+  - The tests passed in a bubblewrap container with dash as `/bin/sh`.
+    bubblewrap starts in 4 ms, `docker run` in 384 ms
+  - **Revisit when** a file in `recheck.d` must run under a shell that is not
+    the `/bin/sh` of the host
+- The `recheck` tests skip themselves under BusyBox
+  - They put a fake `crontab` first on `PATH`. BusyBox runs its own `crontab`
+    applet instead
+  - Nobody tried BusyBox in the bubblewrap container
+  - **Revisit when** a `recheck` command must pass under BusyBox
+- The `browse` test sends its keys after fixed waits, so it can fail on a slow
+  machine
+  - **Revisit when** it fails with no change to the code
+
 ## Install records a receipt, it does not roll back
 
 **2026-09-16**
