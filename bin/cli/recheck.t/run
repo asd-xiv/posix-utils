@@ -1,0 +1,54 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/sandbox.sh"
+
+_describe "recheck :: run"
+
+before_each() { build_sandbox; }
+
+# One rule, the exit code of a check is its state. The three states are the
+# three rows of one table, so one run holds all three
+_test 'given [checks that exit 0, 1 and 7] should [print green, red and broken, exit 0]'
+prepare() {
+  add_check good 0
+  add_check bad 1
+  add_check odd 7
+}
+actual() { "$RECHECK" run good bad odd; }
+_expect eq actual.exit 0
+_expect eq actual.stdout "$(printf 'good\tgreen\nbad\tred\nodd\tbroken')"
+
+_test 'given [an id with no check] should [print nothing and exit 2]'
+prepare() { add_check good 0; }
+actual() { "$RECHECK" run missing; }
+_expect eq actual.exit 2
+_expect eq actual.stdout ''
+
+_test 'given [a named disabled check] should [skip it and print nothing]'
+prepare() {
+  add_check off 1
+  mv config/recheck/checks/off config/recheck/checks/_off
+}
+actual() { "$RECHECK" run off; }
+_expect eq actual.exit 0
+_expect eq actual.stdout ''
+
+_test 'given [no id and two enabled checks] should [run both]'
+prepare() {
+  add_check a 0
+  add_check b 1
+}
+actual() { "$RECHECK" run | cut -f 1; }
+_expect eq actual.stdout "$(printf 'a\nb')"
+
+_test 'given [an on-update hook] should [run it]'
+prepare() {
+  add_check good 0
+  add_hook
+}
+actual() { "$RECHECK" run good; }
+_expect eq actual.exit 0
+_expect neq hook.log ''
