@@ -18,7 +18,7 @@ prepare() {
   add_output a 'say "hi" & <b> \\ it\n'
 }
 actual() { "$RECHECK_BAR"; }
-_expect equal actual.stdout '{"text":"✓ 0 ✗ 0","tooltip":"- | on | a | * * * * * | say &quot;hi&quot; &amp; &lt;b&gt; \\ it","class":"green"}'
+_expect equal actual.stdout '{"text":"✓ 0 ✗ 0","tooltip":"- | a | say &quot;hi&quot; &amp; &lt;b&gt; \\ it","class":"green"}'
 
 _test 'given [two checks] should [join their lines with \n in the tooltip]'
 prepare() {
@@ -28,7 +28,7 @@ prepare() {
   add_output b 'two\n'
 }
 actual() { "$RECHECK_BAR"; }
-_expect equal actual.stdout '{"text":"✓ 0 ✗ 0","tooltip":"- | on | a | * * * * * | one\n- | on | b | * * * * * | two","class":"green"}'
+_expect equal actual.stdout '{"text":"✓ 0 ✗ 0","tooltip":"- | a | one\n- | b | two","class":"green"}'
 
 _test 'given [no check] should [print empty text, tooltip and class]'
 prepare() { :; }
