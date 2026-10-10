@@ -18,14 +18,14 @@ prepare() {
   add_check odd 7
 }
 actual() { "$RECHECK" run good bad odd; }
-_expect eq actual.exit 0
-_expect eq actual.stdout "$(printf 'good\tgreen\nbad\tred\nodd\tbroken')"
+_expect equal actual.exit 0
+_expect equal actual.stdout "$(printf 'good\tgreen\nbad\tred\nodd\tbroken')"
 
 _test 'given [an id with no check] should [print nothing and exit 2]'
 prepare() { add_check good 0; }
 actual() { "$RECHECK" run missing; }
-_expect eq actual.exit 2
-_expect eq actual.stdout ''
+_expect equal actual.exit 2
+_expect equal actual.stdout ''
 
 _test 'given [a named disabled check] should [skip it and print nothing]'
 prepare() {
@@ -33,8 +33,8 @@ prepare() {
   mv config/recheck/checks/off config/recheck/checks/_off
 }
 actual() { "$RECHECK" run off; }
-_expect eq actual.exit 0
-_expect eq actual.stdout ''
+_expect equal actual.exit 0
+_expect equal actual.stdout ''
 
 _test 'given [no id and two enabled checks] should [run both]'
 prepare() {
@@ -42,7 +42,7 @@ prepare() {
   add_check b 1
 }
 actual() { "$RECHECK" run | cut -f 1; }
-_expect eq actual.stdout "$(printf 'a\nb')"
+_expect equal actual.stdout "$(printf 'a\nb')"
 
 _test 'given [an on-update hook] should [run it]'
 prepare() {
@@ -50,5 +50,5 @@ prepare() {
   add_hook
 }
 actual() { "$RECHECK" run good; }
-_expect eq actual.exit 0
-_expect neq hook.log ''
+_expect equal actual.exit 0
+_expect ! equal hook.log ''

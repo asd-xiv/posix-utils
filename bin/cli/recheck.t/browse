@@ -20,5 +20,5 @@ actual() {
   _send_keys "$RECHECK browse" 1 tab 0.3 tab 0.3 alt-x 1.5 esc
   "$RECHECK" ls
 }
-_expect eq actual.exit 0
-_expect eq actual.stdout "$(printf '%s\toff\t%s\t* * * * *\n' - a - b)"
+_expect equal actual.exit 0
+_expect equal actual.stdout "$(printf '%s\toff\t%s\t* * * * *\n' - a - b)"

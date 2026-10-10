@@ -33,7 +33,7 @@
 # EXIT CODES
 #   0   Every test passed, or the file was skipped
 #   1   A test failed
-#   2   A broken test file, eg. an unknown clause in _expect
+#   2   A broken test file, eg. an unknown verb in _expect
 
 TEST_NAME=""  # the test in progress, "" before the first _test
 TEST_STATE="" # "" not run yet, "ran", "broken" when it could not run
@@ -53,11 +53,11 @@ note_line() {
 # Keep a value on one line, or indented below its label when it has several.
 note_value() {
   case "$2" in
-    "") note_line "  $(printf '%-9s' "$1") (empty)" ;;
+    "") note_line "  $(printf '%-11s' "$1") (empty)" ;;
     *"
 "*) note_line "  $1
 $(printf '%s\n' "$2" | sed 's/^/    /')" ;;
-    *) note_line "  $(printf '%-9s' "$1") $2" ;;
+    *) note_line "  $(printf '%-11s' "$1") $2" ;;
   esac
 }
 
@@ -151,44 +151,62 @@ _test() {
   TEST_NAME="$1"
 }
 
-# _expect <eq|neq> <file> <value>
+# _expect [!] <verb> <file> <value>
 # Compare the content of <file>, relative to the test folder, with <value>.
-# The first call of a test runs it.
+# The verbs are equal, contain, start-with and end-with. A "!" before the verb
+# negates it. <value> is text, never a pattern. A missing <file> fails the test,
+# negated or not. The first call of a test runs it.
 _expect() {
-  case "$1" in
-    eq | neq) ;;
+  expect_is_negated=""
+  if [ "${1-}" = "!" ]; then
+    expect_is_negated=yes
+    shift
+  fi
+  case "${1-}" in
+    equal | contain | start-with | end-with) ;;
     *)
-      printf '_expect: unknown clause "%s", use eq or neq\n' "$1" >&2
+      printf '_expect: unknown verb "%s", use [!] equal, contain, start-with or end-with\n' "${1-}" >&2
       TEST_NAME="" # no result line for a test that did not finish
       exit 2
       ;;
   esac
   if [ "$#" -ne 3 ] || [ -z "$TEST_NAME" ]; then
-    printf '_expect: needs <clause> <file> <value>, after a _test\n' >&2
+    printf '_expect: needs [!] <verb> <file> <value>, after a _test\n' >&2
     TEST_NAME="" # no result line for a test that did not finish
     exit 2
   fi
+
+  expect_line="$1 $2"
+  [ -z "$expect_is_negated" ] || expect_line="! $expect_line"
 
   [ -n "$TEST_STATE" ] || run_test
   [ "$TEST_STATE" = "ran" ] || return 0
 
   if [ ! -f "$TEST_DIR/$2" ]; then
-    note_line "$1 $2
+    note_line "$expect_line
   no such file"
     return 0
   fi
 
   expect_got=$(cat -- "$TEST_DIR/$2")
-  case "$1:$([ "$expect_got" = "$3" ] && printf same)" in
-    eq:same | neq:) return 0 ;;
+  expect_is_met=""
+  case "$1" in
+    equal) case "$expect_got" in "$3") expect_is_met=yes ;; esac ;;
+    contain) case "$expect_got" in *"$3"*) expect_is_met=yes ;; esac ;;
+    start-with) case "$expect_got" in "$3"*) expect_is_met=yes ;; esac ;;
+    end-with) case "$expect_got" in *"$3") expect_is_met=yes ;; esac ;;
   esac
+  [ "$expect_is_met" = "$expect_is_negated" ] || return 0
 
-  note_line "$1 $2"
-  if [ "$1" = "eq" ]; then
+  note_line "$expect_line"
+  if [ -z "$expect_is_negated" ]; then
     note_value "expected:" "$3"
     note_value "got:" "$expect_got"
-  else
+  elif [ "$1" = "equal" ]; then
     note_value "unexpected:" "$expect_got"
+  else
+    note_value "unexpected:" "$3"
+    note_value "got:" "$expect_got"
   fi
 }
 
