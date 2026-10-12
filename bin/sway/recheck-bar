@@ -117,7 +117,7 @@ if [ -n "$ROWS" ]; then
   fi
 fi
 
-# Turn tab-separated `recheck ls` to swaybar compatible output (JSON + Pango)
+# Turn tab-separated `recheck ls` to waybar compatible output (JSON + Pango)
 jq --null-input --compact-output \
   --arg text "$TEXT" --arg rows "$ROWS" --arg class "$CLASS" '
   {green: "green", red: "red", broken: "yellow"} as $colors
