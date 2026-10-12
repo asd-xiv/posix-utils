@@ -53,6 +53,73 @@ has up to four parts, in this order. Leave out a part that is empty.
   action, so `recheck` reads no terminal setting
   - **Revisit when** `recheck` must run with no display
 
+## open-os-menu lists the commands a person opens by hand
+
+**2026-10-12**
+
+**Context:**
+
+- A person in a sway session needs one menu of the commands they can open
+- `sys_menu`, a script in the dotfiles of the author, lists commands that are
+  not in this package
+- Each command has its own needs, eg. `recheck browse` needs fzf and a terminal
+- rofi 1.7.5 has the row option `meta`: words it matches and does not show
+- rofi 1.7.5 has the row option `nonselectable`: a person cannot pick the row
+
+**Decision:**
+
+- open-os-menu lists only commands of this package: `yank-symbol` and
+  `recheck browse`
+- An item is one line of data: icon, name, command, where it opens, health
+  command, what it does, the words that find it
+- open-os-menu finds a command by its path in the package, as recheck-bar finds
+  recheck
+- An item says if its command opens its own window or needs a terminal.
+  open-os-menu opens the terminal with `PU_TERMINAL`
+- open-os-menu checks two reasons an item cannot open: its command file is
+  missing or not executable, and `PU_TERMINAL` is not set for an item that
+  needs a terminal. Every other reason comes from the command: an item names a
+  health command, eg. `recheck health`, that prints the reason and exits 1
+- `recheck health` reports on the whole of recheck, not on `recheck browse`
+  alone: a missing command, an fzf too old, `PU_TERMINAL` not set
+- A row has two lines: the icon, the name and the command, then what the item
+  does
+- The command and what the item does are dim, by alpha. A reason is not dim
+- The icon is one Unicode character in the text of the row, so it takes the
+  color of the theme. An invisible copy of it starts the second line, so the
+  name and what the item does start in the same column in any font
+- The extra words a person types to find an item go in `meta`
+- An item that cannot open stays in the menu with the reason, marked
+  `nonselectable`
+- The pure primitives, `escape_markup` and `print_row`, have a test file each.
+  No test file runs rofi or a fake of it
+
+**Rejected:**
+
+- A list of what the browser needs, in `recheck.d/checks.sh`: that file holds
+  what two or more commands of recheck use, not the needs of one
+- The icon as the rofi `icon` option of the row: rofi 1.7.5 draws a text icon
+  black, which cannot be read on a dark row
+- A guard on the row number that rofi prints: with `-no-custom` and `-format d`,
+  rofi prints only the number of a row it was given
+- Icons from a Nerd Font: a system without the font shows empty boxes
+- One line per row, with what the item does in a column: the columns line up
+  only in a monospace font
+- A fixed color for the dim text: the theme inverts the colors of the selected
+  row, and a fixed color cannot be read there
+
+**Deferred:**
+
+- The scripts of the dotfiles for removable devices: `lsremovable`,
+  `usbauto-ctl`, `usbauto-rofi` and `usbauto-sway`
+  - **Revisit when** the author moves them into this package. Then add one item
+- `yank-symbol` has no health command
+  - **Revisit when** a person picks Symbols and it does not open
+- The rofi layout that yank-symbol and open-os-menu both write: the instruction
+  above the input and the line of shortcuts under the list. Each copy is two
+  lines of rofi theme, and the sway group has no sourced file yet
+  - **Revisit when** a third rofi script needs it. Then elevate it
+
 ## get-youtube-transcript prints captions in three formats
 
 **2026-10-12**

@@ -42,6 +42,7 @@
 | `cli/recheck`                | A terminal UI for cron: run checks, keep the last state of each | cron. Neovim for `edit`, fzf 0.73.0 or newer for `browse`, `PU_TERMINAL` for Alt+Enter in `browse` |
 | `sway/doomst`                | Doomguy themed desktop notifications                            | Wayland, notifier                                                                                  |
 | `sway/jot`                   | Write a quick note in Neovim, print it to stdout                | Wayland, Neovim, `PU_TERMINAL`                                                                     |
+| `sway/open-os-menu`          | Pick a command of posix-utils in a rofi menu, open it           | Wayland, rofi. `PU_TERMINAL` and the cli group for `recheck browse`                                |
 | `sway/recheck-bar`           | Print the count of checks per state, as JSON                    | waybar, jq, `recheck`                                                                              |
 | `sway/yank-symbol`           | Pick symbols the keyboard lacks in a rofi grid, copy them       | Wayland, rofi, `wl-copy`                                                                           |
 

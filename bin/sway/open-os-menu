@@ -1,0 +1,186 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   open-os-menu - Pick a command of posix-utils in a rofi menu, open it
+#
+# SYNOPSIS
+#   open-os-menu [-h]
+#
+# DESCRIPTION
+#   Shows a menu in rofi, one item per command a person opens by hand. An
+#   item shows an icon, its name, its command and what it does. Type to find
+#   an item by any of them, or by a word about it, eg. "unicode" or "cron".
+#   Enter opens the item under the cursor. Esc closes the menu.
+#
+#   The items, and how each one opens:
+#
+#     Symbols   yank-symbol      In its own rofi window
+#     Checks    recheck browse   In a new terminal window, opened with
+#                                PU_TERMINAL. Needs the cli group
+#
+#   An item that cannot open stays in the menu, with the reason in place of
+#   what it does. You cannot pick it. open-os-menu gives the reason when the
+#   command is not installed or PU_TERMINAL is not set. Else the command gives
+#   it, eg. "recheck health" prints what recheck lacks on this system.
+#
+#   After a pick, open-os-menu runs the command of the item and exits with its
+#   exit code. For an item that opens in a terminal window, it exits with the
+#   exit code of the PU_TERMINAL command.
+#
+#   The menu ends with a line of shortcuts, a rofi text box named
+#   "textbox-footer". Style it in your rofi theme, eg.
+#   "textbox-footer { padding: 10px 15px; }".
+#
+# OPTIONS
+#   -h, --help   Print this help
+#
+# ENVIRONMENT
+#   PU_TERMINAL   Command that opens a terminal window and runs the command
+#                 written after it. The flag that takes the command differs per
+#                 terminal, so include it, eg. "alacritty --class float
+#                 --command". Every command of posix-utils that opens a
+#                 terminal window reads it. open-os-menu writes the command of
+#                 the item after it
+#
+# EXAMPLE
+#   bindsym $mod+grave exec open-os-menu
+#
+# EXIT CODES
+#   0       The command of the picked item, or the PU_TERMINAL command that
+#           ran it, ended with 0
+#   2       Invalid usage
+#   3       Could not run, eg. no rofi or no display
+#   4       Nothing picked
+#   other   The exit code of that command
+#
+# SEE ALSO
+#   rofi, yank-symbol, recheck
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../lib.sh"
+. "$SCRIPT_DIR/open-os-menu.d/open-os-menu.sh"
+
+# _log reads these
+export LOG_NAMESPACE="open-os-menu"
+export LOG_LEVEL="${LOG_LEVEL:-info}"
+
+# One item per line: icon|name|command|opens|health|what it does|words that find it
+#   icon      one Unicode character
+#   command   a path under bin, then its arguments
+#   opens     "window" when the command opens its own window, "terminal"
+#             when it needs one. The menu opens a terminal with PU_TERMINAL
+#   health    a command, written as "command" is, that prints why the item
+#             cannot open and exits 1. Empty when the item has none
+ITEMS='Ω|Symbols|sway/yank-symbol|window||Copy a symbol the keyboard lacks, eg. ă € → ─ ✓|unicode character diacritic currency arrow box
+✓|Checks|cli/recheck browse|terminal|cli/recheck health|Browse the checks that cron runs: read each state, run one again|cron status monitor schedule'
+
+INSTRUCTION="<b>$LOG_NAMESPACE</b> :: type to find an item, eg. symbol or cron"
+SHORTCUTS="[↑ ↓] move, [enter] open, [esc] close"
+
+# ╭───
+# │ Composition
+# ╰───
+
+# print_rows
+#
+# Print one rofi row per item of ITEMS.
+#
+# The loop reads ITEMS on file descriptor 3. A health command then keeps the
+# stdin of the menu, and tests such as [ -t 0 ] see the same stdin as the
+# command after the pick.
+print_rows() {
+  while IFS='|' read -r rows_icon rows_name rows_command rows_opens \
+    rows_health rows_what rows_words <&3; do
+    rows_path=${rows_command%% *}
+    rows_args=${rows_command#"$rows_path"}
+    rows_reason=$(find_reason "$rows_command" "$rows_opens" "$rows_health")
+    print_row "$rows_icon" "$rows_name" "${rows_path##*/}$rows_args" \
+      "$rows_what" "$rows_words" "$rows_reason"
+  done 3<<EOF
+$ITEMS
+EOF
+}
+
+# ╭───
+# │ Bootstrap
+# ╰───
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -h | --help)
+      _show_help "$0"
+      exit 0
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -?*)
+      _fail 2 -v flag "$1" "Unknown flag"
+      ;;
+    *) break ;;
+  esac
+done
+
+[ "$#" -eq 0 ] || _fail 2 -v argument "$1" "open-os-menu takes only --help"
+
+_require_cmd rofi sed wc tr
+
+# Without a display rofi exits 1, the same code as Esc
+[ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ] || _fail 3 "No Wayland or X display"
+
+# ╭───
+# │ Main
+# ╰───
+
+ITEM_COUNT=$(printf '%s\n' "$ITEMS" | wc -l | tr -d ' ')
+
+# rofi lays this over the theme of the user, which keeps its colors and font.
+#   mainbox          the instruction above the input, the shortcuts last
+#   textbox-footer   a text box this script adds, for the shortcuts. Its look
+#                    comes from a "textbox-footer" section in the theme
+#   listview         one row per item and no empty space under the last one
+MENU_THEME="mainbox { children: [ message, inputbar, listview, textbox-footer ]; }
+textbox-footer { content: \"$SHORTCUTS\"; expand: false; }
+listview { columns: 1; lines: $ITEM_COUNT; scrollbar: false; }"
+
+# -format d prints the 1-based number of the picked row
+ROFI_STATUS=0
+PICKED_NUMBER=$(
+  print_rows \
+    | rofi -dmenu -i -no-custom -markup-rows -eh 2 -format d -p "" \
+      -mesg "$INSTRUCTION" -theme-str "$MENU_THEME"
+) || ROFI_STATUS=$?
+
+# rofi exits 1 on Esc
+case "$ROFI_STATUS" in
+  0) ;;
+  1)
+    _warn "Nothing picked"
+    exit 4
+    ;;
+  *) _fail 3 -v status "$ROFI_STATUS" "rofi failed" ;;
+esac
+
+# With -no-custom and -format d, rofi prints only the number of a row it was
+# given
+IFS='|' read -r _ _ PICKED_COMMAND PICKED_OPENS _ <<EOF
+$(printf '%s\n' "$ITEMS" | sed -n "${PICKED_NUMBER}p")
+EOF
+
+PICKED_PATH=${PICKED_COMMAND%% *}
+PICKED_ARGS=${PICKED_COMMAND#"$PICKED_PATH"}
+
+# Split the arguments of the item on purpose
+# shellcheck disable=SC2086
+set -- $PICKED_ARGS
+
+if [ "$PICKED_OPENS" = "terminal" ]; then
+  # Split the terminal command on purpose
+  # shellcheck disable=SC2086
+  exec $PU_TERMINAL "$SCRIPT_DIR/../$PICKED_PATH" "$@"
+fi
+
+exec "$SCRIPT_DIR/../$PICKED_PATH" "$@"

@@ -1,0 +1,12 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../open-os-menu.d/open-os-menu.sh"
+
+_describe "open-os-menu :: escape_markup"
+
+_test 'given [a text with "&", "<" and ">"] should [escape each one]'
+actual() { escape_markup 'a & b <c> &amp;'; }
+_expect equal actual.stdout 'a &amp; b &lt;c&gt; &amp;amp;'

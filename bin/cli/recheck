@@ -147,7 +147,7 @@ set -eu
 #       pattern. For browse, no fzf, an fzf older than 0.73.0 or no terminal
 #
 # SEE ALSO
-#   crontab, recheck-bar, nvim, fzf, awk
+#   crontab, recheck-bar, open-os-menu, nvim, fzf, awk
 
 # tools/install symlinks this script, so "$0" names the link. realpath follows
 # it to find lib.sh and recheck.d
