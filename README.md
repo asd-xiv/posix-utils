@@ -33,15 +33,16 @@
 
 `bin/` groups scripts by the environment they need.
 
-| Script             | Does                                                            | Needs                                     |
-| ------------------ | --------------------------------------------------------------- | ----------------------------------------- |
-| `cli/fancy-log`    | Print a log line with its time, level and namespace, in color   | terminal or CI                            |
-| `cli/omnipack`     | Install OS dependencies, package manager agnostic               | terminal or CI                            |
-| `cli/recheck`      | A terminal UI for cron: run checks, keep the last state of each | cron. Neovim for `edit`, fzf for `browse` |
-| `sway/doomst`      | Doomguy themed desktop notifications                            | Wayland, notifier                         |
-| `sway/jot`         | Write a quick note in Neovim, print it to stdout                | Wayland, Neovim                           |
-| `sway/recheck-bar` | Print the count of checks per state, as JSON                    | waybar, jq, `recheck`                     |
-| `sway/yank-symbol` | Pick symbols the keyboard lacks in a rofi grid, copy them       | Wayland, rofi, `wl-copy`                  |
+| Script                       | Does                                                            | Needs                                     |
+| ---------------------------- | --------------------------------------------------------------- | ----------------------------------------- |
+| `cli/fancy-log`              | Print a log line with its time, level and namespace, in color   | terminal or CI                            |
+| `cli/get-youtube-transcript` | Print the transcript of a YouTube video                         | curl, jq                                  |
+| `cli/omnipack`               | Install OS dependencies, package manager agnostic               | terminal or CI                            |
+| `cli/recheck`                | A terminal UI for cron: run checks, keep the last state of each | cron. Neovim for `edit`, fzf for `browse` |
+| `sway/doomst`                | Doomguy themed desktop notifications                            | Wayland, notifier                         |
+| `sway/jot`                   | Write a quick note in Neovim, print it to stdout                | Wayland, Neovim                           |
+| `sway/recheck-bar`           | Print the count of checks per state, as JSON                    | waybar, jq, `recheck`                     |
+| `sway/yank-symbol`           | Pick symbols the keyboard lacks in a rofi grid, copy them       | Wayland, rofi, `wl-copy`                  |
 
 ## Install
 

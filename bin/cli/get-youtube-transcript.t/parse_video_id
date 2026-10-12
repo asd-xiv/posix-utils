@@ -1,0 +1,48 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../get-youtube-transcript.d/get-youtube-transcript.sh"
+
+_describe "get-youtube-transcript :: parse_video_id"
+
+_test 'given [a bare id and each URL shape of one video] should [print the same id for each]'
+actual() {
+  for video in \
+    abc_DEF-123 \
+    'https://www.youtube.com/watch?v=abc_DEF-123' \
+    'https://www.youtube.com/watch?t=5&v=abc_DEF-123&list=x' \
+    'https://youtu.be/abc_DEF-123?si=x' \
+    'https://www.youtube.com/shorts/abc_DEF-123' \
+    'https://www.youtube.com/embed/abc_DEF-123' \
+    'https://www.youtube.com/live/abc_DEF-123' \
+    'm.youtube.com/watch?v=abc_DEF-123'; do
+    parse_video_id "$video"
+    printf '\n'
+  done
+}
+_expect equal actual.exit 0
+_expect equal actual.stdout 'abc_DEF-123
+abc_DEF-123
+abc_DEF-123
+abc_DEF-123
+abc_DEF-123
+abc_DEF-123
+abc_DEF-123
+abc_DEF-123'
+
+_test 'given [a URL of another site] should [print nothing and return 1]'
+actual() { parse_video_id 'https://vimeo.com/abc_DEF-123'; }
+_expect equal actual.exit 1
+_expect equal actual.stdout ''
+
+_test 'given [a 10-character id] should [print nothing and return 1]'
+actual() { parse_video_id 'abc_DEF-12'; }
+_expect equal actual.exit 1
+_expect equal actual.stdout ''
+
+_test 'given [an 11-character value with a dot] should [print nothing and return 1]'
+actual() { parse_video_id 'abc_DEF.123'; }
+_expect equal actual.exit 1
+_expect equal actual.stdout ''

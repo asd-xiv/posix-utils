@@ -1,0 +1,105 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../get-youtube-transcript.d/get-youtube-transcript.sh"
+
+_describe "get-youtube-transcript :: print_transcript"
+
+_test 'given [manual captions] should [print one caption per line, a newline becomes a space]'
+prepare() {
+  cat >captions.json <<'JSON'
+{"events":[
+  {"tStartMs":0,"segs":[{"utf8":"First caption"}]},
+  {"tStartMs":2000,"segs":[{"utf8":"Second\ncaption"}]}
+]}
+JSON
+}
+actual() { print_transcript captions.json text; }
+_expect equal actual.exit 0
+_expect equal actual.stdout 'First caption
+Second caption'
+
+_test 'given [auto-generated captions] should [join the words, skip aAppend and no-segs events]'
+prepare() {
+  cat >captions.json <<'JSON'
+{"events":[
+  {"tStartMs":0,"dDurationMs":9000},
+  {"tStartMs":500,"segs":[{"utf8":"hello"},{"utf8":" brave"},{"utf8":" world"}]},
+  {"tStartMs":900,"aAppend":1,"segs":[{"utf8":"\n"}]},
+  {"tStartMs":3000,"segs":[{"utf8":"again"}]}
+]}
+JSON
+}
+actual() { print_transcript captions.json text; }
+_expect equal actual.exit 0
+_expect equal actual.stdout 'hello brave world
+again'
+
+_test 'given [a caption of only spaces] should [skip it]'
+prepare() {
+  cat >captions.json <<'JSON'
+{"events":[
+  {"tStartMs":0,"segs":[{"utf8":"   "}]},
+  {"tStartMs":1000,"segs":[{"utf8":"kept"}]}
+]}
+JSON
+}
+actual() { print_transcript captions.json text; }
+_expect equal actual.exit 0
+_expect equal actual.stdout 'kept'
+
+_test 'given [clipped-jsonl, manual captions with a silence between] should [end each caption at start plus duration]'
+prepare() {
+  cat >captions.json <<'JSON'
+{"events":[
+  {"tStartMs":1000,"dDurationMs":2000,"segs":[{"utf8":"First caption"}]},
+  {"tStartMs":5000,"dDurationMs":1500,"segs":[{"utf8":"Second caption"}]}
+]}
+JSON
+}
+actual() { print_transcript captions.json clipped-jsonl; }
+_expect equal actual.exit 0
+_expect equal actual.stdout '{"startMs":1000,"endMs":3000,"text":"First caption"}
+{"startMs":5000,"endMs":6500,"text":"Second caption"}'
+
+_test 'given [clipped-jsonl, overlapping auto-generated captions] should [end a caption where the next starts]'
+prepare() {
+  cat >captions.json <<'JSON'
+{"events":[
+  {"tStartMs":0,"dDurationMs":9000},
+  {"tStartMs":2000,"dDurationMs":4500,"segs":[{"utf8":"hello"},{"utf8":" world","tOffsetMs":500}]},
+  {"tStartMs":3000,"dDurationMs":1000,"aAppend":1,"segs":[{"utf8":"\n"}]},
+  {"tStartMs":4000,"dDurationMs":6000,"segs":[{"utf8":"again"}]}
+]}
+JSON
+}
+actual() { print_transcript captions.json clipped-jsonl; }
+_expect equal actual.exit 0
+_expect equal actual.stdout '{"startMs":2000,"endMs":4000,"text":"hello world"}
+{"startMs":4000,"endMs":10000,"text":"again"}'
+
+_test 'given [original-jsonl] should [print every event unchanged, one per line]'
+prepare() {
+  cat >captions.json <<'JSON'
+{"wireMagic":"pb3","events":[
+  {"tStartMs":0,"dDurationMs":9000,"id":1},
+  {"tStartMs":500,"dDurationMs":2000,"segs":[{"utf8":"hello"},{"utf8":" world","tOffsetMs":400}]},
+  {"tStartMs":900,"aAppend":1,"segs":[{"utf8":"\n"}]}
+]}
+JSON
+}
+actual() { print_transcript captions.json original-jsonl; }
+_expect equal actual.exit 0
+_expect equal actual.stdout '{"tStartMs":0,"dDurationMs":9000,"id":1}
+{"tStartMs":500,"dDurationMs":2000,"segs":[{"utf8":"hello"},{"utf8":" world","tOffsetMs":400}]}
+{"tStartMs":900,"aAppend":1,"segs":[{"utf8":"\n"}]}'
+
+_test 'given [an unknown format] should [return 1 and print nothing]'
+prepare() {
+  printf '%s\n' '{"events":[{"tStartMs":0,"segs":[{"utf8":"x"}]}]}' >captions.json
+}
+actual() { print_transcript captions.json xml; }
+_expect equal actual.exit 1
+_expect equal actual.stdout ''

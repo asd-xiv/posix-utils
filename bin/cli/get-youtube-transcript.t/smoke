@@ -1,0 +1,20 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+
+SCRIPT="$SCRIPT_DIR/../get-youtube-transcript"
+
+command -v curl >/dev/null 2>&1 || _skip_all "curl is not installed"
+curl -sS -o /dev/null --max-time 20 "https://www.youtube.com/generate_204" \
+  2>/dev/null || _skip_all "YouTube does not answer"
+
+_describe "get-youtube-transcript :: smoke"
+
+# Terry A Davis TempleOS random gems compilation 1, 72 seconds, auto-generated
+# captions only
+_test 'given [a public video] should [exit 0 and print a transcript]'
+actual() { "$SCRIPT" -- _QccgKS4b58; }
+_expect equal actual.exit 0
+_expect ! equal actual.stdout ''
