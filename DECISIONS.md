@@ -1,8 +1,21 @@
 # Decisions
 
+One record per decision, newest first. Each record opens with its date, then
+has up to four parts, in this order. Leave out a part that is empty.
+
+- **Context**: the need, the facts and the limits that held at the time and
+  shaped the Decision. A fact that explains one Rejected or Deferred item sits
+  on that item
+- **Decision**: the choice
+- **Rejected**: an option not chosen, with the reason, and no plan to return
+- **Deferred**: work, a known gap or an option left for later, each item with a
+  **Revisit when**
+
 ## Tests use a home-made harness, POSIX sh only
 
 **2026-10-10**
+
+**Decision:**
 
 - `tools/test-lib.sh` is the harness, `tools/test` is the runner
 - The package colocates a test file with the code it proves, one per function
@@ -22,7 +35,7 @@
 - ShellSpec: last release in January 2021
 - Python for the pseudo-terminal: a second language
 
-**Left for later:**
+**Deferred:**
 
 - `_expect` fails on a missing file, negated or not. No verb passes on one
   - **Revisit when** a test must prove that a file is absent
@@ -46,16 +59,19 @@
 
 **2026-09-16**
 
-`install` now writes `$XDG_STATE_HOME/posix-utils/receipt` before touching the
-filesystem, recording `data_dir`, `bin_dir`, `group`, `ref`, and `archive_url`.
-`uninstall` reads it and needs no options.
+**Decision:**
 
-A partial install leaves both paths named in the receipt, so `uninstall` can
-clean up without extra information.
+- `install` now writes `$XDG_STATE_HOME/posix-utils/receipt` before touching
+  the filesystem, recording `data_dir`, `bin_dir`, `group`, `ref`, and
+  `archive_url`
+- `uninstall` reads it and needs no options
+- A partial install leaves both paths named in the receipt, so `uninstall` can
+  clean up without extra information
 
-**Rejected for now:** atomic installs via `<data-dir>.new` staging and swap.
-`install` replaces an existing install, so a failed run would need to restore
-the previous version rather than remove everything — requiring the old tree kept
-aside, links rebuilt from it, and the previous ref recorded.
+**Deferred:**
 
-**Revisit when** upgrades must never break a working install.
+- Atomic installs via `<data-dir>.new` staging and swap. `install` replaces an
+  existing install, so a failed run would need to restore the previous version
+  rather than remove everything — requiring the old tree kept aside, links
+  rebuilt from it, and the previous ref recorded
+  - **Revisit when** upgrades must never break a working install

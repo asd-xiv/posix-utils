@@ -8,8 +8,8 @@
 - :shell: No bashisms, no GNU-only flags. Runs under `dash`, BusyBox `ash` and
   `bash`
 - :book: Every script carries its own man page: `fancy-log --help`
-- :robot: Ships the `write-posix-sh` skill with the conventions every script here
-  follows
+- :robot: Ships the `write-posix-sh` skill with the conventions every script
+  here follows
 
 <!-- vim-markdown-toc GFM -->
 
