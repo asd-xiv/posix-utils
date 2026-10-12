@@ -1,0 +1,23 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/sandbox.sh"
+
+_describe "recheck :: toggle"
+
+before_each() { build_sandbox; }
+
+_test 'given [one enabled check and one disabled, both ids in one call] should [list the first as "off", the second as "on"]'
+prepare() {
+  add_check a 0
+  add_check b 0
+  mv config/recheck/checks/b config/recheck/checks/_b
+}
+actual() {
+  "$RECHECK" toggle a b
+  "$RECHECK" ls --columns id,switch
+}
+_expect equal actual.exit 0
+_expect equal actual.stdout "$(printf 'a\toff\nb\ton')"

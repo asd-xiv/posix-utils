@@ -1,0 +1,28 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/sandbox.sh"
+
+_describe "recheck :: enable"
+
+before_each() { build_sandbox; }
+
+_test 'given [one disabled check] should [list it as "on", add its line to the crontab]'
+prepare() {
+  add_check a 0
+  mv config/recheck/checks/a config/recheck/checks/_a
+}
+actual() {
+  "$RECHECK" enable a
+  "$RECHECK" ls --columns id,switch
+  crontab -l | grep -c ' run a '
+}
+_expect equal actual.exit 0
+_expect equal actual.stdout "$(printf 'a\ton\n1')"
+
+_test 'given [an id with no check] should [exit 2]'
+prepare() { add_check a 0; }
+actual() { "$RECHECK" enable missing; }
+_expect equal actual.exit 2
