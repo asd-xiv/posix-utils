@@ -6,6 +6,8 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 
 SCRIPT="$SCRIPT_DIR/../get-youtube-transcript"
 
+# YouTube answers a request from a GitHub runner with LOGIN_REQUIRED
+[ -z "${CI:-}" ] || _skip_all "YouTube refuses a request from CI"
 command -v curl >/dev/null 2>&1 || _skip_all "curl is not installed"
 curl -sS -o /dev/null --max-time 20 "https://www.youtube.com/generate_204" \
   2>/dev/null || _skip_all "YouTube does not answer"

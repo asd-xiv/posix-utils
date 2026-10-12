@@ -30,7 +30,7 @@
   "scripts": {
     "prepare": "git config --local core.hooksPath .githook",
     "lint": "./tools/verify ./bin ./tools",
-    "test": "./tools/test",
+    "unit-test": "./tools/test",
     "format": "shfmt --write ./bin ./tools"
   },
   "devDependencies": {
