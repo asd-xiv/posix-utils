@@ -120,6 +120,53 @@ has up to four parts, in this order. Leave out a part that is empty.
   lines of rofi theme, and the sway group has no sourced file yet
   - **Revisit when** a third rofi script needs it. Then elevate it
 
+## The test files run under the /bin/sh of the system, CI runs them in three images
+
+**2026-10-12**
+
+**Context:**
+
+- A test calls a command by its path. The command runs under the shell its
+  `#!/bin/sh` names, whatever shell runs the test file
+- `tools/test` ran each test file under dash, BusyBox ash and bash. Where
+  `/bin/sh` is bash, each command ran under bash three times. Only a sourced
+  function changed shell
+- An image has its own `/bin/sh`, and its own `sed`, `tr` and `mktemp`
+
+**Decision:**
+
+- `tools/test` runs each test file once, under `/bin/sh`
+- CI runs `tools/test` in a container, once per image: `alpine:3.22` for BusyBox
+  ash, `debian:trixie-slim` for dash and `archlinux:latest` for bash
+- In the container, `omnipack` installs the tools the test files need: `jq` and
+  `curl`
+- `enable`, `disable` and `toggle` have a test file each, as `run` and `ls` do.
+  `recheck browse` also calls `show` and `edit`, which have none
+
+**Rejected:**
+
+- Each test file under three shells on one system: it changes the shell of the
+  test file, not the shell of the command
+
+**Deferred:**
+
+- A test file for `recheck browse`. The one that drove fzf through a
+  pseudo-terminal needed a working `script` command and fzf 0.73.0 or newer.
+  Alpine 3.22 has fzf 0.62 and no `script` command, Debian trixie has fzf 0.60,
+  so it ran in one image of the three. It took 3.7 s of a 5 s run and proved
+  one key binding. Until a test file exists, only a person who opens the
+  browser finds a broken key binding
+  - **Revisit when** a broken key binding reaches a release
+- Where `/bin/sh` is bash, a fault that shows only under dash or BusyBox ash
+  shows in CI first. `tools/verify` parses each script with `dash -n` and
+  `busybox sh -n` before a push
+  - **Revisit when** CI fails for a fault that a run in an image would have
+    shown before the push. Then run the test files in an image from the
+    pre-push hook
+- A run on macOS, where `/bin/sh` is bash 3.2 and the tools are BSD. It needs a
+  macOS runner, not an image
+  - **Revisit when** the package must run on macOS
+
 ## get-youtube-transcript prints captions in three formats
 
 **2026-10-12**
@@ -214,34 +261,16 @@ has up to four parts, in this order. Leave out a part that is empty.
   the exit code, stdout and stderr of each as a file
 - A test states what it expects with `_expect [!] <verb> <file> <value>` and
   nothing else. The verbs are `equal`, `contain`, `start-with` and `end-with`
-- `_send_keys` runs a command in a pseudo-terminal, through `busybox script`
-- The runner runs every test file under dash, BusyBox and bash
 
 **Rejected:**
 
 - bats-core: needs bash
 - ShellSpec: last release in January 2021
-- Python for the pseudo-terminal: a second language
 
 **Deferred:**
 
 - `_expect` fails on a missing file, negated or not. No verb passes on one
   - **Revisit when** a test must prove that a file is absent
-- The tests run on the host, not in a container
-  - A file in `recheck.d` runs under the `/bin/sh` of the host, whatever shell
-    runs the test file
-  - The tests passed in a bubblewrap container with dash as `/bin/sh`.
-    bubblewrap starts in 4 ms, `docker run` in 384 ms
-  - **Revisit when** a file in `recheck.d` must run under a shell that is not
-    the `/bin/sh` of the host
-- The `recheck` tests skip themselves under BusyBox
-  - They put a fake `crontab` first on `PATH`. BusyBox runs its own `crontab`
-    applet instead
-  - Nobody tried BusyBox in the bubblewrap container
-  - **Revisit when** a `recheck` command must pass under BusyBox
-- The `browse` test sends its keys after fixed waits, so it can fail on a slow
-  machine
-  - **Revisit when** it fails with no change to the code
 
 ## Install records a receipt, it does not roll back
 

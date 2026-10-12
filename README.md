@@ -205,7 +205,12 @@ Every script returns the code that names what happened.
 
 ```sh
 npm run lint     # shellcheck, dash -n, busybox sh -n, --help and flag smoke tests
+npm test         # the test files, under the /bin/sh of this system
 npm run format   # shfmt, settings in .editorconfig
+
+# the test files in an image, as CI runs them
+docker run --rm -v "$PWD":/src:ro -w /src alpine:3.22 \
+  sh -c 'bin/cli/omnipack --refresh jq curl && tools/test'
 ```
 
 See [`DECISIONS.md`](DECISIONS.md) for what was decided and what was left for
