@@ -10,7 +10,7 @@ set -eu
 #   ... | jot
 #
 # DESCRIPTION
-#   Opens a note in Neovim, in a floating Alacritty window, then prints it to
+#   Opens a note in Neovim, in a new terminal window, then prints it to
 #   stdout. Piped input is appended to the note before editing, so jot reads
 #   as an editable echo.
 #
@@ -22,20 +22,28 @@ set -eu
 #   -h, --help       Print this help
 #
 # ENVIRONMENT
-#   JOT_HOME   Note directory (default: ~/.jot)
+#   JOT_HOME      Note directory (default: ~/.jot)
+#   PU_TERMINAL   Command that opens a terminal window and runs the command
+#                 written after it. The flag that takes the command differs
+#                 per terminal, so include it, eg. "alacritty --class float
+#                 --command". Every command of posix-utils that opens a
+#                 terminal window reads it. jot writes "nvim" and its
+#                 arguments after it. The PU_TERMINAL command must not return
+#                 before its window closes
 #
 # EXAMPLE
 #   jot > ~/notes/$(date +%Y-%m-%d).md
 #   cat fn.js | jot | claude -p "explain this"
 #
 # EXIT CODES
-#   0   Note printed
-#   1   Nothing written
-#   2   Invalid usage
-#   3   Could not run
+#   0       Note printed
+#   1       Nothing written
+#   2       Invalid usage, or PU_TERMINAL not set
+#   3       Could not run
+#   other   The exit code of the PU_TERMINAL command, when it fails
 #
 # SEE ALSO
-#   nvim, alacritty
+#   nvim
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 LOG_NAMESPACE="jot"
@@ -69,7 +77,8 @@ done
 [ "$#" -eq 0 ] \
   || _fail 2 -v argument "$1" "jot takes no arguments. Pipe text instead."
 
-_require_cmd alacritty nvim
+_require_var PU_TERMINAL
+_require_cmd nvim
 
 mkdir -p "${JOT_HOME}/notes"
 
@@ -98,11 +107,14 @@ printf '%s' "$NOTE_FILE" >"$LAST_NOTE_LINK"
 # Piped input becomes the starting text.
 [ -t 0 ] || cat >>"$NOTE_FILE"
 
-# --class drives the sway floating rule.
-alacritty \
-  --title "jot - $(basename "$NOTE_FILE")" \
-  --class "jot-center-float" \
-  --command nvim \
+# The command is split into words on purpose: the user writes it with its
+# flags. It must not return before its window closes, or jot prints the note
+# too early. Neovim names the window through 'titlestring', and only with its
+# 'title' option on, which is off by default
+# shellcheck disable=SC2086 # split into words on purpose
+$PU_TERMINAL nvim \
+  -c "set title" \
+  -c "let &titlestring = 'jot - $(basename "$NOTE_FILE")'" \
   -c "setlocal syntax=markdown" \
   -c "setlocal wrap" \
   -c "setlocal spell" \

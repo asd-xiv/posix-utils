@@ -6,9 +6,9 @@
 # Tab marks a check. Enter runs the marked checks again, Alt+E enables them
 # and Alt+X disables them. With no check marked, the three act on the check
 # under the cursor. Alt+T toggles the check under the cursor, Alt+Enter edits
-# it in a new window and needs RECHECK_TERMINAL. Esc closes the browser. The
-# list reloads every second. It shows each run when it starts and when it ends,
-# also a run that cron started.
+# it in a new terminal window, opened with PU_TERMINAL. Esc closes the
+# browser. The list reloads every second. It shows each run when it starts and
+# when it ends, also a run that cron started.
 # recheck runs this file, never call it directly.
 
 set -eu
@@ -16,7 +16,7 @@ set -eu
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/checks.sh"
 
-TERMINAL_COMMAND="${RECHECK_TERMINAL:-}"
+TERMINAL_COMMAND="${PU_TERMINAL:-}"
 
 # ╭───
 # │ Primitives
@@ -71,9 +71,9 @@ guard_recheck_file
 set_title "recheck :: browser"
 
 # The editor needs a window of its own, and only the user knows how their
-# terminal opens one. Without RECHECK_TERMINAL, Alt+Enter only writes what
+# terminal opens one. Without PU_TERMINAL, Alt+Enter only writes what
 # is missing into the preview label
-EDIT_ACTION="change-preview-label( [alt + enter] needs RECHECK_TERMINAL, see recheck --help )"
+EDIT_ACTION="change-preview-label( [alt + enter] needs PU_TERMINAL, see recheck --help )"
 if [ -n "$TERMINAL_COMMAND" ]; then
   # The "action:" form runs to the end of the string, so the user's command
   # may hold parentheses

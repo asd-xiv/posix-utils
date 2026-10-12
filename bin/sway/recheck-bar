@@ -33,13 +33,16 @@ set -eu
 #       "return-type": "json",
 #       "interval": 60,
 #       "signal": 8,
-#       "on-click": "alacritty --command recheck browse &",
-#       "on-click-right": "alacritty --command recheck edit &"
+#       "on-click": "$PU_TERMINAL recheck browse &",
+#       "on-click-right": "$PU_TERMINAL recheck edit &"
 #     }
 #
 #   End each click command with "&". waybar does not refresh a module while
 #   one of its click commands runs, and "recheck browse" runs until its fzf
 #   window closes.
+#
+#   waybar runs a click command in a shell, so it reads PU_TERMINAL from its
+#   environment. See PU_TERMINAL in "recheck --help".
 #
 #   In ~/.config/recheck/on-update, to refresh the module after every change:
 #

@@ -67,8 +67,9 @@ set -eu
 #               marked checks again, Alt+E enables them and Alt+X disables
 #               them. With no check marked, the three act on the check
 #               under the cursor. Alt+T toggles the check under the cursor.
-#               Alt+Enter edits it in a new window and needs
-#               RECHECK_TERMINAL
+#               Alt+Enter edits it in a new terminal window, opened with
+#               PU_TERMINAL. The browser needs a terminal and fzf 0.73.0 or
+#               newer
 #     edit      Start Neovim in ~/.config/recheck, in this terminal. With an
 #               id, open only the file of that check. Sync when Neovim
 #               closes without an error. Wait for Enter when the sync
@@ -115,11 +116,12 @@ set -eu
 #   -h, --help   Print this help
 #
 # ENVIRONMENT
-#   RECHECK_TERMINAL   Command that opens a terminal window and runs the
-#                      command written after it. The browser writes "recheck
-#                      edit <id>" after it. The flag that takes the command
-#                      differs per terminal, so include it, eg. "alacritty
-#                      --class float --command"
+#   PU_TERMINAL        Command that opens a terminal window and runs the
+#                      command written after it. The flag that takes the
+#                      command differs per terminal, so include it, eg.
+#                      "alacritty --class float --command". Every command of
+#                      posix-utils that opens a terminal window reads it. The
+#                      browser writes "recheck edit <id>" after it
 #   XDG_CONFIG_HOME    Parent of the recheck config (default: ~/.config)
 #   XDG_STATE_HOME     Parent of the recheck state (default: ~/.local/state)
 #   LOG_LEVEL          Last level to print (default: info)
