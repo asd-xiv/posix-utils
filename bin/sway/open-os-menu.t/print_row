@@ -1,0 +1,32 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../open-os-menu.d/open-os-menu.sh"
+
+_describe "open-os-menu :: print_row"
+
+# A NUL shows as "#" and a unit separator as "|"
+
+_test 'given [an empty reason] should [print a row with the icon, name, command, what it does and the words]'
+actual() {
+  print_row '✓' Checks 'recheck browse' 'Browse the checks' 'cron status' '' \
+    | tr '\000\037' '#|'
+}
+_expect equal actual.stdout '✓  <b>Checks</b>  <span alpha="65%" size="small">recheck browse</span>&#10;<span alpha="1">✓  </span><span alpha="65%" size="small">Browse the checks</span>#meta|cron status'
+
+_test 'given [a reason] should [print the reason in place of what it does and mark the row nonselectable]'
+actual() {
+  print_row '✓' Checks 'recheck browse' 'Browse the checks' 'cron status' \
+    'fzf not found' \
+    | tr '\000\037' '#|'
+}
+_expect equal actual.stdout '✓  <b>Checks</b>  <span alpha="65%" size="small">recheck browse</span>&#10;<span alpha="1">✓  </span><span size="small"><b>Not ready:</b> fzf not found</span>#meta|cron status|nonselectable|true'
+
+_test 'given [data with "&", "<" and ">"] should [escape the markup and leave the words as they are]'
+actual() {
+  print_row 'Ω' 'A&B' 'a <b>' 'x > y' 'r&d <x>' '' | tr '\000\037' '#|'
+}
+_expect contain actual.stdout '<b>A&amp;B</b>  <span alpha="65%" size="small">a &lt;b&gt;</span>'
+_expect contain actual.stdout 'x &gt; y</span>#meta|r&d <x>'
