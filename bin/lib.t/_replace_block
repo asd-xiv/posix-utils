@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+# shellcheck disable=SC2317,SC2329 # the harness calls before_each, prepare and actual
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../tools/test-lib.sh"
 . "$SCRIPT_DIR/../lib.sh"
