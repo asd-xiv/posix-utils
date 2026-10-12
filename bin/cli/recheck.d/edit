@@ -16,7 +16,7 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 # │ Cleanup
 # ╰───
 
-# shellcheck disable=SC2317,SC2329 # called by trap
+# shellcheck disable=SC2329 # called by trap
 cleanup() {
   restore_title
 }
