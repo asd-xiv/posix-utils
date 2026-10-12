@@ -13,7 +13,28 @@ up to five parts, in this order. Leave out a part that is empty.
 - **Acknowledgments**: a known gap the Decision accepts, with the reason, and no
   **Revisit when**
 
-## tools/verify parses each script and runs the smoke test under the /bin/sh of the system, CI runs tools/verify in three images
+## Skip `get-youtube-transcript -> smoke` test file in CI
+
+**2026-10-13**
+
+**Context:**
+
+- `smoke` runs get-youtube-transcript on one public video
+- In the Unit Test job, `smoke` failed: YouTube answered its request with
+  `LOGIN_REQUIRED`
+  - `smoke` passes outside CI
+- GitHub sets `CI` in every job
+
+**Decision:**
+
+- `smoke` skips itself when `CI` is not empty
+
+**Acknowledgments:**
+
+- Nothing in CI proves that get-youtube-transcript still prints captions
+  - Outside CI, `tools/test` runs `smoke`
+
+## Run `tools/verify` in CI under three images
 
 **2026-10-12**
 
@@ -50,7 +71,7 @@ up to five parts, in this order. Leave out a part that is empty.
 - Only CI runs `tools/verify` under the `/bin/sh` of each of the three images
   - CI publishes a release only after the Lint job passes in all three images
 
-## One terminal setting for the package, PU_TERMINAL
+## Use one terminal setting for the package, PU_TERMINAL
 
 **2026-10-12**
 
@@ -90,7 +111,7 @@ up to five parts, in this order. Leave out a part that is empty.
   so `recheck` reads no terminal setting
   - **Revisit when** `recheck` must run with no display
 
-## open-os-menu lists the commands a person opens by hand
+## Add `open-os-menu` command
 
 **2026-10-12**
 

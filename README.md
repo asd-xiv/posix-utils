@@ -204,9 +204,9 @@ Every script returns the code that names what happened.
 ## Develop
 
 ```sh
-npm run lint     # shellcheck, /bin/sh -n, --help and flag smoke tests
-npm test         # the test files, under the /bin/sh of this system
-npm run format   # shfmt, settings in .editorconfig
+npm run lint        # shellcheck, /bin/sh -n, --help and flag smoke tests
+npm run unit-test   # the test files, under the /bin/sh of this system
+npm run format      # shfmt, settings in .editorconfig
 
 # the test files in an image, as CI runs them
 docker run --rm -v "$PWD":/src:ro -w /src alpine:3.22 \
