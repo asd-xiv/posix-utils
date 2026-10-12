@@ -6,15 +6,24 @@ set -eu
 #   doomst - Doomguy themed desktop notifications
 #
 # SYNOPSIS
-#   doomst [-t <type>] <title> [message]
+#   doomst [-t <type>] <title> [message] [notify-send flag...]
+#   doomst [-t <type>] -- <notify-send argument...>
 #
 # DESCRIPTION
 #   Sends a notification through notify-send, picking a Doomguy icon and an
-#   urgency from the type.
+#   urgency from the type. doomst reads its own flags before the title. It
+#   passes the title and everything after it to notify-send as written, so
+#   a notify-send flag works after the title. After "--", doomst reads no
+#   flag, so a notify-send flag can come before the title.
 #
 # ARGUMENTS
-#   title     - notification title
-#   message   - notification body, optional
+#   title     - notification title. A title that starts with a dash needs
+#               "--" before it, written twice: the first ends the flags of
+#               doomst, the second ends those of notify-send
+#   message   - notification body, optional. A message that starts with a
+#               dash needs the same
+#   notify-send flag
+#             - any flag of notify-send, after the title
 #
 # OPTIONS
 #   -t, --type <type>   info, success or error (default: info)
@@ -22,11 +31,15 @@ set -eu
 #
 # EXAMPLE
 #   doomst -t success "Build passed" "42 tests, 3.1s"
+#   doomst "Calendar" "Standup at 10:00" --expire-time 0
+#   doomst -- --expire-time 0 "Calendar"
+#   doomst -- -- "-5 degrees"
 #
 # EXIT CODES
-#   0   Notification sent
-#   2   Invalid usage
-#   3   Could not run, eg. no notifier or a missing icon
+#   0       Notification sent
+#   2       Invalid usage
+#   3       Could not run, eg. no notify-send or a missing icon
+#   other   The exit code of notify-send, eg. for a flag it does not know
 #
 # SEE ALSO
 #   notify-send, dunst
@@ -75,5 +88,6 @@ _require_cmd notify-send
 # │ Main
 # ╰───
 
-# -- so a title starting with a dash reaches notify-send as a title
-notify-send --icon "$ICON_FILE" --urgency "$URGENCY" -- "$@"
+# No "--" here: it would turn a notify-send option after the title into text.
+# A caller who needs one writes it, as in "doomst -- -- -5 degrees"
+notify-send --icon "$ICON_FILE" --urgency "$URGENCY" "$@"
