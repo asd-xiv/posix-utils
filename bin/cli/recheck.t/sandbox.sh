@@ -79,6 +79,15 @@ add_output() {
   printf "$2" >"state/recheck/$1/output"
 }
 
+# add_state <id> <state>
+# Write the file "last" of a check without running it. Its one line holds the
+# four fields of a run in their order: time, state, exit code, seconds. Only
+# <state> varies. The exit code is 0 for every state.
+add_state() {
+  mkdir -p "state/recheck/$1"
+  printf '2023-11-14T22:13:20+0000\t%s\t0\t1s\n' "$2" >"state/recheck/$1/last"
+}
+
 # add_hook
 # Write an on-update hook that appends a line to hook.log in the current
 # folder.

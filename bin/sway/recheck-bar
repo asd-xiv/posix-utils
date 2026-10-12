@@ -15,9 +15,10 @@ set -eu
 #     text      Green and red counts, eg. "✓ 2 ✗ 1". Adds "? 1" for broken
 #               checks and "⟳ 1" while a check runs. Empty when recheck has
 #               no check, enabled or disabled, so waybar hides the module
-#     tooltip   Per check, its state, its id and the last line of its output,
-#               with " | " between them. recheck-bar escapes the tooltip for
-#               JSON and for markup
+#     tooltip   Per check, enabled or disabled, a dot in the color of its state,
+#               its id and the last line of its output. The dot is green, red,
+#               yellow for broken, or gray before the first run. recheck-bar
+#               escapes the last line for JSON and for markup
 #     class     red when a check is red, else broken when a check is broken,
 #               else green. Empty when recheck has no check
 #
@@ -93,12 +94,12 @@ set -- $COUNTS
 [ "$#" -eq 4 ] || _fail 3 -v got "$COUNTS" "recheck status did not print four counts"
 GREEN_COUNT="$1" RED_COUNT="$2" BROKEN_COUNT="$3" RUNNING_COUNT="$4"
 
-TOOLTIP=$("$RECHECK_FILE" ls --columns state,id,last-line \
-  --delimiter ' | ') || _fail 3 "recheck ls failed"
+ROWS=$("$RECHECK_FILE" ls --columns state,id,last-line) \
+  || _fail 3 "recheck ls failed"
 
 TEXT=""
 CLASS=""
-if [ -n "$TOOLTIP" ]; then
+if [ -n "$ROWS" ]; then
   TEXT="✓ $GREEN_COUNT ✗ $RED_COUNT"
   CLASS="green"
 
@@ -116,10 +117,20 @@ if [ -n "$TOOLTIP" ]; then
   fi
 fi
 
-# The last line of the output of a check is free text. jq escapes it for the
-# JSON, and @html escapes it for the markup of the tooltip
+# Turn tab-separated `recheck ls` to swaybar compatible output (JSON + Pango)
 jq --null-input --compact-output \
-  --arg text "$TEXT" --arg tooltip "$TOOLTIP" --arg class "$CLASS" \
-  '{text: $text, tooltip: ($tooltip | @html), class: $class}'
+  --arg text "$TEXT" --arg rows "$ROWS" --arg class "$CLASS" '
+  {green: "green", red: "red", broken: "yellow"} as $colors
+  | {
+      text: $text,
+      tooltip: (
+        $rows | split("\n") | map(
+          split("\t") as [$state, $id, $last_line]
+          | "<span color=\"\($colors[$state] // "gray")\">●</span> "
+            + "\($id) | \($last_line | @html)"
+        ) | join("\n")
+      ),
+      class: $class
+    }'
 
 exit 0
