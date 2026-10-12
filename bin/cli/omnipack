@@ -6,10 +6,10 @@ set -eu
 #   omnipack - Install OS dependencies, package manager agnostic
 #
 # SYNOPSIS
-#   omnipack <dep> [dep...]
+#   omnipack [OPTIONS] <dep> [dep...]
 #
 # DESCRIPTION
-#   - Known names use a recipe, anything else goes to yum, apt-get or pacman.
+#   - Known names use a recipe, anything else goes to yum, apt-get, pacman or apk.
 #   - Already installed dependencies are skipped.
 #   - Assumes running user has root/sudo privileges.
 #
@@ -18,10 +18,19 @@ set -eu
 #   awscli     - AWS CLI v2
 #   java       - Headless JRE, needed by neo4j
 #   neo4j      - Neo4j server and admin tools, from the distribution tarball
-#   <other>    - Installed through yum, apt-get or pacman
+#   <other>    - Installed through yum, apt-get, pacman or apk
 #
 # OPTIONS
-#   -h, --help   Print this help
+#   -r, --refresh   Refresh the package index before the first install. Once per
+#                   run, and not at all when every dependency is installed
+#                     pacman   Runs `pacman -Syu --noconfirm`. This upgrades
+#                              every installed package
+#                     yum      Runs `yum clean expire-cache`, so the install
+#                              fetches fresh metadata
+#                     apt-get  No change, the script always runs `apt-get update`
+#                     apk      No change, `apk add --no-cache` fetches a fresh
+#                              index
+#   -h, --help      Print this help
 #
 # ENVIRONMENT
 #   TERRAFORM_VERSION  Terraform version (default: 1.13.4)
@@ -30,15 +39,16 @@ set -eu
 #
 # EXAMPLE
 #   omnipack jq terraform
+#   omnipack --refresh jq curl
 #   NEO4J_VERSION=5.26.0 omnipack neo4j
 #
 # EXIT CODES
 #   0   Every dependency exists, installed now or already there
 #   2   Invalid usage
-#   3   Could not run, eg. no supported package manager
+#   3   Could not run, eg. no supported package manager or a failed refresh
 #
 # SEE ALSO
-#   curl, unzip, tar, yum, apt-get, pacman
+#   curl, unzip, tar, yum, apt-get, pacman, apk
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 LOG_NAMESPACE="omnipack"
@@ -46,7 +56,8 @@ LOG_NAMESPACE="omnipack"
 
 TERRAFORM_DEFAULT_VERSION="1.13.4"
 NEO4J_DEFAULT_VERSION="5.26.0"
-APT_UPDATED=""
+SHOULD_REFRESH="" # -r/--refresh, "true" or ""
+IS_INDEX_FRESH="" # "true" after the first refresh of this run
 
 # ╭───
 # │ Primitives
@@ -66,6 +77,12 @@ is_package() {
 
 # install_with_yum <pkg>...
 install_with_yum() {
+  [ -n "$SHOULD_REFRESH" ] && [ -z "$IS_INDEX_FRESH" ] && {
+    _info "Expiring the yum metadata cache…"
+    yum clean expire-cache -q || _fail 3 "yum clean expire-cache failed."
+    IS_INDEX_FRESH="true"
+  }
+
   yum install -y -q "$@" || _fail 3 -v packages "$*" "yum install failed."
 }
 
@@ -73,10 +90,10 @@ install_with_yum() {
 install_with_apt() {
   export DEBIAN_FRONTEND=noninteractive
 
-  [ -z "$APT_UPDATED" ] && {
+  [ -z "$IS_INDEX_FRESH" ] && {
     _info "Updating the apt package index…"
     apt-get update -qq || _fail 3 "apt-get update failed."
-    APT_UPDATED="true"
+    IS_INDEX_FRESH="true"
   }
 
   apt-get install -y -qq "$@" \
@@ -85,10 +102,24 @@ install_with_apt() {
 
 # install_with_pacman <pkg>...
 install_with_pacman() {
-  # No -Sy. Refreshing without upgrading leaves Arch in a partial upgrade, so
-  # a stale database has to fail loudly instead.
+  # Without --refresh, a stale database fails the install. Refreshing without
+  # upgrading leaves Arch in a partial upgrade, so --refresh runs -Syu.
+  [ -n "$SHOULD_REFRESH" ] && [ -z "$IS_INDEX_FRESH" ] && {
+    _info "Upgrading the system and refreshing the pacman database…"
+    pacman -Syu --noconfirm || _fail 3 "pacman -Syu failed."
+    IS_INDEX_FRESH="true"
+  }
+
   pacman -S --needed --noconfirm "$@" \
     || _fail 3 -v packages "$*" "pacman install failed."
+}
+
+# install_with_apk <pkg>...
+# With --no-cache, apk fetches a fresh index for this call and stores none. The
+# script needs no `apk update` step, and no stale index can fail the install.
+install_with_apk() {
+  apk add --no-cache --quiet "$@" \
+    || _fail 3 -v packages "$*" "apk install failed."
 }
 
 # install_pkg <pkg>...
@@ -123,8 +154,10 @@ install_pkg() {
     install_with_apt "$@"
   elif command -v pacman >/dev/null 2>&1; then
     install_with_pacman "$@"
+  elif command -v apk >/dev/null 2>&1; then
+    install_with_apk "$@"
   else
-    _fail 3 -v packages "$*" -v supported "yum, apt-get, pacman" \
+    _fail 3 -v packages "$*" -v supported "yum, apt-get, pacman, apk" \
       "No supported package manager."
   fi
 
@@ -251,10 +284,34 @@ case "${1:-}" in
     _show_help "$0"
     exit 2
     ;;
-  -?*)
-    _fail 2 -v flag "$1" "Unknown flag."
-    ;;
 esac
+
+# ╭───
+# │ Flags
+# ╰───
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -r | --refresh)
+      SHOULD_REFRESH="true"
+      shift
+      ;;
+    -h | --help)
+      _show_help "$0"
+      exit 0
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -?*)
+      _fail 2 -v flag "$1" "Unknown flag."
+      ;;
+    *) break ;;
+  esac
+done
+
+[ "$#" -eq 0 ] && _fail 2 "No dependency given."
 
 # ╭───
 # │ Cleanup
