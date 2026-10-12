@@ -382,7 +382,7 @@ Run `npm run lint`, or directly `./tools/verify ./bin ./tools`, before handing
 over. It checks every script with:
 
 - `shellcheck -s sh`
-- `dash -n` and `busybox sh -n`
+- `/bin/sh -n`
 - `--help` exits 0, an unknown flag exits 2
   - it skips both for a private command, a command under a `*.d` directory
 - a command has `+x`, a `*.sh` library does not

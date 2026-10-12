@@ -10,9 +10,9 @@ set -eu
 #
 # DESCRIPTION
 #   Runs shellcheck on every shell script under each dir and parses it under
-#   dash and BusyBox ash. A command, a file without an extension, must also be
-#   executable and pass a smoke test. A sourced library, a *.sh file, must not
-#   be executable.
+#   /bin/sh. A command, a file without an extension, must also be executable
+#   and pass a smoke test under /bin/sh. A sourced library, a *.sh file, must
+#   not be executable.
 #
 #     --help            must exit 0
 #     an unknown flag   must exit 2
@@ -41,7 +41,7 @@ set -eu
 #   3   Could not run
 #
 # SEE ALSO
-#   dash, busybox, shellcheck
+#   sh, shellcheck
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../bin/lib.sh"
@@ -87,7 +87,7 @@ case "${1:-}" in
   -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
 esac
 
-_require_cmd shellcheck dash busybox
+_require_cmd shellcheck
 
 [ "$#" -eq 0 ] && _fail 2 "No directory given"
 
@@ -118,13 +118,8 @@ while IFS= read -r FILE; do
     FILE_RC=1
   }
 
-  dash -n "$FILE" || {
-    _error -v script "$FILE" "dash could not parse"
-    FILE_RC=1
-  }
-
-  busybox sh -n "$FILE" || {
-    _error -v script "$FILE" "busybox could not parse"
+  /bin/sh -n "$FILE" || {
+    _error -v script "$FILE" "/bin/sh could not parse"
     FILE_RC=1
   }
 
@@ -142,18 +137,13 @@ while IFS= read -r FILE; do
       }
 
       if ! skips_smoke_test "$FILE"; then
-        dash "$FILE" --help >/dev/null || {
-          _error -v script "$FILE" "dash --help failed"
-          FILE_RC=1
-        }
-
-        busybox sh "$FILE" --help >/dev/null || {
-          _error -v script "$FILE" "busybox --help failed"
+        /bin/sh "$FILE" --help >/dev/null || {
+          _error -v script "$FILE" "--help failed"
           FILE_RC=1
         }
 
         FLAG_RC=0
-        dash "$FILE" --zz-not-a-real-flag >/dev/null 2>&1 || FLAG_RC=$?
+        /bin/sh "$FILE" --zz-not-a-real-flag >/dev/null 2>&1 || FLAG_RC=$?
 
         if [ "$FLAG_RC" -ne 2 ]; then
           _error -v script "$FILE" -v got "$FLAG_RC" \
