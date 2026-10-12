@@ -53,7 +53,7 @@ HAS_FAILED=""
 # │ Cleanup
 # ╰───
 
-# shellcheck disable=SC2329 # called by trap
+# shellcheck disable=SC2317,SC2329 # called by trap
 cleanup() {
   [ -z "$OUT_FILE" ] || rm -f -- "$OUT_FILE"
 }

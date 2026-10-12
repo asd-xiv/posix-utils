@@ -298,7 +298,7 @@ shift
 # │ Cleanup
 # ╰───
 
-# shellcheck disable=SC2329 # called by trap
+# shellcheck disable=SC2317,SC2329 # called by trap
 cleanup() {
   # 'set -u' aborts on an unset TEMP_DIR, so default it
   rm -rf "${TEMP_DIR:-}"

@@ -149,7 +149,7 @@ run_checks() {
 # An interrupted run leaves no trace: no marker, no half output. The last
 # full run stays as it was. The bar learns it through the on-update hook, the
 # browser through its reload
-# shellcheck disable=SC2329 # called by trap
+# shellcheck disable=SC2317,SC2329 # called by trap
 cleanup() {
   [ -n "$RUNNING_FILE" ] || return 0
 
