@@ -8,7 +8,9 @@
 # under the cursor. Alt+T toggles the check under the cursor, Alt+Enter edits
 # it in a new terminal window, opened with PU_TERMINAL. Esc closes the
 # browser. The list reloads every second. It shows each run when it starts and
-# when it ends, also a run that cron started.
+# when it ends, also a run that cron started. It needs fzf 0.73.0 or newer and
+# a terminal on stdin: the caller opens one. It does not run health, so a
+# missing Neovim does not stop it.
 # recheck runs this file, never call it directly.
 
 set -eu
@@ -23,23 +25,13 @@ TERMINAL_COMMAND="${PU_TERMINAL:-}"
 # ╰───
 
 # guard_fzf_version
-# Exit 3 unless fzf is 0.73.0 or newer. The browser needs --id-nth, new in
-# fzf 0.71.0, and the "every" event, new in fzf 0.73.0.
+# Exit 3 unless fzf is 0.73.0 or newer.
 guard_fzf_version() {
-  # fzf prints "0.74.4 (a140afeb)", or "0.74" when built without a tag
-  fzf_version=$(fzf --version) || _fail 3 '"fzf --version" failed'
-  fzf_version="${fzf_version%% *}"
-  _is version "$fzf_version" \
-    || _fail 3 -v version "$fzf_version" "Could not read the fzf version"
+  guard_version=$(find_fzf_version)
 
-  fzf_major="${fzf_version%%.*}"
-  fzf_minor="${fzf_version#*.}"
-  fzf_minor="${fzf_minor%%.*}"
-
-  if [ "$fzf_major" -eq 0 ] && [ "$fzf_minor" -lt 73 ]; then
-    _fail 3 -v version "$fzf_version" \
+  is_fzf_new_enough "$guard_version" \
+    || _fail 3 -v version "${guard_version:-unknown}" \
       "fzf is too old, the browser needs 0.73.0 or newer"
-  fi
 
   return 0
 }
@@ -63,6 +55,7 @@ trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
 # ╰───
 
 [ "$#" -eq 0 ] || _fail 2 '"browse" takes no arguments'
+
 _require_cmd fzf
 guard_fzf_version
 guard_recheck_file

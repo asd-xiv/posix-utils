@@ -1,0 +1,40 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+
+# checks.sh finds lib.sh from the folder of the command files
+SCRIPT_DIR="$SCRIPT_DIR/../recheck.d"
+# shellcheck source=../recheck.d/checks.sh
+. "$SCRIPT_DIR/checks.sh"
+
+_describe "recheck :: is_fzf_new_enough"
+
+_test 'given [0.73.0] should [return 0]'
+actual() { is_fzf_new_enough 0.73.0 && echo yes || echo no; }
+_expect equal actual.stdout 'yes'
+
+_test 'given [0.74] a version without a patch, should [return 0]'
+actual() { is_fzf_new_enough 0.74 && echo yes || echo no; }
+_expect equal actual.stdout 'yes'
+
+_test 'given [1.0.0] should [return 0]'
+actual() { is_fzf_new_enough 1.0.0 && echo yes || echo no; }
+_expect equal actual.stdout 'yes'
+
+_test 'given [0.72.9] should [return 1]'
+actual() { is_fzf_new_enough 0.72.9 && echo yes || echo no; }
+_expect equal actual.stdout 'no'
+
+_test 'given [0.9.0] should [return 1, 9 is less than 73]'
+actual() { is_fzf_new_enough 0.9.0 && echo yes || echo no; }
+_expect equal actual.stdout 'no'
+
+_test 'given [text that is no version] should [return 1]'
+actual() { is_fzf_new_enough devel && echo yes || echo no; }
+_expect equal actual.stdout 'no'
+
+_test 'given [an empty string] should [return 1]'
+actual() { is_fzf_new_enough "" && echo yes || echo no; }
+_expect equal actual.stdout 'no'

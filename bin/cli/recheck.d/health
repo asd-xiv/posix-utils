@@ -1,0 +1,67 @@
+#!/bin/sh
+
+# recheck health
+#
+# Print each reason recheck cannot work fully on this system, one per line, on
+# stdout: a missing command, an fzf older than 0.73.0, PU_TERMINAL not set or a
+# script path that is not safe. Each line names the command that needs the
+# thing. Print nothing when it finds none. health does not check the terminal,
+# the caller opens it. Exit 1 when it printed a reason.
+# recheck runs this file, never call it directly.
+
+set -eu
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/checks.sh"
+
+# ╭───
+# │ Main
+# ╰───
+
+[ "$#" -eq 0 ] || _fail 2 '"health" takes no arguments'
+
+HAS_REASON=""
+
+if ! command -v crontab >/dev/null 2>&1; then
+  printf '%s\n' "crontab not found, sync, enable, disable and edit need it"
+  HAS_REASON="true"
+fi
+
+if ! command -v awk >/dev/null 2>&1; then
+  printf '%s\n' "awk not found, sync, enable, disable and edit need it"
+  HAS_REASON="true"
+fi
+
+if ! is_recheck_file_safe; then
+  printf '%s\n' "recheck path has a character outside A-Za-z0-9_@+=:,./-"
+  HAS_REASON="true"
+fi
+
+if ! command -v fzf >/dev/null 2>&1; then
+  printf '%s\n' "fzf not found, browse needs fzf 0.73.0 or newer"
+  HAS_REASON="true"
+else
+  FZF_VERSION=$(find_fzf_version)
+
+  if ! is_fzf_new_enough "$FZF_VERSION"; then
+    printf '%s\n' \
+      "fzf ${FZF_VERSION:-unknown} is too old, browse needs 0.73.0 or newer"
+    HAS_REASON="true"
+  fi
+fi
+
+if ! command -v nvim >/dev/null 2>&1; then
+  printf '%s\n' "nvim not found, edit needs it"
+  HAS_REASON="true"
+fi
+
+if [ -z "${PU_TERMINAL:-}" ]; then
+  printf '%s\n' "PU_TERMINAL not set, Alt+Enter in browse needs it"
+  HAS_REASON="true"
+fi
+
+if [ -n "$HAS_REASON" ]; then
+  exit 1
+fi
+
+exit 0
