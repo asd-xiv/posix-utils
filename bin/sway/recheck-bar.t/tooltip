@@ -12,15 +12,15 @@ _describe "recheck-bar :: tooltip"
 
 before_each() { build_sandbox; }
 
-_test 'given [a last line with quotes, "&", "<" and a backslash] should [print one JSON line with the tooltip escaped for JSON and for markup]'
+_test 'given [a last line with quotes, "&", "<" and a backslash] should [escape the last line for JSON and markup, and keep the span]'
 prepare() {
   add_check a 0
   add_output a 'say "hi" & <b> \\ it\n'
 }
 actual() { "$RECHECK_BAR"; }
-_expect equal actual.stdout '{"text":"✓ 0 ✗ 0","tooltip":"- | a | say &quot;hi&quot; &amp; &lt;b&gt; \\ it","class":"green"}'
+_expect equal actual.stdout '{"text":"✓ 0 ✗ 0","tooltip":"<span color=\"gray\">●</span> a | say &quot;hi&quot; &amp; &lt;b&gt; \\ it","class":"green"}'
 
-_test 'given [two checks] should [join their lines with \n in the tooltip]'
+_test 'given [two checks] should [join their rows with \n in the tooltip]'
 prepare() {
   add_check a 0
   add_check b 0
@@ -28,7 +28,24 @@ prepare() {
   add_output b 'two\n'
 }
 actual() { "$RECHECK_BAR"; }
-_expect equal actual.stdout '{"text":"✓ 0 ✗ 0","tooltip":"- | a | one\n- | b | two","class":"green"}'
+_expect equal actual.stdout '{"text":"✓ 0 ✗ 0","tooltip":"<span color=\"gray\">●</span> a | one\n<span color=\"gray\">●</span> b | two","class":"green"}'
+
+_test 'given [one check per state and one that never ran] should [color the dots green, red, yellow and gray]'
+prepare() {
+  add_check a 0
+  add_check b 0
+  add_check c 0
+  add_check d 0
+  add_state a green
+  add_state b red
+  add_state c broken
+  add_output a 'one\n'
+  add_output b 'two\n'
+  add_output c 'three\n'
+  add_output d 'four\n'
+}
+actual() { "$RECHECK_BAR"; }
+_expect equal actual.stdout '{"text":"✓ 1 ✗ 1 ? 1","tooltip":"<span color=\"green\">●</span> a | one\n<span color=\"red\">●</span> b | two\n<span color=\"yellow\">●</span> c | three\n<span color=\"gray\">●</span> d | four","class":"red"}'
 
 _test 'given [no check] should [print empty text, tooltip and class]'
 prepare() { :; }
