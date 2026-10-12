@@ -1,12 +1,11 @@
 #!/bin/sh
 
-# recheck ls [--cron | --color | [--columns <names>] [--delimiter <text>]]
+# recheck ls [--cron | --color | --columns <names>]
 #
 # Print every check: state, on or off, id, cron pattern, last line. With
 # --cron, print the crontab line of each enabled check with a valid cron
 # pattern. With --color, print for a person. With --columns, print only the
-# named columns, in the order of <names>. With --delimiter, print <text> between
-# the columns instead of a tab.
+# named columns, in the order of <names>.
 # recheck runs this file, never call it directly.
 
 set -eu
@@ -14,10 +13,8 @@ set -eu
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/checks.sh"
 
-DELIMITER="$TAB" # --delimiter, the text between the columns of list_checks
-MODE=""          # --cron or --color, "" for the plain list
-HAS_DELIMITER="" # "true" once the caller passes --delimiter
-HAS_COLUMNS=""   # "true" once the caller passes --columns
+MODE=""        # --cron or --color, "" for the plain list
+HAS_COLUMNS="" # "true" once the caller passes --columns
 # --columns, the names of the columns of list_checks, with a comma between them
 COLUMN_NAMES="state,switch,id,pattern,last-line"
 
@@ -73,8 +70,8 @@ guard_columns() {
 }
 
 # list_checks
-# Print the columns named in COLUMN_NAMES for every check. Find a value only
-# when its column is named.
+# Print the columns named in COLUMN_NAMES for every check, with a tab between
+# the columns. Find a value only when its column is named.
 list_checks() {
   for list_id in $(find_ids); do
     list_rest="$COLUMN_NAMES"
@@ -96,10 +93,10 @@ list_checks() {
         last-line) list_value=$(find_last_line "$list_id") ;;
       esac
 
-      # printf takes the delimiter and the value as arguments, so it never
-      # reads them as a format
+      # printf takes the tab and the value as arguments, so it never reads them
+      # as a format
       printf '%s%s' "$list_delimiter" "$list_value"
-      list_delimiter="$DELIMITER"
+      list_delimiter="$TAB"
 
       case "$list_rest" in
         *,*) list_rest="${list_rest#*,}" ;;
@@ -162,12 +159,6 @@ while [ "$#" -gt 0 ]; do
       HAS_COLUMNS="true"
       shift 2
       ;;
-    --delimiter)
-      [ "$#" -ge 2 ] || _fail 2 "--delimiter needs a text"
-      DELIMITER="$2"
-      HAS_DELIMITER="true"
-      shift 2
-      ;;
     --)
       shift
       break
@@ -180,9 +171,9 @@ done
 [ "$#" -eq 0 ] || _fail 2 -v argument "$1" '"ls" takes only flags'
 
 # --cron prints crontab lines. The browser reads the id from each --color row.
-# So neither --cron nor --color works with --delimiter or --columns
-if [ -n "$HAS_DELIMITER$HAS_COLUMNS" ] && [ -n "$MODE" ]; then
-  _fail 2 '"ls" takes --columns and --delimiter only without --cron or --color'
+# So neither --cron nor --color works with --columns
+if [ -n "$HAS_COLUMNS" ] && [ -n "$MODE" ]; then
+  _fail 2 '"ls" takes --columns only without --cron or --color'
 fi
 
 guard_columns "$COLUMN_NAMES"

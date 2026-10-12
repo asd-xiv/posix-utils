@@ -6,7 +6,7 @@ set -eu
 #   recheck - A terminal UI for cron: run checks, keep the last state of each
 #
 # SYNOPSIS
-#   recheck ls [--cron | --color | [--columns <names>] [--delimiter <text>]]
+#   recheck ls [--cron | --color | --columns <names>]
 #   recheck enable <id>...
 #   recheck disable <id>...
 #   recheck toggle <id>...
@@ -110,9 +110,6 @@ set -eu
 #                (the cron pattern) and last-line (the last non-empty line of
 #                the output). Default: all five, in that order. Not with
 #                --cron or --color
-#   --delimiter <text>
-#                With ls, print <text> between the columns instead of a tab.
-#                Not with --cron or --color
 #   --wait       With sync, wait for Enter after sync printed the lines that
 #                changed, or the warning for a check it left out
 #   -h, --help   Print this help

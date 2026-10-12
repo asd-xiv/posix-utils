@@ -38,24 +38,6 @@ prepare() {
 actual() { "$RECHECK" ls | awk -F '\t' '{ print NF ":" $5 }'; }
 _expect equal actual.stdout '5:x y'
 
-_test 'given [--delimiter " | "] should [print the five columns with it between them]'
-prepare() {
-  add_check a 0
-  add_output a 'x\n'
-}
-actual() { "$RECHECK" ls --delimiter ' | '; }
-_expect equal actual.stdout '- | on | a | * * * * * | x'
-
-_test 'given [--delimiter with no text] should [exit 2]'
-prepare() { add_check a 0; }
-actual() { "$RECHECK" ls --delimiter; }
-_expect equal actual.exit 2
-
-_test 'given [--delimiter with --color] should [exit 2]'
-prepare() { add_check a 0; }
-actual() { "$RECHECK" ls --color --delimiter ,; }
-_expect equal actual.exit 2
-
 _test 'given [--columns last-line,id] should [print those two columns in that order]'
 prepare() {
   add_check a 0
