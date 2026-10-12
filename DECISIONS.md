@@ -11,6 +11,50 @@ has up to four parts, in this order. Leave out a part that is empty.
 - **Deferred**: work, a known gap or an option left for later, each item with a
   **Revisit when**
 
+## The lint script parses and smoke tests under the /bin/sh of the system, CI runs it in three images
+
+**2026-10-12**
+
+**Context:**
+
+- `tools/verify` parsed each script with `dash -n` and `busybox sh -n`, and ran
+  the smoke test under dash and BusyBox ash, whatever `/bin/sh` the system had.
+  `tools/test` runs each test file under `/bin/sh` only
+- CI ran `tools/verify` on the Ubuntu runner, which has shellcheck 0.9.0.
+  `tools/verify` passed on the author's system, which has 0.11.0, and failed
+  in CI
+- shellcheck 0.11.0 reports a function that nothing calls by name as `SC2329`.
+  0.9.0 and 0.10.0 report each command inside it as `SC2317`. Alpine 3.22 and
+  Debian trixie have 0.10.0, Arch has 0.11.0
+
+**Decision:**
+
+- `tools/verify` parses each script and runs the smoke test under `/bin/sh`
+- CI runs `tools/verify` in a container, once per image, in the three images of
+  the test job
+- In the container, `omnipack` installs `shellcheck`, `jq` and `curl` from the
+  package manager of the image
+- Every directive in the package that disables `SC2329` disables `SC2317` too
+
+**Rejected:**
+
+- shellcheck 0.11.0 from its release page, in every image: the scripts must
+  pass the shellcheck that a person on that system has
+- `tools/verify` in the Arch image alone: it leaves dash and BusyBox ash
+  without a parse and a smoke test
+
+**Deferred:**
+
+- `SC2317` also covers a command after `exit` or `return`. A test file has the
+  directive at its top, so shellcheck no longer reports such a command in that
+  file
+  - **Revisit when** every image has shellcheck 0.11.0 or newer. Then drop
+    `SC2317` from the directives
+- Where `/bin/sh` is bash, nothing parses a script under dash or BusyBox ash
+  before a push. A fault that shows only there shows in CI first
+  - **Revisit when** CI fails for such a fault. Then run `tools/verify` in an
+    image from the pre-push hook
+
 ## One terminal setting for the package, PU_TERMINAL
 
 **2026-10-12**
