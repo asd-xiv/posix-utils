@@ -9,6 +9,17 @@ _describe "recheck :: run"
 
 before_each() { build_sandbox; }
 
+# add_traced_check <id>
+# Write an enabled check that appends "start" to check.log in the current folder
+# when it starts. Create check.log empty: a test that expects no start expects
+# an empty file.
+add_traced_check() {
+  printf '#!/bin/sh\n# CRON: * * * * *\nprintf "start\\n" >>"%s/check.log"\n' \
+    "$PWD" >"config/recheck/checks/$1"
+  chmod +x "config/recheck/checks/$1"
+  : >check.log
+}
+
 # One rule, the exit code of a check is its state. The three states are the
 # three rows of one table, so one run holds all three
 _test 'given [checks that exit 0, 1 and 7] should [print green, red and broken, exit 0]'
@@ -52,3 +63,90 @@ prepare() {
 actual() { "$RECHECK" run good; }
 _expect equal actual.exit 0
 _expect ! equal hook.log ''
+
+# recheck trusts a marker and never asks whether its process still runs. No run
+# command created the marker of add_marker, so the two tests below also cover
+# the marker a run command leaves when kill -9 ends it
+_test 'given [a check with a marker] should [not start it, say "Already running, skipping" and name the marker]'
+prepare() {
+  add_traced_check a
+  add_marker a
+}
+actual() { "$RECHECK" run a; }
+_expect equal actual.exit 0
+_expect equal actual.stdout ''
+_expect equal check.log ''
+_expect contain actual.stderr 'Already running, skipping id=a marker='
+_expect end-with actual.stderr '/runtime/recheck/a.running'
+
+_test 'given [a check with a marker and two run commands that start together] should [not start the check, keep the marker]'
+prepare() {
+  add_traced_check a
+  add_marker a
+}
+actual() {
+  "$RECHECK" run a >first.stdout 2>first.stderr &
+  "$RECHECK" run a >second.stdout 2>second.stderr &
+  wait
+}
+_expect equal check.log ''
+_expect contain first.stderr 'Already running, skipping'
+_expect contain second.stderr 'Already running, skipping'
+_expect equal runtime/recheck/a.running '4242 12:00:00'
+
+_test 'given [a slow check and two run commands that start together] should [start the check once]'
+prepare() {
+  add_traced_check a
+  printf 'sleep 1\n' >>config/recheck/checks/a
+}
+actual() {
+  "$RECHECK" run a >first.stdout 2>first.stderr &
+  "$RECHECK" run a >second.stdout 2>second.stderr &
+  wait
+}
+_expect equal check.log 'start'
+
+_test 'given [a check that lists the runtime folder] should [create the marker before the check starts]'
+prepare() {
+  cat >config/recheck/checks/a <<'CHECK'
+#!/bin/sh
+# CRON: * * * * *
+ls "$XDG_RUNTIME_DIR/recheck"
+CHECK
+  chmod +x config/recheck/checks/a
+}
+actual() { "$RECHECK" run a; }
+_expect equal actual.stdout 'a	green'
+_expect equal state/recheck/a/output 'a.running'
+
+_test 'given [a run that ended] should [leave no marker in the runtime folder]'
+prepare() { add_check a 0; }
+actual() {
+  "$RECHECK" run a >/dev/null
+  ls runtime/recheck
+}
+_expect equal actual.exit 0
+_expect equal actual.stdout ''
+
+_test 'given [a runtime folder that run cannot create] should [exit 3 and not start the check]'
+prepare() {
+  add_traced_check a
+  : >file
+}
+actual() { XDG_RUNTIME_DIR="$PWD/file/runtime" "$RECHECK" run a; }
+_expect equal actual.exit 3
+_expect equal actual.stdout ''
+_expect equal check.log ''
+_expect contain actual.stderr 'No writable runtime folder, set XDG_RUNTIME_DIR'
+
+_test 'given [a read-only runtime folder] should [exit 3 and not start the check]'
+prepare() {
+  add_traced_check a
+  mkdir -p runtime/recheck
+  chmod a-w runtime/recheck
+}
+actual() { "$RECHECK" run a; }
+_expect equal actual.exit 3
+_expect equal actual.stdout ''
+_expect equal check.log ''
+_expect contain actual.stderr 'No writable runtime folder, set XDG_RUNTIME_DIR'

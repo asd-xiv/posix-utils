@@ -12,7 +12,7 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/checks.sh"
 
 CHANGE_HOOK_FILE="$CONFIG_DIR/on-change"
-RUNNING_FILE="" # the marker this process wrote, for unmark_run and cleanup
+RUNNING_ID="" # the check this process marked, "" when it marked none
 
 # ╭───
 # │ Primitives
@@ -29,29 +29,24 @@ map_state() {
 }
 
 # mark_run <id>
-# Write the marker of a run. Return 1 when another run of the check holds it.
+# Create the marker of a check. Return 1 when the check has one already, or when
+# the shell cannot write it.
 mark_run() {
-  mark_file="$STATE_DIR/$1/running"
+  mark_file=$(print_marker_file "$1")
 
-  if [ -f "$mark_file" ]; then
-    is_running "$1" && return 1
-
-    # The marker of a run that died
-    rm -f -- "$mark_file"
-  fi
-
-  # With noclobber, only one of two runs that start together creates the file
+  # With noclobber, the shell creates the marker only when there is none, in one
+  # system call. So only one of two run commands that start together creates it
   (set -C && printf '%s %s\n' "$$" "$(date +%T)" >"$mark_file") 2>/dev/null \
     || return 1
 
-  RUNNING_FILE="$mark_file"
+  RUNNING_ID="$1"
 }
 
 # unmark_run
-# Remove the marker this process wrote.
+# Remove the marker this process created.
 unmark_run() {
-  rm -f -- "$RUNNING_FILE"
-  RUNNING_FILE=""
+  rm -f -- "$(print_marker_file "$RUNNING_ID")"
+  RUNNING_ID=""
 }
 
 # record_run <id> <exit-code> <seconds>
@@ -92,14 +87,14 @@ record_run() {
 }
 
 # run_check <id>
-# Run a check and record the run. Do nothing when the check is already
-# running.
+# Run a check and keep the run. Skip a check that has a marker.
 run_check() {
   run_dir="$STATE_DIR/$1"
   mkdir -p -- "$run_dir"
 
   if ! mark_run "$1"; then
-    _info -v id "$1" "Already running, skipping"
+    _info -v id "$1" -v marker "$(print_marker_file "$1")" \
+      "Already running, skipping"
     return 0
   fi
 
@@ -126,8 +121,16 @@ run_check() {
 
 # run_checks <id>...
 # Run each named check, then run the on-update hook. Skip a disabled check.
+# Create the runtime folder first, exit 3 when it is missing or read-only.
 run_checks() {
   guard_id "$@"
+
+  # mark_run cannot create a marker in a folder that is missing or read-only,
+  # and run_check would report that as "Already running"
+  if ! mkdir -p -- "$RUNTIME_DIR" || [ ! -w "$RUNTIME_DIR" ]; then
+    _fail 3 -v path "$RUNTIME_DIR" \
+      "No writable runtime folder, set XDG_RUNTIME_DIR"
+  fi
 
   for named_id in "$@"; do
     if is_enabled "$named_id"; then
@@ -146,14 +149,15 @@ run_checks() {
 # │ Cleanup
 # ╰───
 
-# An interrupted run leaves no trace: no marker, no half output. The last
-# full run stays as it was. The bar learns it through the on-update hook, the
-# browser through its reload
+# A run command that ends by Ctrl+C, kill or a closed window leaves no marker
+# and no half output. The last full run stays as it was. The bar learns it
+# through the on-update hook, the browser through its reload. After kill -9 the
+# shell runs no trap: that run command leaves its marker and its half output
 # shellcheck disable=SC2329 # called by trap
 cleanup() {
-  [ -n "$RUNNING_FILE" ] || return 0
+  [ -n "$RUNNING_ID" ] || return 0
 
-  rm -f -- "${RUNNING_FILE%/running}/output.new"
+  rm -f -- "$STATE_DIR/$RUNNING_ID/output.new"
   unmark_run
   run_hook "$UPDATE_HOOK_FILE"
 }
