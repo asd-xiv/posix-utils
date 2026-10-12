@@ -1,0 +1,20 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/sandbox.sh"
+
+_describe "recheck :: status"
+
+before_each() { build_sandbox; }
+
+_test 'given [two enabled checks, one with a marker] should [count one as running]'
+prepare() {
+  add_check a 0
+  add_check b 0
+  add_marker a
+}
+actual() { "$RECHECK" status; }
+_expect equal actual.exit 0
+_expect equal actual.stdout '0 0 0 1'

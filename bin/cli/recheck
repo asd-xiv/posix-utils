@@ -100,6 +100,12 @@ set -eu
 #   per run to ~/.local/state/recheck/runs.log: time, state, exit code,
 #   seconds the run took and id.
 #
+#   While a check runs, recheck keeps a marker: the file <id>.running in
+#   /run/user/<user id>/recheck. While a check has a marker, run skips it, and
+#   status, show and "ls --color" report it as running. A run command that ends
+#   by "kill -9" leaves the marker. It stays until you remove it, or until the
+#   next boot clears /run/user/<user id>.
+#
 # ARGUMENTS
 #   id   Check to act on. Repeatable for enable, disable and run
 #
@@ -130,6 +136,9 @@ set -eu
 #                      browser writes "recheck edit <id>" after it
 #   XDG_CONFIG_HOME    Parent of the recheck config (default: ~/.config)
 #   XDG_STATE_HOME     Parent of the recheck state (default: ~/.local/state)
+#   XDG_RUNTIME_DIR    Parent of the folder "recheck" that holds the markers
+#                      (default: /run/user/<user id>). run exits 3 when it
+#                      cannot create that folder, or cannot write to it
 #   LOG_LEVEL          Last level to print (default: info)
 #   NO_COLOR           Disables color when set and non-empty, in log lines
 #                      and in the lines sync prints

@@ -9,8 +9,9 @@
 #
 #   recheck writes the real crontab and config of the user. A test that runs
 #   it calls build_sandbox first, from before_each. The sandbox points HOME,
-#   XDG_CONFIG_HOME and XDG_STATE_HOME at the test folder and puts a fake
-#   crontab first on PATH. Nothing in it calls the real crontab.
+#   XDG_CONFIG_HOME, XDG_STATE_HOME and XDG_RUNTIME_DIR at the test folder and
+#   puts a fake crontab first on PATH. Nothing in it calls the real crontab or
+#   writes to the real config, state or runtime folder.
 #
 #   BusyBox runs its own crontab applet before anything on PATH, so a fake
 #   crontab would not be called. The whole file is skipped there.
@@ -25,13 +26,13 @@ esac
 RECHECK="$SCRIPT_DIR/../recheck"
 
 # build_sandbox
-# Create the config, the state and a fake crontab in the current folder, then
-# make recheck use only them.
+# Create the config, the parents of the state and of the runtime folder, and a
+# fake crontab in the current folder, then make recheck use only them.
 #
 # RETURNS
 #   3   The fake crontab is not the first crontab on PATH
 build_sandbox() {
-  mkdir -p config/recheck/checks state bin home
+  mkdir -p config/recheck/checks state runtime bin home
   cat >bin/crontab <<'FAKE'
 #!/bin/sh
 store="$(dirname "$0")/crontab.txt"
@@ -49,8 +50,9 @@ FAKE
   HOME="$PWD/home"
   XDG_CONFIG_HOME="$PWD/config"
   XDG_STATE_HOME="$PWD/state"
+  XDG_RUNTIME_DIR="$PWD/runtime"
   PATH="$PWD/bin:$PATH"
-  export HOME XDG_CONFIG_HOME XDG_STATE_HOME PATH
+  export HOME XDG_CONFIG_HOME XDG_STATE_HOME XDG_RUNTIME_DIR PATH
 
   if [ "$(command -v crontab)" != "$PWD/bin/crontab" ]; then
     printf 'build_sandbox: the fake crontab is not first on PATH\n' >&2
@@ -81,6 +83,14 @@ add_output() {
 add_state() {
   mkdir -p "state/recheck/$1"
   printf '2023-11-14T22:13:20+0000\t%s\t0\t1s\n' "$2" >"state/recheck/$1/last"
+}
+
+# add_marker <id>
+# Write the marker of a check, as a run in progress would, without running it.
+# The process id and the time are the same for every check.
+add_marker() {
+  mkdir -p runtime/recheck
+  printf '4242 12:00:00\n' >"runtime/recheck/$1.running"
 }
 
 # add_hook

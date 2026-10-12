@@ -14,6 +14,9 @@ RECHECK_FILE=$(realpath "$SCRIPT_DIR/../recheck")
 
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/recheck"
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/recheck"
+# cron sets no XDG_RUNTIME_DIR. The default is the folder the login manager
+# makes for the user. A boot clears it
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/recheck"
 CHECKS_DIR="$CONFIG_DIR/checks"
 ENV_FILE="$CONFIG_DIR/env"
 # shellcheck disable=SC2034 # the command files read it
@@ -133,33 +136,41 @@ find_state() {
   printf '%s' "${state_line%%"$TAB"*}"
 }
 
-# The marker of a run is the file "running" in the state folder of its check.
-# It holds "<process id> <time>" for as long as the run lasts.
+# The marker of a check is the file "<id>.running" in the runtime folder. "run"
+# creates it before the check starts and removes it when the check ends. It
+# holds the process id of the run command and the time the check started. "show"
+# prints the time. The process id is for a person who finds a marker that a run
+# command left. recheck trusts the marker: a check with a marker is running, and
+# "run" skips it. No command asks whether the process still runs. A run command
+# that ends without its traps, eg. by kill -9, leaves its marker. Then the check
+# runs again only after a person removes the marker, or a boot clears the
+# default runtime folder.
+
+# print_marker_file <id>
+# Print the path of the marker of a check, whether the check has one or not.
+print_marker_file() {
+  printf '%s' "$RUNTIME_DIR/$1.running"
+}
 
 # find_run_start <id>
-# Print the time the run in progress started. Return 1 when the check is not
-# running. A marker outlives its run after a kill -9 or a power loss, and its
-# process id can then belong to any program. So the process must be alive and
-# must be a recheck.
+# Print the time the run in progress started. Return 1 when the check has no
+# marker. A marker is empty for an instant after its creation. Then print an
+# empty time and return 0.
 find_run_start() {
-  [ -f "$STATE_DIR/$1/running" ] || return 1
+  start_file=$(print_marker_file "$1")
+  [ -f "$start_file" ] || return 1
 
-  read -r start_pid start_time <"$STATE_DIR/$1/running" || return 1
-  _is positive-integer "$start_pid" || return 1
-  kill -0 "$start_pid" 2>/dev/null || return 1
-
-  # A ps without -p, as in BusyBox, cannot say. Then a live process is enough
-  start_args=$(ps -o args= -p "$start_pid" 2>/dev/null) || start_args="recheck"
-  case "$start_args" in
-    *recheck*) ;;
-    *) return 1 ;;
-  esac
+  # The time stays empty when the marker is empty, and when the run ended after
+  # the guard above and removed the marker
+  start_time=""
+  # shellcheck disable=SC2034 # read needs a name for the process id
+  { read -r start_pid start_time <"$start_file" || true; } 2>/dev/null
 
   printf '%s' "$start_time"
 }
 
 # is_running <id>
-# Return 0 while a run of the check is in progress.
+# Return 0 when the check has a marker.
 is_running() {
   find_run_start "$1" >/dev/null
 }
