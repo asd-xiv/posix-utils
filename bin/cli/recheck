@@ -16,6 +16,7 @@ set -eu
 #   recheck log
 #   recheck show [--color] <id>
 #   recheck browse
+#   recheck health
 #   recheck edit [id]
 #   recheck -h | --help
 #
@@ -70,6 +71,11 @@ set -eu
 #               Alt+Enter edits it in a new terminal window, opened with
 #               PU_TERMINAL. The browser needs a terminal and fzf 0.73.0 or
 #               newer
+#     health    Print each reason recheck cannot work fully on this system,
+#               one per line: a missing command, an fzf older than 0.73.0,
+#               PU_TERMINAL not set or a script path that is not safe. Print
+#               nothing when it finds none. open-os-menu runs health before
+#               it lets a person pick browse
 #     edit      Start Neovim in ~/.config/recheck, in this terminal. With an
 #               id, open only the file of that check. Sync when Neovim
 #               closes without an error. Wait for Enter when the sync
@@ -134,10 +140,11 @@ set -eu
 #
 # EXIT CODES
 #   0   Done. For status, no enabled check is red or broken
-#   1   For status, at least one enabled check is red or broken
+#   1   For status, at least one enabled check is red or broken. For health,
+#       recheck cannot work fully
 #   2   Invalid usage
 #   3   Could not run, eg. no crontab command or a check without a valid cron
-#       pattern
+#       pattern. For browse, no fzf, an fzf older than 0.73.0 or no terminal
 #
 # SEE ALSO
 #   crontab, recheck-bar, nvim, fzf, awk

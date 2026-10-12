@@ -189,17 +189,24 @@ run_hook() {
   return 0
 }
 
-# guard_recheck_file
-# Exit 3 unless RECHECK_FILE, the path of recheck, is safe to write unquoted.
+# is_recheck_file_safe
+# Return 0 when RECHECK_FILE, the path of recheck, is safe to write unquoted.
 # A crontab line and the fzf commands of the browser hold it. cron reads "%"
 # as a newline, and a shell would split or expand most other characters.
-guard_recheck_file() {
+is_recheck_file_safe() {
   case "$RECHECK_FILE" in
-    *[!A-Za-z0-9_@+=:,./-]*)
-      _fail 3 -v path "$RECHECK_FILE" \
-        "The script path has a character outside A-Za-z0-9_@+=:,./-"
-      ;;
+    *[!A-Za-z0-9_@+=:,./-]*) return 1 ;;
   esac
+
+  return 0
+}
+
+# guard_recheck_file
+# Exit 3 unless is_recheck_file_safe.
+guard_recheck_file() {
+  is_recheck_file_safe \
+    || _fail 3 -v path "$RECHECK_FILE" \
+      "The script path has a character outside A-Za-z0-9_@+=:,./-"
 
   return 0
 }
@@ -211,6 +218,35 @@ guard_recheck_file() {
 guard_sync() {
   _require_cmd crontab awk
   guard_recheck_file
+}
+
+# find_fzf_version
+# Print the version fzf reports, eg. 0.74.4. Print nothing when fzf is missing
+# or prints no version.
+find_fzf_version() {
+  command -v fzf >/dev/null 2>&1 || return 0
+
+  # fzf prints "0.74.4 (a140afeb)", or "0.74" when built without a tag
+  find_reported=$(fzf --version 2>/dev/null) || return 0
+  printf '%s' "${find_reported%% *}"
+}
+
+# is_fzf_new_enough <version>
+# Return 0 when <version> is 0.73.0 or newer, 1 when it is older or not a
+# version. browse needs --id-nth, new in fzf 0.71.0, and the "every" event,
+# new in fzf 0.73.0.
+is_fzf_new_enough() {
+  _is version "$1" || return 1
+
+  enough_major="${1%%.*}"
+  enough_minor="${1#*.}"
+  enough_minor="${enough_minor%%.*}"
+
+  if [ "$enough_major" -eq 0 ] && [ "$enough_minor" -lt 73 ]; then
+    return 1
+  fi
+
+  return 0
 }
 
 # list_cron_lines
