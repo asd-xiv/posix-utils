@@ -1,42 +1,33 @@
 name: Code QA
 on:
   workflow_call:
-    inputs:
-      cache-key:
-        required: true
-        type: string
-      node-version:
-        required: true
-        type: string
 
 permissions:
   contents: read
 
 jobs:
   lint:
-    name: Lint
+    name: Lint (${{ matrix.image }})
     runs-on: ubuntu-latest
+    # The shellcheck and the /bin/sh of the image check the scripts
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - alpine:3.22
+          - debian:trixie-slim
+          - archlinux:latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ inputs.node-version }}
-
-      - name: Restore node_modules
-        uses: actions/cache@v5
-        with:
-          path: node_modules
-          key: node-modules-${{ inputs.cache-key }}
-
-      # shellcheck and dash ship with the runner, BusyBox ash does not
-      - name: Install BusyBox
-        run: sudo apt-get update && sudo apt-get install --yes busybox-static
+      # get-youtube-transcript needs jq and curl to reach its flag check
+      - name: Install the tools of the lint script
+        run: bin/cli/omnipack --refresh shellcheck jq curl
 
       - name: Run linting
-        run: npm run lint
+        run: tools/verify ./bin ./tools
 
   unit-test:
     name: Unit Test (${{ matrix.image }})

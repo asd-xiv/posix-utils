@@ -41,8 +41,5 @@ jobs:
 
   code-qa:
     name: Code QA
-    needs: [detect-secrets, install-dependencies]
+    needs: [detect-secrets]
     uses: ./.github/workflows/_code-qa.yml
-    with:
-      cache-key: ${{ needs.install-dependencies.outputs.cache-key }}
-      node-version: ${{ needs.install-dependencies.outputs.node-version }}
