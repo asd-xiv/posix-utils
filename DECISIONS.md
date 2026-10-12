@@ -11,6 +11,85 @@ has up to four parts, in this order. Leave out a part that is empty.
 - **Deferred**: work, a known gap or an option left for later, each item with a
   **Revisit when**
 
+## get-youtube-transcript prints captions in three formats
+
+**2026-10-12**
+
+**Context:**
+
+- A reader needs the start and the end of each caption, to find the section of
+  a video about a topic
+- YouTube sends the start and the duration of each caption, in milliseconds. It
+  does not send the end
+- An auto-generated caption stays on screen after the next one starts, a manual
+  caption does not
+- An auto-generated track carries the offset of each word, a manual track
+  carries none
+
+**Decision:**
+
+- `--format` names the output format: `text`, `clipped-jsonl` or
+  `original-jsonl`
+- `clipped-jsonl` sets `endMs` to the smaller of start plus duration and the
+  start of the next caption, so no two captions overlap
+- The keys `startMs` and `endMs` name the unit
+- `original-jsonl` prints each event as YouTube sends it, for a reader who
+  needs the offset of a word. A caption is an event with text
+
+**Rejected:**
+
+- Times in seconds: YouTube sends milliseconds as integers
+- Two flags, `--data <clipped|original>` and `--format <text|jsonl>`: `text`
+  prints no times, so `--data` would change `jsonl` only
+
+**Deferred:**
+
+- An offset per word in `clipped-jsonl`
+  - **Revisit when** a reader needs the offset of a word and cannot read
+    `original-jsonl`
+
+## get-youtube-transcript calls the app API of YouTube
+
+**2026-10-12**
+
+**Context:**
+
+- The script must print the captions of a public video of any channel
+- The app API, the one the YouTube apps call, answers a request from the
+  Android client with no API key and no cookie
+- The app API is internal. YouTube can change it, or refuse a client version,
+  with no notice
+- Only a request to YouTube proves that the script still prints captions
+
+**Decision:**
+
+- The script calls the app API of YouTube as the Android client, with `curl`
+  and `jq`
+- One test file, `smoke`, runs the script on one public video
+
+**Rejected:**
+
+- YouTube Data API v3: `captions.download` needs OAuth and edit rights on the
+  video, so a user downloads the captions of their own videos only. With an API
+  key alone, it downloads none
+- The watch page: YouTube answers the caption URLs of the page with HTTP 200
+  and 0 bytes, unless the request carries a token that the JavaScript of the
+  page makes
+- `GET /api/timedtext?v=<id>&lang=en`: YouTube answers it with HTTP 200 and 0
+  bytes too
+
+**Deferred:**
+
+- `yt-dlp`: it works, but took 3.5 s and 3.7 s in two runs on one video. The
+  script makes two `curl` requests. Together they took 0.3 s in each run.
+  `yt-dlp` also adds a dependency
+  - **Revisit when** the script exits 3, could not run, on a working network,
+    and a new client version does not fix it
+- `smoke` runs in CI, from a GitHub runner. YouTube may refuse a request from
+  one. Nobody tried
+  - **Revisit when** `smoke` fails in CI and passes outside CI. Then skip
+    `smoke` in CI
+
 ## Tests use a home-made harness, POSIX sh only
 
 **2026-10-10**

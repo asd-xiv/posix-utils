@@ -1,0 +1,245 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   get-youtube-transcript - Print the transcript of a YouTube video
+#
+# SYNOPSIS
+#   get-youtube-transcript [OPTIONS] <video>
+#
+# DESCRIPTION
+#   Fetches the list of caption tracks of a video, picks the best one for the
+#   caption language and prints it in the format that --format names.
+#
+#   A track matches when its code is the caption language or starts with it,
+#   eg. "en" matches "en-GB". A manual track comes before an auto-generated
+#   one, then an exact code before a longer one.
+#
+#   Calls the app API of YouTube with curl. Needs no API key and no cookie.
+#
+# ARGUMENTS
+#   video   A YouTube URL or an 11-character video id
+#
+# OPTIONS
+#   -l, --lang <code>    Caption language (default: en)
+#   -f, --format <name>  Output format (default: text)
+#   -h, --help           Print this help
+#
+#   Formats, for --format:
+#     text            One caption per line, text only. A newline inside a
+#                     caption becomes a space
+#     clipped-jsonl   One caption per line as JSON, with the same text, eg.
+#                     {"startMs":1200,"endMs":3360,"text":"..."}. YouTube sends
+#                     the start and the duration of each caption. It does not
+#                     send the end. endMs is the smaller of start plus duration
+#                     and the start of the next caption, so no two captions
+#                     overlap. The last caption ends at start plus duration
+#     original-jsonl  One event per line as JSON, as YouTube sends it, with
+#                     every field. A caption is an event with text
+#
+# ENVIRONMENT
+#   LOG_LEVEL   Last level to print (default: info)
+#
+# EXAMPLE
+#   get-youtube-transcript jNQXAC9IVRw
+#   get-youtube-transcript --format clipped-jsonl 'https://www.youtube.com/watch?v=jNQXAC9IVRw'
+#   get-youtube-transcript --lang de https://youtu.be/jNQXAC9IVRw
+#
+# EXIT CODES
+#   0   Printed the transcript
+#   2   Invalid usage
+#   3   Could not run, eg. no curl, no network or YouTube refused the request
+#   4   The video has no captions, or none in the caption language
+#
+# SEE ALSO
+#   curl, jq
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../lib.sh"
+. "$SCRIPT_DIR/get-youtube-transcript.d/get-youtube-transcript.sh"
+
+# _log reads these
+export LOG_NAMESPACE="get-youtube-transcript"
+export LOG_LEVEL="${LOG_LEVEL:-info}"
+
+# The script calls the app API of YouTube as the Android client. These values
+# are the first thing to update when YouTube refuses the request.
+CLIENT_NAME="ANDROID"
+CLIENT_VERSION="20.10.38"
+ANDROID_SDK_VERSION=34
+USER_AGENT="com.google.android.youtube/$CLIENT_VERSION (Linux; U; Android 14)"
+PLAYER_URL="https://www.youtube.com/youtubei/v1/player?prettyPrint=false"
+
+CAPTION_LANG="en"    # -l/--lang, a language code
+OUTPUT_FORMAT="text" # -f/--format, "text", "clipped-jsonl" or "original-jsonl"
+
+# ╭───
+# │ Primitives
+# ╰───
+
+# fetch_player <id>
+#
+# Print the player response of video <id>, as JSON.
+#
+# RETURNS
+#   1   curl failed, the reason is on stderr
+fetch_player() {
+  fetch_body=$(jq -nc \
+    --arg name "$CLIENT_NAME" \
+    --arg version "$CLIENT_VERSION" \
+    --argjson sdk "$ANDROID_SDK_VERSION" \
+    --arg id "$1" \
+    '{
+      context: {
+        client: {
+          clientName: $name,
+          clientVersion: $version,
+          androidSdkVersion: $sdk,
+          hl: "en"
+        }
+      },
+      videoId: $id
+    }')
+
+  curl -sS --fail --max-time 30 "$PLAYER_URL" \
+    -H 'Content-Type: application/json' \
+    -A "$USER_AGENT" \
+    --data "$fetch_body" \
+    || return 1
+}
+
+# fetch_captions <url>
+#
+# Print the captions at <url> as json3. <url> asks for srv3 XML, so swap the
+# fmt parameter.
+#
+# RETURNS
+#   1   curl failed, the reason is on stderr
+fetch_captions() {
+  fetch_url=$(printf '%s' "$1" | sed 's/&fmt=[^&]*//g')
+
+  curl -sS --fail --max-time 30 -A "$USER_AGENT" "$fetch_url&fmt=json3" \
+    || return 1
+}
+
+# ╭───
+# │ Bootstrap
+# ╰───
+
+case "${1:-}" in
+  -h | --help)
+    _show_help "$0"
+    exit 0
+    ;;
+  "")
+    _show_help "$0"
+    exit 2
+    ;;
+esac
+
+_require_cmd curl jq sed tr head
+
+# ╭───
+# │ Flags
+# ╰───
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -l | --lang)
+      [ "$#" -lt 2 ] && _fail 2 "--lang needs a language code"
+      _is slug "$2" || _fail 2 -v lang "$2" "Not a language code"
+      CAPTION_LANG="$2"
+      shift 2
+      ;;
+    -f | --format)
+      [ "$#" -lt 2 ] && _fail 2 "--format needs a format name"
+      case "$2" in
+        text | clipped-jsonl | original-jsonl) ;;
+        *) _fail 2 -v format "$2" "Not a format: text, clipped-jsonl or original-jsonl" ;;
+      esac
+      OUTPUT_FORMAT="$2"
+      shift 2
+      ;;
+    -h | --help)
+      _show_help "$0"
+      exit 0
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -?*)
+      _fail 2 -v flag "$1" "Unknown flag"
+      ;;
+    *) break ;;
+  esac
+done
+
+[ "$#" -eq 0 ] && _fail 2 "No video given"
+[ "$#" -gt 1 ] && _fail 2 "Give one video"
+
+VIDEO_ID=$(parse_video_id "$1") \
+  || _fail 2 -v video "$1" "Not a YouTube URL or an 11-character video id"
+
+# ╭───
+# │ Cleanup
+# ╰───
+
+# shellcheck disable=SC2329 # called by trap
+cleanup() {
+  # 'set -u' aborts on an unset TEMP_DIR, so default it
+  rm -rf "${TEMP_DIR:-}"
+}
+
+trap cleanup EXIT                                    # normal exit
+trap 'cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl-C
+trap 'cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout, CI cancel
+trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # SSH drop, closed window
+
+TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/get-youtube-transcript.XXXXXX") \
+  || _fail 3 "Could not create a temporary directory"
+
+# ╭───
+# │ Main
+# ╰───
+
+PLAYER_FILE="$TEMP_DIR/player.json"
+CAPTIONS_FILE="$TEMP_DIR/captions.json"
+
+fetch_player "$VIDEO_ID" >"$PLAYER_FILE" \
+  || _fail 3 -v video "$VIDEO_ID" "Could not fetch the video from YouTube"
+
+PLAYABLE_STATUS=$(jq -r '.playabilityStatus.status // "MISSING"' "$PLAYER_FILE") \
+  || _fail 3 "YouTube changed the player API: the answer is not JSON"
+
+if [ "$PLAYABLE_STATUS" != "OK" ]; then
+  PLAYABLE_REASON=$(jq -r '.playabilityStatus.reason // "no reason given"' "$PLAYER_FILE")
+  _fail 3 -v video "$VIDEO_ID" -v status "$PLAYABLE_STATUS" \
+    "YouTube refused the video: $PLAYABLE_REASON"
+fi
+
+TRACK_URL=$(find_track_url "$PLAYER_FILE" "$CAPTION_LANG") || TRACK_URL=""
+
+if [ -z "$TRACK_URL" ]; then
+  KNOWN_LANGS=$(jq -r '
+    [(.captions.playerCaptionsTracklistRenderer.captionTracks // [])[].languageCode]
+    | unique | .[]' "$PLAYER_FILE")
+
+  if [ -z "$KNOWN_LANGS" ]; then
+    _fail 4 -v video "$VIDEO_ID" "The video has no captions"
+  fi
+  _fail 4 -v video "$VIDEO_ID" -v lang "$CAPTION_LANG" -v available "$KNOWN_LANGS" \
+    "The video has no captions in that language"
+fi
+
+fetch_captions "$TRACK_URL" >"$CAPTIONS_FILE" \
+  || _fail 3 -v video "$VIDEO_ID" "Could not fetch the captions from YouTube"
+
+jq -e '.events | arrays' "$CAPTIONS_FILE" >/dev/null 2>&1 \
+  || _fail 3 -v bytes "$(wc -c <"$CAPTIONS_FILE" | tr -d ' ')" \
+    "YouTube changed the caption API: the caption body is empty or not json3"
+
+print_transcript "$CAPTIONS_FILE" "$OUTPUT_FORMAT"
+
+exit 0

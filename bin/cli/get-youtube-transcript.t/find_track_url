@@ -1,0 +1,56 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../get-youtube-transcript.d/get-youtube-transcript.sh"
+
+_describe "get-youtube-transcript :: find_track_url"
+
+# write_player <track>...
+# Write player.json with one track per argument, each "<code> <kind>" where
+# <kind> is "asr" or "manual". The baseUrl of a track is "url-<code>-<kind>".
+write_player() {
+  for track in "$@"; do
+    set -- "${track%% *}" "${track##* }"
+    printf '{"languageCode":"%s","baseUrl":"url-%s-%s"' "$1" "$1" "$2"
+    [ "$2" = asr ] && printf ',"kind":"asr"'
+    printf '}\n'
+  done | jq -s '{captions:{playerCaptionsTracklistRenderer:{captionTracks:.}}}' >player.json
+}
+
+_test 'given [en manual and en auto-generated] should [print the manual URL]'
+prepare() { write_player 'en asr' 'en manual'; }
+actual() { find_track_url player.json en; }
+_expect equal actual.exit 0
+_expect equal actual.stdout 'url-en-manual'
+
+_test 'given [en auto-generated and en-GB manual] should [print the en-GB URL]'
+prepare() { write_player 'en asr' 'en-GB manual'; }
+actual() { find_track_url player.json en; }
+_expect equal actual.exit 0
+_expect equal actual.stdout 'url-en-GB-manual'
+
+_test 'given [en-GB manual listed before en manual] should [print the en URL]'
+prepare() { write_player 'en-GB manual' 'en manual'; }
+actual() { find_track_url player.json en; }
+_expect equal actual.exit 0
+_expect equal actual.stdout 'url-en-manual'
+
+_test 'given [de and only a de-DE track] should [print the de-DE URL]'
+prepare() { write_player 'de-DE manual'; }
+actual() { find_track_url player.json de; }
+_expect equal actual.exit 0
+_expect equal actual.stdout 'url-de-DE-manual'
+
+_test 'given [en and only es and de-DE tracks] should [print nothing and return 1]'
+prepare() { write_player 'es manual' 'de-DE manual'; }
+actual() { find_track_url player.json en; }
+_expect equal actual.exit 1
+_expect equal actual.stdout ''
+
+_test 'given [a player file with no captions key] should [print nothing and return 1]'
+prepare() { printf '{"playabilityStatus":{"status":"OK"}}' >player.json; }
+actual() { find_track_url player.json en; }
+_expect equal actual.exit 1
+_expect equal actual.stdout ''
