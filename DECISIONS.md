@@ -11,6 +11,48 @@ has up to four parts, in this order. Leave out a part that is empty.
 - **Deferred**: work, a known gap or an option left for later, each item with a
   **Revisit when**
 
+## One terminal setting for the package, PU_TERMINAL
+
+**2026-10-12**
+
+**Context:**
+
+- Three commands open a terminal window: open-os-menu for an item, `jot` for
+  Neovim, the browser of `recheck` for Alt+Enter
+- The terminal, the window manager and the class of a floating window belong to
+  the session of the user, not to a command
+- `recheck` had `RECHECK_TERMINAL`
+- `jot` named alacritty in its code
+
+**Decision:**
+
+- `PU_TERMINAL` holds the command that opens a terminal window and runs the
+  command written after it
+- Every command that needs a terminal window reads it
+- No command has a terminal setting of its own
+- A command that runs in a terminal does not open one. Without a terminal on
+  stdin, `recheck browse` exits 3. Its caller opens the terminal, as
+  open-os-menu and a waybar click do
+
+**Rejected:**
+
+- A setting per command, `RECHECK_TERMINAL` and `OS_MENU_TERMINAL`: each held
+  the same value under the name of one reader
+- `recheck browse` opening its own terminal when it has none: a call from a
+  script would open a window nobody asked for. The window, its class and its
+  focus belong to the caller
+- `TERMINAL`, run with `-e`: it holds a program name only, so it cannot set a
+  window class
+
+**Deferred:**
+
+- A setting for one command, read before `PU_TERMINAL`, eg.
+  `PU_RECHECK_TERMINAL`
+  - **Revisit when** a command needs a window of another class
+- Alt+Enter that edits in the terminal of the browser, through the fzf `execute`
+  action, so `recheck` reads no terminal setting
+  - **Revisit when** `recheck` must run with no display
+
 ## get-youtube-transcript prints captions in three formats
 
 **2026-10-12**

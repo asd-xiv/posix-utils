@@ -14,6 +14,7 @@
 <!-- vim-markdown-toc GFM -->
 
 - [Scripts](#scripts)
+- [Settings](#settings)
 - [Install](#install)
   - [Uninstall](#uninstall)
   - [Nx monorepo](#nx-monorepo)
@@ -33,16 +34,30 @@
 
 `bin/` groups scripts by the environment they need.
 
-| Script                       | Does                                                            | Needs                                     |
-| ---------------------------- | --------------------------------------------------------------- | ----------------------------------------- |
-| `cli/fancy-log`              | Print a log line with its time, level and namespace, in color   | terminal or CI                            |
-| `cli/get-youtube-transcript` | Print the transcript of a YouTube video                         | curl, jq                                  |
-| `cli/omnipack`               | Install OS dependencies, package manager agnostic               | terminal or CI                            |
-| `cli/recheck`                | A terminal UI for cron: run checks, keep the last state of each | cron. Neovim for `edit`, fzf for `browse` |
-| `sway/doomst`                | Doomguy themed desktop notifications                            | Wayland, notifier                         |
-| `sway/jot`                   | Write a quick note in Neovim, print it to stdout                | Wayland, Neovim                           |
-| `sway/recheck-bar`           | Print the count of checks per state, as JSON                    | waybar, jq, `recheck`                     |
-| `sway/yank-symbol`           | Pick symbols the keyboard lacks in a rofi grid, copy them       | Wayland, rofi, `wl-copy`                  |
+| Script                       | Does                                                            | Needs                                                                                              |
+| ---------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `cli/fancy-log`              | Print a log line with its time, level and namespace, in color   | terminal or CI                                                                                     |
+| `cli/get-youtube-transcript` | Print the transcript of a YouTube video                         | curl, jq                                                                                           |
+| `cli/omnipack`               | Install OS dependencies, package manager agnostic               | terminal or CI                                                                                     |
+| `cli/recheck`                | A terminal UI for cron: run checks, keep the last state of each | cron. Neovim for `edit`, fzf 0.73.0 or newer for `browse`, `PU_TERMINAL` for Alt+Enter in `browse` |
+| `sway/doomst`                | Doomguy themed desktop notifications                            | Wayland, notifier                                                                                  |
+| `sway/jot`                   | Write a quick note in Neovim, print it to stdout                | Wayland, Neovim, `PU_TERMINAL`                                                                     |
+| `sway/recheck-bar`           | Print the count of checks per state, as JSON                    | waybar, jq, `recheck`                                                                              |
+| `sway/yank-symbol`           | Pick symbols the keyboard lacks in a rofi grid, copy them       | Wayland, rofi, `wl-copy`                                                                           |
+
+## Settings
+
+Every command of posix-utils that opens a terminal window reads one setting.
+
+| Setting       | Holds                                                                                                                                                                                                                                           | Read by                                         |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `PU_TERMINAL` | Command that opens a terminal window and runs the command written after it. The flag that takes the command differs per terminal, so include it, eg. `alacritty --class float --command` For `jot`, it must not return before its window closes | `open-os-menu`, `jot`, the browser of `recheck` |
+
+Set it in a shell profile:
+
+```sh
+export PU_TERMINAL='alacritty --class float --command'
+```
 
 ## Install
 
