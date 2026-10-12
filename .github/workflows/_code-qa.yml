@@ -9,7 +9,6 @@ jobs:
   lint:
     name: Lint (${{ matrix.image }})
     runs-on: ubuntu-latest
-    # The shellcheck and the /bin/sh of the image check the scripts
     container: ${{ matrix.image }}
     strategy:
       fail-fast: false
@@ -22,8 +21,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      # get-youtube-transcript needs jq and curl to reach its flag check
-      - name: Install the tools of the lint script
+      - name: Install dependencies
+        env:
+          SHELLCHECK_VERSION: 0.11.0
         run: bin/cli/omnipack --refresh shellcheck jq curl
 
       - name: Run linting
@@ -32,7 +32,6 @@ jobs:
   unit-test:
     name: Unit Test (${{ matrix.image }})
     runs-on: ubuntu-latest
-    # The /bin/sh of the image runs the test files: BusyBox ash, dash, bash
     container: ${{ matrix.image }}
     strategy:
       fail-fast: false
@@ -45,7 +44,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Install the tools of the test files
+      - name: Install dependencies
         run: bin/cli/omnipack --refresh jq curl
 
       - name: Run unit tests
