@@ -12,10 +12,6 @@
 #   XDG_CONFIG_HOME and XDG_STATE_HOME at the test folder and puts a fake
 #   crontab first on PATH. Nothing in it calls the real crontab.
 #
-#   Known limit: the command files in recheck.d/ start with #!/bin/sh, so
-#   they run under /bin/sh whatever shell starts recheck. The shell under
-#   test runs only the test file and the helpers here.
-#
 #   BusyBox runs its own crontab applet before anything on PATH, so a fake
 #   crontab would not be called. The whole file is skipped there.
 
@@ -55,7 +51,6 @@ FAKE
   XDG_STATE_HOME="$PWD/state"
   PATH="$PWD/bin:$PATH"
   export HOME XDG_CONFIG_HOME XDG_STATE_HOME PATH
-  unset RECHECK_TERMINAL FZF_DEFAULT_COMMAND FZF_DEFAULT_OPTS
 
   if [ "$(command -v crontab)" != "$PWD/bin/crontab" ]; then
     printf 'build_sandbox: the fake crontab is not first on PATH\n' >&2

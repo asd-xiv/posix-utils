@@ -7,10 +7,9 @@
 #   . "$TEST_ROOT/tools/test-lib.sh"
 #
 # DESCRIPTION
-#   A test file sources it, through the setup.sh of its folder, and holds
-#   _describe, _test, the functions before_each, prepare and actual, and
-#   _expect. It also holds _send_keys, for a command that needs a terminal.
-#   tools/test runs the file, so does a shell: dash <test-file>.
+#   A test file sources it and holds _describe, _test, the functions
+#   before_each, prepare and actual, and _expect. tools/test runs the file,
+#   so does a shell: dash <test-file>.
 #
 #   _describe prints the group once, as a comment line before its tests. A
 #   result line holds the sentence of the test only:
@@ -208,29 +207,6 @@ _expect() {
     note_value "unexpected:" "$3"
     note_value "got:" "$expect_got"
   fi
-}
-
-# _send_keys <command> <step>...
-# Run <command> in a pseudo-terminal and send it the steps, for a command that
-# needs a terminal, eg. fzf. Kill it after 10 seconds. A step is a number of
-# seconds to wait, or a key: tab, enter, esc, up, down, alt-x, alt-e. TERM is
-# xterm-256color. It calls busybox script, the only pseudo-terminal tool this
-# package already depends on.
-_send_keys() {
-  send_command="$1"
-  shift
-  for send_step in "$@"; do
-    case "$send_step" in
-      tab) printf '\t' ;;
-      enter) printf '\r' ;;
-      esc) printf '\033' ;;
-      up) printf '\033[A' ;;
-      down) printf '\033[B' ;;
-      alt-x) printf '\033x' ;;
-      alt-e) printf '\033e' ;;
-      *) sleep "$send_step" ;;
-    esac
-  done | TERM=xterm-256color busybox timeout 10 busybox script -q -c "$send_command" /dev/null >/dev/null
 }
 
 # _skip_all <reason>
