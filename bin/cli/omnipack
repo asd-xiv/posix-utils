@@ -18,6 +18,7 @@ set -eu
 #   awscli     - AWS CLI v2
 #   java       - Headless JRE, needed by neo4j
 #   neo4j      - Neo4j server and admin tools, from the distribution tarball
+#   `shellcheck` - ShellCheck, the latest version, from its release page
 #   <other>    - Installed through yum, apt-get, pacman or apk
 #
 # OPTIONS
@@ -33,9 +34,10 @@ set -eu
 #   -h, --help      Print this help
 #
 # ENVIRONMENT
-#   TERRAFORM_VERSION  Terraform version (default: 1.13.4)
-#   NEO4J_VERSION      Neo4j version (default: 5.26.0)
-#   LOG_LEVEL          Cut-off level to print (default: info)
+#   TERRAFORM_VERSION   Terraform version (default: 1.13.4)
+#   NEO4J_VERSION       Neo4j version (default: 5.26.0)
+#   SHELLCHECK_VERSION  ShellCheck version, 0.11.0 or newer (default: the latest)
+#   LOG_LEVEL           Cut-off level to print (default: info)
 #
 # EXAMPLE
 #   omnipack jq terraform
@@ -269,6 +271,42 @@ install_neo4j() {
   _ok -v version "$neo4j_version" "neo4j installed."
 }
 
+# A stable distribution has an older shellcheck, and a code can change between
+# versions, eg. SC2317 became SC2329 in 0.11.0. The release page gives every
+# system the same one.
+install_shellcheck() {
+  command -v shellcheck >/dev/null 2>&1 && {
+    _info "shellcheck is already installed, skipping"
+    return 0
+  }
+
+  # The release page keeps the latest version under the tag "stable"
+  shellcheck_tag="stable"
+  if [ -n "${SHELLCHECK_VERSION:-}" ]; then
+    _is version "$SHELLCHECK_VERSION" \
+      || _fail 2 -v SHELLCHECK_VERSION "$SHELLCHECK_VERSION" "Not a version number."
+    shellcheck_tag="v${SHELLCHECK_VERSION}"
+  fi
+
+  install_pkg curl tar
+
+  _info -v release "$shellcheck_tag" "Installing shellcheck…"
+
+  # The release names its archives as `uname -m` prints the machine
+  shellcheck_archive=$(mktemp "$TEMP_DIR/shellcheck.XXXXXX")
+  _download_file \
+    "https://github.com/koalaman/shellcheck/releases/download/${shellcheck_tag}/shellcheck-${shellcheck_tag}.linux.$(uname -m).tar.gz" \
+    "$shellcheck_archive"
+
+  tar -xzf "$shellcheck_archive" -C "$TEMP_DIR"
+  shellcheck_bin_dir=$(_resolve_bin_dir)
+  cp "${TEMP_DIR}/shellcheck-${shellcheck_tag}/shellcheck" \
+    "${shellcheck_bin_dir}/shellcheck"
+
+  _ok -v version "$(shellcheck --version | sed -n 's/^version: //p')" \
+    "shellcheck installed."
+}
+
 # ╭───
 # │ Bootstrap
 # ╰───
@@ -341,6 +379,7 @@ for dep in "$@"; do
     awscli) install_awscli ;;
     java) install_java ;;
     neo4j) install_neo4j ;;
+    shellcheck) install_shellcheck ;;
     *) install_pkg "$dep" ;;
   esac
 done
