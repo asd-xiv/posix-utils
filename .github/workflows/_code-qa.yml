@@ -37,3 +37,25 @@ jobs:
 
       - name: Run linting
         run: npm run lint
+
+  unit-test:
+    name: Unit Test (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    # The /bin/sh of the image runs the test files: BusyBox ash, dash, bash
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - alpine:3.22
+          - debian:trixie-slim
+          - archlinux:latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install the tools of the test files
+        run: bin/cli/omnipack --refresh jq curl
+
+      - name: Run unit tests
+        run: tools/test
