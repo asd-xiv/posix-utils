@@ -204,7 +204,7 @@ Every script returns the code that names what happened.
 ## Develop
 
 ```sh
-npm run lint     # shellcheck, dash -n, busybox sh -n, --help and flag smoke tests
+npm run lint     # shellcheck, /bin/sh -n, --help and flag smoke tests
 npm test         # the test files, under the /bin/sh of this system
 npm run format   # shfmt, settings in .editorconfig
 
