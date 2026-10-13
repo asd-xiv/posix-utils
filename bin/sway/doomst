@@ -6,8 +6,8 @@ set -eu
 #   doomst - Doomguy themed desktop notifications
 #
 # SYNOPSIS
-#   doomst [-t <type>] <title> [message] [notify-send flag...]
-#   doomst [-t <type>] -- <notify-send argument...>
+#   doomst [OPTIONS] <title> [message] [notify-send flag...]
+#   doomst [OPTIONS] -- <notify-send argument...>
 #
 # DESCRIPTION
 #   Sends a notification through notify-send, picking a Doomguy icon and an
@@ -16,48 +16,84 @@ set -eu
 #   a notify-send flag works after the title. After "--", doomst reads no
 #   flag, so a notify-send flag can come before the title.
 #
+#   An icon is a file in assets/doomst, <name>.png. Its sound is <name>.wav
+#   next to it. Of the icons in assets/doomst, only metal-door1 has a sound.
+#
 # ARGUMENTS
 #   title     - notification title. A title that starts with a dash needs
 #               "--" before it, written twice: the first ends the flags of
 #               doomst, the second ends those of notify-send
 #   message   - notification body, optional. A message that starts with a
-#               dash needs the same
+#               dash needs the same two "--", before the title
 #   notify-send flag
 #             - any flag of notify-send, after the title
 #
 # OPTIONS
 #   -t, --type <type>   info, success or error (default: info)
+#   -i, --icon <name>   Icon to show in place of the icon of the type:
+#                       doomguy, doomguy-smile, doomguy-blood or metal-door1
+#   -s, --sound         Play the sound of the icon with pw-play. Without
+#                       pw-play, or for an icon with no sound, play nothing
 #   -h, --help          Print this help
 #
 # EXAMPLE
 #   doomst -t success "Build passed" "42 tests, 3.1s"
+#   doomst --icon metal-door1 --sound "Door" "A new area is open"
 #   doomst "Calendar" "Standup at 10:00" --expire-time 0
 #   doomst -- --expire-time 0 "Calendar"
 #   doomst -- -- "-5 degrees"
 #
 # EXIT CODES
 #   0       Notification sent
-#   2       Invalid usage
-#   3       Could not run, eg. no notify-send or a missing icon
+#   2       Invalid usage, eg. an icon that does not exist
+#   3       Could not run, eg. no notify-send or a missing icon of a type
 #   other   The exit code of notify-send, eg. for a flag it does not know
 #
 # SEE ALSO
-#   notify-send, dunst
+#   notify-send, dunst, pw-play
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 LOG_NAMESPACE="doomst"
 . "$SCRIPT_DIR/../lib.sh"
 
-NOTIFY_TYPE="info"
+ASSETS_DIR="$SCRIPT_DIR/assets/doomst"
+
+NOTIFY_TYPE="info" # -t/--type, info, success or error
+ICON_NAME=""       # -i/--icon, a slug. Empty for the icon of the type
+WITH_SOUND=""      # -s/--sound, "true" or ""
+
+# ╭───
+# │ Bootstrap
+# ╰───
+
+case "${1:-}" in
+  -h | --help)
+    _show_help "$0"
+    exit 0
+    ;;
+esac
+
+_require_cmd notify-send
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    -h | --help)
-      _show_help "$0"
-      exit 0
+    -i | --icon)
+      [ "$#" -lt 2 ] && _fail 2 "--icon needs a name, eg. metal-door1"
+
+      # A name with "/" can name a file outside the assets dir
+      _is slug "$2" || _fail 2 -v icon "$2" "Not an icon name"
+      [ -f "$ASSETS_DIR/$2.png" ] \
+        || _fail 2 -v icon "$2" -v dir "$ASSETS_DIR" "No such icon"
+
+      ICON_NAME="$2"
+      shift 2
+      ;;
+    -s | --sound)
+      WITH_SOUND="true"
+      shift
       ;;
     -t | --type)
-      [ "$#" -lt 2 ] && _fail 2 "--type needs a value: info, success, error."
+      [ "$#" -lt 2 ] && _fail 2 "--type needs a value: info, success, error"
       NOTIFY_TYPE="$2"
       shift 2
       ;;
@@ -65,29 +101,37 @@ while [ "$#" -gt 0 ]; do
       shift
       break
       ;;
-    -?*) _fail 2 -v flag "$1" "Unknown flag." ;;
+    -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
     *) break ;;
   esac
 done
 
-[ "$#" -eq 0 ] && _fail 2 "No title given."
-
-case "$NOTIFY_TYPE" in
-  success) ICON="doomguy-smile.png" URGENCY="normal" ;;
-  error) ICON="doomguy-blood.png" URGENCY="critical" ;;
-  info) ICON="doomguy.png" URGENCY="normal" ;;
-  *) _fail 2 -v type "$NOTIFY_TYPE" "Unknown type. Use info, success or error." ;;
-esac
-
-ICON_FILE="${SCRIPT_DIR}/assets/doomst/${ICON}"
-[ -f "$ICON_FILE" ] || _fail 3 -v path "$ICON_FILE" "Icon not found."
-
-_require_cmd notify-send
+[ "$#" -eq 0 ] && _fail 2 "No title given"
 
 # ╭───
 # │ Main
 # ╰───
 
-# No "--" here: it would turn a notify-send option after the title into text.
-# A caller who needs one writes it, as in "doomst -- -- -5 degrees"
+case "$NOTIFY_TYPE" in
+  success) TYPE_ICON_NAME="doomguy-smile" URGENCY="normal" ;;
+  error) TYPE_ICON_NAME="doomguy-blood" URGENCY="critical" ;;
+  info) TYPE_ICON_NAME="doomguy" URGENCY="normal" ;;
+  *) _fail 2 -v type "$NOTIFY_TYPE" "Unknown type. Use info, success or error" ;;
+esac
+
+ICON_FILE="$ASSETS_DIR/${ICON_NAME:-$TYPE_ICON_NAME}.png"
+[ -f "$ICON_FILE" ] || _fail 3 -v path "$ICON_FILE" "Icon not found"
+
+# The sound is optional, so doomst does not require pw-play.
+SOUND_FILE="${ICON_FILE%.png}.wav"
+if [ -n "$WITH_SOUND" ] && [ -f "$SOUND_FILE" ] && command -v pw-play >/dev/null 2>&1; then
+  # Dont pass pw-play the stdout and stderr of doomst.
+  # A caller who reads the output of doomst, as in out=$(doomst ...), waits
+  # until every process that holds that pipe ends. pw-play would hold it for
+  # the length of the sound even if ran with "&"
+  pw-play "$SOUND_FILE" >/dev/null 2>&1 &
+fi
+
+# No "--" here: it would turn a notify-send flag after the title into text.
+# A caller who needs "--" writes it, as in: doomst -- -- "-5 degrees"
 notify-send --icon "$ICON_FILE" --urgency "$URGENCY" "$@"
