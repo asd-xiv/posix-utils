@@ -1,7 +1,7 @@
 # Decisions
 
-One record per decision, newest first. Each record opens with its date, then has
-up to five parts, in this order. Leave out a part that is empty.
+One record per decision, newest first. Each record opens with a heading and its
+date, then has up to five parts, in this order. Leave out a part that is empty.
 
 - **Context**: the need, the facts and the limits that held at the time and
   shaped the Decision. A fact that explains one Rejected or Deferred item sits
@@ -10,8 +10,108 @@ up to five parts, in this order. Leave out a part that is empty.
 - **Rejected**: an option not chosen, with the reason, and no plan to return
 - **Deferred**: work, a known gap or an option left for later, each item with a
   **Revisit when**
-- **Acknowledgments**: a known gap the Decision accepts, with the reason, and no
-  **Revisit when**
+- **Acknowledgments**: a known gap the Decision accepts, with the reason or the
+  thing that limits it, and no **Revisit when**
+
+## Place a draft in the sitting where the user wrote it, with `zettel`
+
+**2026-10-13**
+
+**Context:**
+
+- The author kept one draft file per day for five years
+  - More than half of the drafts with text held several thoughts
+  - The author changed 7 of 55 drafts after their first day
+- Every structure for permanent notes made the author hold a later sitting to
+  turn a draft into a note
+  - The author stopped using each one
+- A Folgezettel id holds the lineage of a zettel: `1b3` stands behind `1b`, and
+  `1b` behind `1`
+- A tool that sorts names as text lists `10` before `2`
+- When the query changes, fzf keeps the row number that `pos` set
+  - A query with fewer matches leaves no row under the cursor, and Enter picks
+    nothing
+
+**Decision:**
+
+- A draft is one thought, one file in the folder of its day
+- Line 1 holds the claim, the thought as one sentence, as `# <claim>`
+  - `create` opens Neovim with `# ` on line 1, in the buffer only: no file
+    exists before the first save
+  - When Neovim closes, `create` opens the picker for a draft with a claim
+  - `create` keeps a draft without a claim and asks nothing
+- A zettel is the file `<id>.<slug>.md` in the box
+  - The slug is the claim as a file name
+- The picker lists every zettel, with the cursor on the last one placed
+  - fzf searches the file names and the texts
+  - `change:first` puts the cursor on the first match when the query changes
+- `place` gives the draft its id: the largest child of the parent plus one
+  - A gap stays empty, because an id never changes
+- The folder in `PU_ZETTEL_DIR` is the only record: no index and no log
+  - A zettel holds the time of its placing on line 2, in UTC, so text order is
+    time order
+- An id has no padding. `sort_ids` builds a padded key and sorts on it
+- `zettel-bar` shows the count of zettels, and the last 5 with their lineage as
+  the tooltip
+- Two hooks, as in `recheck`
+  - `on-place <id> <file>` after a draft is placed, eg. for a notification
+  - `on-update` when Neovim closes after `create` or `edit`, and after a draft
+    is placed, eg. to refresh the bar
+- The browser opens a zettel with `edit`, then reads the box again: the user may
+  have removed the zettel in Neovim
+- `show --color` prints the text through bat when bat is there
+- The icon is `⚑`, in the bar and in `open-os-menu`: a flag stands for a claim
+- `open-os-menu` lists the browser as its first item, with `health` as its
+  health command
+- The name is `zettel`: it names the thing a person keeps
+- Elevate `_set_title` and `_restore_title` from `recheck` to `lib.sh`: the
+  browser and the editor of `zettel` are their second consumer
+
+**Rejected:**
+
+- An SQLite index: a second copy of every fact, which a rename in Neovim leaves
+  stale
+- Zero-padded ids: the author reads and writes the id as Luhmann wrote it
+- `sort -V`: a GNU flag
+- `ls -v`: also GNU, and it lists a child before its parent when a slug holds a
+  hyphen
+- One draft file per day, with a selection placed out of it: placing is then a
+  second act the user must start
+- A count of drafts, a count per day and a streak: each can fall
+- Note types and tags: the id is the one link a zettel must have
+- The name `notes`: the author has an older command with that name
+- The name `neo-notes`: "neo" is true only while the older command exists
+- An icon from a Nerd Font: a system without the font shows an empty square
+- Stop words left out of the slug: a slug without "they" and "in" loses the
+  claim
+- `_run_hook` in `lib.sh`: the `run_hook` of `recheck` sources an env file
+  first, for cron
+- `start:pos`, `result:pos` and `load:pos` with `unbind`: each leaves the same
+  row number in place after a query
+
+**Deferred:**
+
+- A view that ranks branches by size
+  - **Revisit when** the box holds 30 zettels
+- The picker sorted by the words a zettel shares with the draft
+  - **Revisit when** the box holds 100 zettels
+- Scores from a model beside the draft window, for the likely parent and branch
+  of the draft
+  - **Revisit when** the user places with the sorted picker and still picks a
+    wrong parent
+- A command that lists the drafts and opens one again
+  - **Revisit when** the user opens a draft by hand a second time
+- A slug for a claim outside ASCII
+  - **Revisit when** `place` rejects a claim, or a slug loses a whole word
+
+**Acknowledgments:**
+
+- Only `zettel` shows the Folgezettel order
+- Two machines that place a draft offline can give two files the same id
+  - `zettel ls` warns and skips the second file
+- `create`, `place`, `browse` and `edit` have no test file: each needs Neovim,
+  fzf or a terminal
+  - The pure primitives have one test file each
 
 ## Lock a `recheck` check with a marker in `XDG_RUNTIME_DIR`
 
@@ -70,7 +170,7 @@ up to five parts, in this order. Leave out a part that is empty.
   - A reader can see an empty file
   - **Revisit when** the bar shows an empty state
 - `--fail-fast`, to end the run command at the first marker it cannot create
-  - **Revisit when** one cause logs an error for each check of a run command
+  - **Revisit when** `run` logs the same error for each check of a run command
 
 **Acknowledgments:**
 
@@ -109,11 +209,12 @@ up to five parts, in this order. Leave out a part that is empty.
 
 - `tools/verify`:
   - Parsed each script with `dash -n` and `busybox sh -n`
-  - Ran the smoke test under dash and BusyBox ash
+  - Ran each command with `--help` and with an unknown flag, under dash and
+    BusyBox ash
   - Failed in CI, on the Ubuntu runner with shellcheck 0.9.0
   - Succeeded locally with shellcheck 0.11.0
 - `tools/test` runs each test file under `/bin/sh` only
-  - CI run them separately in 3 images
+  - CI runs them once in each of the three images
 - shellcheck 0.11.0 reports `SC2329` on a function that nothing calls by name
   - 0.9.0 and 0.10.0 report `SC2317` on each command inside it
 - Alpine 3.22 and Debian trixie have shellcheck 0.10.0, Arch has 0.11.0
@@ -122,14 +223,16 @@ up to five parts, in this order. Leave out a part that is empty.
 
 - `tools/verify`:
   - Stop parsing scripts with `dash -n` and `busybox sh -n`
-  - Parse each script and run the smoke test under `/bin/sh` only
-  - Support shellcheck 0.11.0 or newer (don't have to handle `SC2317`)
+  - Parse each script, and run each command with `--help` and with an unknown
+    flag, under `/bin/sh` only
+  - Support shellcheck 0.11.0 or newer only, so a script disables `SC2329` and
+    never `SC2317`
 - CI:
   - Run `tools/verify` in the Lint job, in the three images of the Unit Test job
   - In each image, use `omnipack` to install shellcheck, pinned at 0.11.0
 - `omnipack`:
-  - Add a recipe for shellcheck: installs latest version if `SHELLCHECK_VERSION`
-    not set
+  - Add a recipe for shellcheck. It installs the latest version when
+    `SHELLCHECK_VERSION` is not set
 
 **Acknowledgments:**
 
@@ -202,8 +305,8 @@ up to five parts, in this order. Leave out a part that is empty.
   window or a terminal), health command, what it does, the words that find it
 - An item that cannot open stays in the menu with the reason, marked
   `nonselectable`
-  - open-os-menu checks two reasons: its command file is missing or not
-    executable, `PU_TERMINAL` is not set for an item that needs a terminal
+  - open-os-menu checks two reasons: the command file of the item is missing or
+    not executable, `PU_TERMINAL` is not set for an item that needs a terminal
   - Every other reason comes from its health command, eg. `recheck health`,
     which prints the reason and exits 1
   - `recheck health` reports on the whole of recheck, not on `recheck browse`
@@ -279,12 +382,12 @@ up to five parts, in this order. Leave out a part that is empty.
 **Deferred:**
 
 - A test file for `recheck browse`
-  - The one that drove fzf through a pseudo-terminal needed a working `script`
-    command and fzf 0.73.0 or newer
+  - The one that ran fzf in a pseudo-terminal needed a working `script` command
+    and fzf 0.73.0 or newer
   - Alpine 3.22 has fzf 0.62 and no `script` command, Debian trixie has fzf 0.60
   - It ran in one image of the three, took 3.7 s of a 5 s run and proved one key
     binding
-  - **Revisit when** a broken key binding reaches a release
+  - **Revisit when** a release has a broken key binding
 - Where `/bin/sh` is bash, a fault that shows only under dash or BusyBox ash
   shows in CI first
   - `tools/verify` parses each script with `dash -n` and `busybox sh -n` before
@@ -363,10 +466,10 @@ up to five parts, in this order. Leave out a part that is empty.
   - Works, but took 3.5 s and 3.7 s in two runs on one video
   - The script's two `curl` requests took 0.3 s together in each run
   - Adds a dependency
-  - **Revisit when** the script exits 3, could not run, on a working network,
-    and a new client version does not fix it
+  - **Revisit when** the script exits 3 on a working network, and a new client
+    version does not fix it
 - `smoke` runs in CI, from a GitHub runner
-  - YouTube may refuse a request from one, nobody tried
+  - YouTube may refuse a request from one. Nobody tried
   - **Revisit when** `smoke` fails in CI and passes outside CI. Then skip
     `smoke` in CI
 
@@ -377,7 +480,7 @@ up to five parts, in this order. Leave out a part that is empty.
 **Decision:**
 
 - `tools/test-lib.sh` is the harness, `tools/test` the runner
-- The package colocates a test file with the code it proves, one per function or
+- The author colocates a test file with the code it proves, one per function or
   command: `bin/lib.t/<function>`, `bin/cli/recheck.t/<command>`
 - A test file sources the harness and runs alone:
   `dash bin/lib.t/_replace_block`
@@ -403,16 +506,17 @@ up to five parts, in this order. Leave out a part that is empty.
 
 **Decision:**
 
-- `install` writes `$XDG_STATE_HOME/posix-utils/receipt` before touching the
-  filesystem
+- `install` writes `$XDG_STATE_HOME/posix-utils/receipt` before it changes any
+  other file
   - The receipt records `data_dir`, `bin_dir`, `group`, `ref` and `archive_url`
 - `uninstall` reads it and needs no options
-- A partial install leaves both paths named in the receipt, so `uninstall` can
-  clean up
+- After a partial install the receipt still names both paths, so `uninstall` can
+  remove them
 
 **Deferred:**
 
-- Atomic installs via `<data-dir>.new` staging and swap
+- An atomic install: write the new tree to `<data-dir>.new`, then swap it with
+  the old one
   - `install` replaces an existing install, so a failed run would need to
     restore the previous version, not remove everything
   - That needs the old tree kept aside, links rebuilt from it and the previous
