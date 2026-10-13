@@ -1,0 +1,77 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+
+# zettels.sh finds lib.sh from the folder of the command files
+SCRIPT_DIR="$SCRIPT_DIR/../zettel.d"
+# shellcheck source=../zettel.d/zettels.sh
+. "$SCRIPT_DIR/zettels.sh"
+
+_describe "zettel :: print_next_child_id"
+
+_test 'given [no parent, no ids] should [print 1]'
+prepare() { :; }
+actual() { print_next_child_id ""; }
+_expect equal actual.stdout '1'
+
+_test 'given [no parent, ids 1 2 10] should [print 11, the largest plus one]'
+prepare() { printf '%s\n' 1 2 10; }
+actual() { print_next_child_id ""; }
+_expect equal actual.stdout '11'
+
+_test 'given [no parent, ids 1 3 with children] should [print 4, not fill the gap]'
+prepare() { printf '%s\n' 1 1a 1a1 3 3a; }
+actual() { print_next_child_id ""; }
+_expect equal actual.stdout '4'
+
+_test 'given [parent 1, no child] should [print 1a]'
+prepare() { printf '%s\n' 1 2 10; }
+actual() { print_next_child_id 1; }
+_expect equal actual.stdout '1a'
+
+_test 'given [parent 1, ids 1 1a 1a1 1a2] should [print 1b, count direct children only]'
+prepare() { printf '%s\n' 1 1a 1a1 1a2; }
+actual() { print_next_child_id 1; }
+_expect equal actual.stdout '1b'
+
+_test 'given [parent 1, largest child 1z] should [print 1aa]'
+prepare() { printf '%s\n' 1 1a 1z; }
+actual() { print_next_child_id 1; }
+_expect equal actual.stdout '1aa'
+
+_test 'given [parent 1, children 1b and 1aa] should [print 1ab, the longer run is larger]'
+prepare() { printf '%s\n' 1 1b 1aa; }
+actual() { print_next_child_id 1; }
+_expect equal actual.stdout '1ab'
+
+_test 'given [parent 1, largest child 1az] should [print 1ba]'
+prepare() { printf '%s\n' 1 1az; }
+actual() { print_next_child_id 1; }
+_expect equal actual.stdout '1ba'
+
+_test 'given [parent 1, largest child 1zz] should [print 1aaa]'
+prepare() { printf '%s\n' 1 1zz; }
+actual() { print_next_child_id 1; }
+_expect equal actual.stdout '1aaa'
+
+_test 'given [parent 1b, no child] should [print 1b1]'
+prepare() { printf '%s\n' 1 1b 1c; }
+actual() { print_next_child_id 1b; }
+_expect equal actual.stdout '1b1'
+
+_test 'given [parent 1b, ids 1b 1b1 1b3] should [print 1b4]'
+prepare() { printf '%s\n' 1b 1b1 1b3; }
+actual() { print_next_child_id 1b; }
+_expect equal actual.stdout '1b4'
+
+_test 'given [parent 1, id 10] an id that only starts like the parent, should [print 1a]'
+prepare() { printf '%s\n' 1 10 10a; }
+actual() { print_next_child_id 1; }
+_expect equal actual.stdout '1a'
+
+_test 'given [parent 1e, ids 1e 1e2] an id that reads as a number, should [print 1e3]'
+prepare() { printf '%s\n' 100 1e 1e2; }
+actual() { print_next_child_id 1e; }
+_expect equal actual.stdout '1e3'

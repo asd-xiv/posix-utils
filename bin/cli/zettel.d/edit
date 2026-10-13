@@ -1,0 +1,57 @@
+#!/bin/sh
+
+# zettel edit <id>
+#
+# Open a zettel in Neovim, in this terminal. Run the on-update hook when
+# Neovim closes: the zettel may be changed or gone. The browser calls it for
+# Enter. It needs a terminal on stdin: the caller opens one.
+# zettel runs this file, never call it directly.
+
+set -eu
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/zettels.sh"
+
+TITLE="zettel :: editor"
+
+# ╭───
+# │ Cleanup
+# ╰───
+
+# shellcheck disable=SC2329 # called by trap
+cleanup() {
+  _restore_title
+}
+
+trap cleanup EXIT                                    # normal exit
+trap 'cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl+C
+trap 'cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout
+trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
+
+# ╭───
+# │ Main
+# ╰───
+
+[ "$#" -eq 1 ] || _fail 2 '"edit" needs one id'
+is_id "$1" || _fail 2 -v id "$1" "Not an id"
+EDITED_FILE=$(find_zettel_file "$1") || _fail 2 -v id "$1" "No such zettel"
+
+_require_cmd nvim
+[ -t 0 ] || _fail 3 '"edit" needs a terminal'
+
+# The file pickers of Neovim start in the folder Neovim starts in
+cd -- "$NOTES_DIR"
+
+# Neovim with its 'title' option on renames the window, so it gets the same
+# title. _restore_title gives the window of the browser its title back
+_set_title "$TITLE"
+EDITOR_STATUS=0
+nvim -c "let &titlestring = '$TITLE'" -- "$EDITED_FILE" || EDITOR_STATUS=$?
+
+run_hook "$UPDATE_HOOK_FILE"
+
+if [ "$EDITOR_STATUS" -ne 0 ]; then
+  _fail 3 "Neovim ended with an error"
+fi
+
+exit 0

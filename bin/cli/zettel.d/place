@@ -1,0 +1,157 @@
+#!/bin/sh
+
+# zettel place <file>
+#
+# Place a draft: pick its parent in fzf, give it the next child id of that
+# parent, write it into the box as a zettel, then remove the draft. The first
+# zettel of a box gets the id 1, with no picker. Run the on-place hook and the
+# on-update hook, then print the path of the zettel. Exit 4 when no parent is picked. The draft
+# stays until the zettel is in the box. The picker needs fzf and a terminal on
+# stdin: the caller opens one.
+# zettel runs this file, never call it directly.
+
+set -eu
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/zettels.sh"
+
+TEMP_FILE="" # the zettel while it is written, "" before and after
+
+# ╭───
+# │ Primitives
+# ╰───
+
+# print_body <draft-file>
+# Print the draft without its claim, line 1, and without the blank lines
+# right after it. Print one empty line first, when a text follows.
+print_body() {
+  awk '
+    NR == 1 { next }
+    !has_text && /^[ \t]*$/ { next }
+    !has_text { has_text = 1; print "" }
+    { print }' "$1"
+}
+
+# ╭───
+# │ Cleanup
+# ╰───
+
+# shellcheck disable=SC2329 # called by trap
+cleanup() {
+  if [ -n "$TEMP_FILE" ]; then
+    rm -f -- "$TEMP_FILE"
+  fi
+}
+
+trap cleanup EXIT                                    # normal exit
+trap 'cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl+C
+trap 'cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout
+trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
+
+# ╭───
+# │ Main
+# ╰───
+
+[ "$#" -eq 1 ] || _fail 2 '"place" needs one draft file'
+
+DRAFT_FILE="$1"
+[ -f "$DRAFT_FILE" ] || _fail 2 -v path "$DRAFT_FILE" "Not a file"
+
+CLAIM=$(find_claim "$DRAFT_FILE") \
+  || _fail 2 -v path "$DRAFT_FILE" 'No claim, line 1 must be "# <claim>"'
+SLUG=$(print_slug "$CLAIM") \
+  || _fail 2 -v claim "$CLAIM" "The claim holds no letter a-z and no digit"
+
+IDS=$(find_ids)
+PARENT_ID=""
+
+if [ -n "$IDS" ]; then
+  _require_cmd fzf
+  guard_public_file
+  [ -t 0 ] || _fail 3 '"place" needs a terminal'
+
+  # Row 1 of the picker has no id, so the zettel on line N of IDS is row N + 1
+  CURSOR_ROW=$(
+    printf '%s\n' "$IDS" \
+      | awk -v id="$(find_newest_ids 1)" '$0 "" == id "" { print NR + 1; exit }'
+  )
+
+  # A row is "<id> TAB <file path> TAB <name>", with the text of the zettel on
+  # a second line, and ends with a NUL. fzf shows and searches the name and the
+  # text, and prints the whole row.
+  #   {1}               the id under the cursor, empty on the row "+ no parent"
+  #   load:pos          puts the cursor on the last zettel placed, once the
+  #                     list is complete
+  #   change:first      puts the cursor on the first match when the query
+  #                     changes. fzf keeps the row number that pos set, and a
+  #                     query with fewer matches leaves no row under the cursor
+  #   --preview-label   the keys, on the bottom border of the preview. A
+  #                     header is as narrow as the list and cuts them
+  PICK_STATUS=0
+  PICKED_ROW=$(
+    {
+      printf '\t\t%s\000' "+ no parent"
+      list_rows
+    } | fzf --read0 --ansi --layout reverse --info hidden \
+      --delimiter "$TAB" --with-nth 3 \
+      --header "place: $CLAIM" \
+      --preview "$PUBLIC_FILE show --color {1}" \
+      --preview-window "right,50%,wrap" \
+      --preview-label " [enter] place behind, [esc] keep as draft " \
+      --preview-label-pos "0:bottom" \
+      --bind "load:pos(${CURSOR_ROW:-1})" \
+      --bind "change:first"
+  ) || PICK_STATUS=$?
+
+  # fzf: 1 is no match, 130 is Esc or Ctrl+C
+  case "$PICK_STATUS" in
+    0) ;;
+    1 | 130)
+      _info -v path "$DRAFT_FILE" "No parent picked, the draft stays"
+      exit 4
+      ;;
+    *) _fail 3 -v status "$PICK_STATUS" "fzf failed" ;;
+  esac
+
+  PARENT_ID="${PICKED_ROW%%"$TAB"*}"
+  if [ -n "$PARENT_ID" ] && ! is_id "$PARENT_ID"; then
+    _fail 3 -v row "$PICKED_ROW" "fzf printed a row without an id"
+  fi
+fi
+
+ID=$(printf '%s\n' "$IDS" | print_next_child_id "$PARENT_ID")
+
+# list_zettels skips a file with a broken name, and that file can hold this id
+for TAKEN_FILE in "$BOX_DIR/$ID".*; do
+  if [ -e "$TAKEN_FILE" ]; then
+    _fail 3 -v path "$TAKEN_FILE" "A file with the next id exists, the draft stays"
+  fi
+done
+
+mkdir -p -- "$BOX_DIR"
+ZETTEL_FILE="$BOX_DIR/$ID.$SLUG.md"
+
+# Written under a name the box does not list, then renamed: no command reads
+# half a zettel
+TEMP_FILE="$BOX_DIR/.$ID.$SLUG.md.tmp"
+{
+  printf '%s\n' "---" "placed: $(date -u +%Y-%m-%dT%H:%M:%SZ)" "---" ""
+  printf '# %s\n' "$CLAIM"
+  print_body "$DRAFT_FILE"
+} >"$TEMP_FILE"
+mv -- "$TEMP_FILE" "$ZETTEL_FILE"
+TEMP_FILE=""
+
+# The draft goes only when the zettel is in the box
+[ -s "$ZETTEL_FILE" ] \
+  || _fail 3 -v path "$ZETTEL_FILE" "The zettel is missing, the draft stays"
+rm -- "$DRAFT_FILE"
+remove_empty_day_dir "${DRAFT_FILE%/*}"
+
+run_hook "$PLACE_HOOK_FILE" "$ID" "$ZETTEL_FILE"
+run_hook "$UPDATE_HOOK_FILE"
+
+printf '%s\n' "$ZETTEL_FILE"
+_ok -v id "$ID" "Placed"
+
+exit 0

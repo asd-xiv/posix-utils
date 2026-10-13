@@ -1,0 +1,50 @@
+#!/bin/sh
+
+# zettel health
+#
+# Print each reason zettel cannot work fully on this system, one per line, on
+# stdout: a missing command or a script path that is not safe. A line for a
+# missing command names the zettel commands that need it. Print nothing when
+# it finds none. health does not check the terminal. The caller opens it. Exit
+# 1 when it printed a reason. open-os-menu runs it before it lets a person
+# pick the browser.
+# zettel runs this file, never call it directly.
+
+set -eu
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/zettels.sh"
+
+# ╭───
+# │ Main
+# ╰───
+
+[ "$#" -eq 0 ] || _fail 2 '"health" takes no arguments'
+
+HAS_REASON=""
+
+if ! command -v fzf >/dev/null 2>&1; then
+  printf '%s\n' "fzf not found, place and browse need fzf 0.53.0 or newer"
+  HAS_REASON="true"
+fi
+
+if ! command -v nvim >/dev/null 2>&1; then
+  printf '%s\n' "nvim not found, create, edit and browse need it"
+  HAS_REASON="true"
+fi
+
+if ! command -v awk >/dev/null 2>&1; then
+  printf '%s\n' "awk not found, every command needs it"
+  HAS_REASON="true"
+fi
+
+if ! is_public_file_safe; then
+  printf '%s\n' "zettel path has a character outside A-Za-z0-9_@+=:,./-"
+  HAS_REASON="true"
+fi
+
+if [ -n "$HAS_REASON" ]; then
+  exit 1
+fi
+
+exit 0

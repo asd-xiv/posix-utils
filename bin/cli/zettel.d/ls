@@ -1,0 +1,29 @@
+#!/bin/sh
+
+# zettel ls [--rows]
+#
+# Print the id and the file name of every zettel, with a tab between them, in
+# Folgezettel order. With --rows, print the rows the picker and the browser
+# show in fzf instead, each with a NUL at its end.
+# zettel runs this file, never call it directly.
+
+set -eu
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/zettels.sh"
+
+# ╭───
+# │ Main
+# ╰───
+
+case "${1:-}" in
+  "") list_zettels ;;
+  --rows)
+    [ "$#" -eq 1 ] || _fail 2 '"ls --rows" takes no arguments'
+    list_rows
+    ;;
+  -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
+  *) _fail 2 '"ls" takes no arguments' ;;
+esac
+
+exit 0
