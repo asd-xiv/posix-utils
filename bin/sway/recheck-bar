@@ -41,8 +41,8 @@ set -eu
 #   one of its click commands runs, and "recheck browse" runs until its fzf
 #   window closes.
 #
-#   waybar runs a click command in a shell, so it reads PU_TERMINAL from its
-#   environment. See PU_TERMINAL in "recheck --help".
+#   waybar runs a click command in a shell. That shell reads PU_TERMINAL from
+#   the environment of waybar. See PU_TERMINAL in "recheck --help".
 #
 #   In ~/.config/recheck/on-update, to refresh the module after every change:
 #
