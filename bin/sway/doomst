@@ -66,17 +66,17 @@ WITH_SOUND=""      # -s/--sound, "true" or ""
 # │ Bootstrap
 # ╰───
 
-case "${1:-}" in
-  -h | --help)
-    _show_help "$0"
-    exit 0
-    ;;
-esac
-
-_require_cmd notify-send
+if [ "$#" -eq 0 ]; then
+  _show_help "$0"
+  exit 2
+fi
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    -h | --help)
+      _show_help "$0"
+      exit 0
+      ;;
     -i | --icon)
       [ "$#" -lt 2 ] && _fail 2 "--icon needs a name, eg. metal-door1"
 
@@ -107,6 +107,8 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ "$#" -eq 0 ] && _fail 2 "No title given"
+
+_require_cmd notify-send
 
 # ╭───
 # │ Main
