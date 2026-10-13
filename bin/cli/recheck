@@ -138,7 +138,7 @@ set -eu
 #   XDG_STATE_HOME     Parent of the recheck state (default: ~/.local/state)
 #   XDG_RUNTIME_DIR    Parent of the folder "recheck" that holds the markers
 #                      (default: /run/user/<user id>). run exits 3 when it
-#                      cannot create that folder, or cannot write to it
+#                      cannot create a marker
 #   LOG_LEVEL          Last level to print (default: info)
 #   NO_COLOR           Disables color when set and non-empty, in log lines
 #                      and in the lines sync prints

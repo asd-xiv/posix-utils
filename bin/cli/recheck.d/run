@@ -12,7 +12,7 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/checks.sh"
 
 CHANGE_HOOK_FILE="$CONFIG_DIR/on-change"
-RUNNING_ID="" # the check this process marked, "" when it marked none
+RUNNING_CHECK_ID=""
 
 # ╭───
 # │ Primitives
@@ -29,24 +29,43 @@ map_state() {
 }
 
 # mark_run <id>
-# Create the marker of a check. Return 1 when the check has one already, or when
-# the shell cannot write it.
+# Create the marker of a check.
+#
+# RETURNS
+#   0   The shell created the marker
+#   1   The check has a marker already
+#   2   The shell cannot create the marker
 mark_run() {
   mark_file=$(print_marker_file "$1")
 
+  # A boot removes the default runtime folder. When mkdir fails, the shell
+  # cannot create the marker. Then mark_run returns 2
+  mkdir -p -- "$RUNTIME_DIR" 2>/dev/null || true
+
   # With noclobber, the shell creates the marker only when there is none, in one
   # system call. So only one of two run commands that start together creates it
-  (set -C && printf '%s %s\n' "$$" "$(date +%T)" >"$mark_file") 2>/dev/null \
-    || return 1
+  if (set -o noclobber && printf '%s %s\n' "$$" "$(date +%T)" >"$mark_file") \
+    2>/dev/null; then
+    RUNNING_CHECK_ID="$1"
+    return 0
+  fi
 
-  RUNNING_ID="$1"
+  # The shell gives one exit code for "the marker exists" and for "cannot create
+  # the marker". So ask whether the marker exists. In one rare case another run
+  # command removes the marker after the shell fails to create it. Then mark_run
+  # wrongly returns 2 for a check that just ran
+  if [ -e "$mark_file" ]; then
+    return 1
+  fi
+
+  return 2
 }
 
 # unmark_run
 # Remove the marker this process created.
 unmark_run() {
-  rm -f -- "$(print_marker_file "$RUNNING_ID")"
-  RUNNING_ID=""
+  rm -f -- "$(print_marker_file "$RUNNING_CHECK_ID")"
+  RUNNING_CHECK_ID=""
 }
 
 # record_run <id> <exit-code> <seconds>
@@ -87,16 +106,30 @@ record_run() {
 }
 
 # run_check <id>
-# Run a check and keep the run. Skip a check that has a marker.
+# Run a check and keep the run. Skip the check when it has a marker. Exit 3 when
+# the shell cannot create the marker.
 run_check() {
   run_dir="$STATE_DIR/$1"
   mkdir -p -- "$run_dir"
 
-  if ! mark_run "$1"; then
-    _info -v id "$1" -v marker "$(print_marker_file "$1")" \
-      "Already running, skipping"
-    return 0
-  fi
+  run_mark_status=0
+  mark_run "$1" || run_mark_status=$?
+
+  case "$run_mark_status" in
+    0) ;;
+    1)
+      _info -v id "$1" -v marker "$(print_marker_file "$1")" \
+        "Already running, skipping"
+      return 0
+      ;;
+    *)
+      # The run command ends here. It may have run an earlier check. So run the
+      # on-update hook, as run_checks does after its last check
+      run_hook "$UPDATE_HOOK_FILE"
+      _fail 3 -v id "$1" -v marker "$(print_marker_file "$1")" \
+        "Could not create the marker"
+      ;;
+  esac
 
   # In the background, so a slow hook does not delay the check
   run_hook "$UPDATE_HOOK_FILE" &
@@ -121,16 +154,8 @@ run_check() {
 
 # run_checks <id>...
 # Run each named check, then run the on-update hook. Skip a disabled check.
-# Create the runtime folder first, exit 3 when it is missing or read-only.
 run_checks() {
   guard_id "$@"
-
-  # mark_run cannot create a marker in a folder that is missing or read-only,
-  # and run_check would report that as "Already running"
-  if ! mkdir -p -- "$RUNTIME_DIR" || [ ! -w "$RUNTIME_DIR" ]; then
-    _fail 3 -v path "$RUNTIME_DIR" \
-      "No writable runtime folder, set XDG_RUNTIME_DIR"
-  fi
 
   for named_id in "$@"; do
     if is_enabled "$named_id"; then
@@ -155,9 +180,9 @@ run_checks() {
 # shell runs no trap: that run command leaves its marker and its half output
 # shellcheck disable=SC2329 # called by trap
 cleanup() {
-  [ -n "$RUNNING_ID" ] || return 0
+  [ -n "$RUNNING_CHECK_ID" ] || return 0
 
-  rm -f -- "$STATE_DIR/$RUNNING_ID/output.new"
+  rm -f -- "$STATE_DIR/$RUNNING_CHECK_ID/output.new"
   unmark_run
   run_hook "$UPDATE_HOOK_FILE"
 }
