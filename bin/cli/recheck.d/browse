@@ -42,7 +42,7 @@ guard_fzf_version() {
 
 # shellcheck disable=SC2329 # called by trap
 cleanup() {
-  restore_title
+  _restore_title
 }
 
 trap cleanup EXIT                                    # normal exit
@@ -61,7 +61,7 @@ guard_fzf_version
 guard_recheck_file
 [ -t 0 ] || _fail 3 '"browse" needs a terminal'
 
-set_title "recheck :: browser"
+_set_title "recheck :: browser"
 
 # The editor needs a window of its own, and only the user knows how their
 # terminal opens one. Without PU_TERMINAL, Alt+Enter only writes what
