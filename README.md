@@ -23,6 +23,7 @@
   - [Predicates & Guards](#predicates--guards)
   - [Files](#files)
   - [Text](#text)
+  - [Terminal](#terminal)
   - [Help](#help)
 - [Exit codes](#exit-codes)
 - [Develop](#develop)
@@ -34,27 +35,30 @@
 
 `bin/` groups scripts by the environment they need.
 
-| Script                       | Does                                                            | Needs                                                                                              |
-| ---------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `cli/fancy-log`              | Print a log line with its time, level and namespace, in color   | terminal or CI                                                                                     |
-| `cli/get-youtube-transcript` | Print the transcript of a YouTube video                         | curl, jq                                                                                           |
-| `cli/omnipack`               | Install OS dependencies, package manager agnostic               | terminal or CI                                                                                     |
-| `cli/recheck`                | A terminal UI for cron: run checks, keep the last state of each | cron. Neovim for `edit`, fzf 0.73.0 or newer for `browse`, `PU_TERMINAL` for Alt+Enter in `browse` |
-| `sway/doomst`                | Doomguy themed desktop notifications                            | Wayland, notifier                                                                                  |
-| `sway/jot`                   | Write a quick note in Neovim, print it to stdout                | Wayland, Neovim, `PU_TERMINAL`                                                                     |
-| `sway/open-os-menu`          | Pick a command of posix-utils in a rofi menu, open it           | Wayland, rofi. `PU_TERMINAL` and the cli group for `recheck browse`                                |
-| `sway/recheck-bar`           | Print the count of checks per state, as JSON                    | waybar, jq, `recheck`                                                                              |
-| `sway/yank-symbol`           | Pick symbols the keyboard lacks in a rofi grid, copy them       | Wayland, rofi, `wl-copy`                                                                           |
+| Script                       | Does                                                               | Needs                                                                                              |
+| ---------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| `cli/fancy-log`              | Print a log line with its time, level and namespace, in color      | terminal or CI                                                                                     |
+| `cli/get-youtube-transcript` | Print the transcript of a YouTube video                            | curl, jq                                                                                           |
+| `cli/zettel`                 | A Zettelkasten: write a thought down, place it in a box of zettels | Neovim, fzf 0.53.0 or newer for `place` and `browse`. bat colors the preview when it is there      |
+| `cli/omnipack`               | Install OS dependencies, package manager agnostic                  | terminal or CI                                                                                     |
+| `cli/recheck`                | A terminal UI for cron: run checks, keep the last state of each    | cron. Neovim for `edit`, fzf 0.73.0 or newer for `browse`, `PU_TERMINAL` for Alt+Enter in `browse` |
+| `sway/doomst`                | Doomguy themed desktop notifications                               | Wayland, notifier. `pw-play` for `--sound`                                                         |
+| `sway/jot`                   | Write a quick note in Neovim, print it to stdout                   | Wayland, Neovim, `PU_TERMINAL`                                                                     |
+| `sway/zettel-bar`            | Print the count of zettels, as JSON                                | waybar, jq, `zettel`                                                                               |
+| `sway/open-os-menu`          | Pick a command of posix-utils in a rofi menu, open it              | Wayland, rofi. `PU_TERMINAL` and the cli group for `zettel browse` and `recheck browse`            |
+| `sway/recheck-bar`           | Print the count of checks per state, as JSON                       | waybar, jq, `recheck`                                                                              |
+| `sway/yank-symbol`           | Pick symbols the keyboard lacks in a rofi grid, copy them          | Wayland, rofi, `wl-copy`                                                                           |
 
 ## Settings
 
-Every command of posix-utils that opens a terminal window reads one setting.
+Each setting is an environment variable.
 
-| Setting       | Holds                                                                                                                                                                                                                                           | Read by                                         |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `PU_TERMINAL` | Command that opens a terminal window and runs the command written after it. The flag that takes the command differs per terminal, so include it, eg. `alacritty --class float --command` For `jot`, it must not return before its window closes | `open-os-menu`, `jot`, the browser of `recheck` |
+| Setting         | Holds                                                                                                                                                                                                                                                                                                                                       | Read by                                         |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `PU_TERMINAL`   | Command that opens a terminal window and runs the command written after it. The flag that takes the command differs per terminal, so include it, eg. `alacritty --class float --command`. Every command of posix-utils that opens a terminal window reads it. For `jot`, the `PU_TERMINAL` command must not return before its window closes | `open-os-menu`, `jot`, the browser of `recheck` |
+| `PU_ZETTEL_DIR` | Folder that holds the notes: `draft` for drafts, `box` for zettels. Default: `~/NeoNotes`                                                                                                                                                                                                                                                   | `zettel`                                        |
 
-Set it in a shell profile:
+Set `PU_TERMINAL` in a shell profile:
 
 ```sh
 export PU_TERMINAL='alacritty --class float --command'
@@ -182,6 +186,13 @@ or 2.
 | `_replace_block <begin> <end> <lines>` | Read a text from stdin, print it with the lines of its block replaced by `<lines>`                                                        |
 | `_diff_lines <old-text> <new-text>`    | Print what changed between two sets of lines: `- <line>` for a line only in `<old-text>`, then `+ <line>` for a line only in `<new-text>` |
 | `_end_with_newline <text>`             | Print `<text>` with a newline at its end, the one `$(...)` strips                                                                         |
+
+### Terminal
+
+| Function             | Does                                                            |
+| -------------------- | --------------------------------------------------------------- |
+| `_set_title <title>` | Set the title of the terminal window, when stderr is a terminal |
+| `_restore_title`     | Restore the title the window had before `_set_title`            |
 
 ### Help
 
