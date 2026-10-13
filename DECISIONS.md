@@ -13,6 +13,73 @@ up to five parts, in this order. Leave out a part that is empty.
 - **Acknowledgments**: a known gap the Decision accepts, with the reason, and no
   **Revisit when**
 
+## Lock a `recheck` check with a marker in `XDG_RUNTIME_DIR`
+
+**2026-10-13**
+
+**Context:**
+
+- cron and a person can start the same check at the same time
+- A marker, a file per check, meant "running"
+  - `run` took over a marker whose process was gone: look, remove, create
+  - Two run commands that started together could both take it over, and both ran
+    the check
+- With `noclobber`, dash, bash and BusyBox ash create a file only when there is
+  none, in one system call
+- A shell gives one exit code for "the file exists" and for "cannot create the
+  file"
+- A login creates `/run/user/<user id>`, a boot removes it
+  - cron sets no `XDG_RUNTIME_DIR`
+
+**Decision:**
+
+- The marker is `<id>.running` in the runtime folder, `$XDG_RUNTIME_DIR/recheck`
+  - Without `XDG_RUNTIME_DIR`, `/run/user/<user id>/recheck`
+- `run` creates the marker with `noclobber` and removes it when the check ends
+- Every command trusts the marker: a check with a marker is running
+  - No command takes a marker over
+- `run` skips a check that has a marker
+- `run` skips a check when it cannot create the marker
+  - It runs the other checks
+  - Then it exits 3
+
+**Rejected:**
+
+- A folder made with `mkdir` as the lock: `kill -9` leaves it as it leaves the
+  marker, and a folder holds no start time
+- `kill -0` and `ps` to ask whether the process of a marker still runs: the
+  process id can belong to another program by then
+- `[ -w ]` on the runtime folder: it passes for root and on a full file system
+- A second try when `run` cannot create the marker: it runs a check again right
+  after another run command ran it
+
+**Deferred:**
+
+- `flock`: the kernel releases the lock when the process ends, in any way
+  - A run command that ends by `kill -9` leaves its marker
+    - The check runs again only after a person or a boot removes the marker
+  - `flock` is not in POSIX
+  - **Revisit when** a marker left by `kill -9` keeps a check skipped
+- A runtime folder for a user with no session: without `/run/user/<user id>`,
+  `run` exits 3
+  - **Revisit when** `recheck` must run where its user does not log in
+- `run` removes the marker before it records the run
+  - Two run commands can record their runs out of order
+  - **Revisit when** the bar shows a wrong state
+- `run` writes `last` and `state` in place
+  - A reader can see an empty file
+  - **Revisit when** the bar shows an empty state
+- `--fail-fast`, to end the run command at the first marker it cannot create
+  - **Revisit when** one cause logs an error for each check of a run command
+
+**Acknowledgments:**
+
+- A run command can exit 3 for a check that just ran
+  - Another run command removes the marker after the first fails to create it,
+    and before the first asks whether it exists
+  - Rare: the check of the other run command must end between those two steps
+  - The first run command still runs its other checks
+
 ## Skip `get-youtube-transcript -> smoke` test file in CI
 
 **2026-10-13**
