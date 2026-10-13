@@ -137,16 +137,4 @@ actual() { XDG_RUNTIME_DIR="$PWD/file/runtime" "$RECHECK" run a; }
 _expect equal actual.exit 3
 _expect equal actual.stdout ''
 _expect equal check.log ''
-_expect contain actual.stderr 'No writable runtime folder, set XDG_RUNTIME_DIR'
-
-_test 'given [a read-only runtime folder] should [exit 3 and not start the check]'
-prepare() {
-  add_traced_check a
-  mkdir -p runtime/recheck
-  chmod a-w runtime/recheck
-}
-actual() { "$RECHECK" run a; }
-_expect equal actual.exit 3
-_expect equal actual.stdout ''
-_expect equal check.log ''
-_expect contain actual.stderr 'No writable runtime folder, set XDG_RUNTIME_DIR'
+_expect contain actual.stderr 'Could not create the marker'

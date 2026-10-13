@@ -143,7 +143,7 @@ find_state() {
 # command left. recheck trusts the marker: a check with a marker is running, and
 # "run" skips it. No command asks whether the process still runs. A run command
 # that ends without its traps, eg. by kill -9, leaves its marker. Then the check
-# runs again only after a person removes the marker, or a boot clears the
+# runs again only after a person removes the marker, or a boot removes the
 # default runtime folder.
 
 # print_marker_file <id>
