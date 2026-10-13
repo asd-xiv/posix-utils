@@ -13,6 +13,7 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 
 CHANGE_HOOK_FILE="$CONFIG_DIR/on-change"
 RUNNING_CHECK_ID=""
+HAS_FAILED="" # "true" once the shell could not create the marker of a check
 
 # ╭───
 # │ Primitives
@@ -106,8 +107,9 @@ record_run() {
 }
 
 # run_check <id>
-# Run a check and keep the run. Skip the check when it has a marker. Exit 3 when
-# the shell cannot create the marker.
+# Run a check and keep the run. Skip the check when it has a marker. When the
+# shell cannot create the marker, log an error, set HAS_FAILED and skip the
+# check.
 run_check() {
   run_dir="$STATE_DIR/$1"
   mkdir -p -- "$run_dir"
@@ -123,11 +125,10 @@ run_check() {
       return 0
       ;;
     *)
-      # The run command ends here. It may have run an earlier check. So run the
-      # on-update hook, as run_checks does after its last check
-      run_hook "$UPDATE_HOOK_FILE"
-      _fail 3 -v id "$1" -v marker "$(print_marker_file "$1")" \
+      _error -v id "$1" -v marker "$(print_marker_file "$1")" \
         "Could not create the marker"
+      HAS_FAILED="true"
+      return 0
       ;;
   esac
 
@@ -202,4 +203,7 @@ if [ "$#" -eq 0 ]; then
 fi
 run_checks "$@"
 
+if [ -n "$HAS_FAILED" ]; then
+  exit 3
+fi
 exit 0

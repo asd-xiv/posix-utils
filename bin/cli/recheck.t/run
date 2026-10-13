@@ -138,3 +138,17 @@ _expect equal actual.exit 3
 _expect equal actual.stdout ''
 _expect equal check.log ''
 _expect contain actual.stderr 'Could not create the marker'
+
+# With noclobber the shell cannot create a file where a link exists, even as
+# root. The link points at nothing, so [ -e ] is false and mark_run returns 2
+_test 'given [two checks, the first with a marker that run cannot create] should [run the second, exit 3]'
+prepare() {
+  add_check a 0
+  add_check b 0
+  mkdir -p runtime/recheck
+  ln -s "$PWD/missing" runtime/recheck/a.running
+}
+actual() { "$RECHECK" run a b; }
+_expect equal actual.exit 3
+_expect equal actual.stdout 'b	green'
+_expect contain actual.stderr 'Could not create the marker'
