@@ -104,7 +104,8 @@ set -eu
 #   /run/user/<user id>/recheck. While a check has a marker, run skips it, and
 #   status, show and "ls --color" report it as running. A run command that ends
 #   by "kill -9" leaves the marker. It stays until you remove it, or until the
-#   next boot clears /run/user/<user id>.
+#   next boot clears /run/user/<user id>. When run cannot create the marker of a
+#   check, it skips that check. It runs the other checks. Then it exits 3.
 #
 # ARGUMENTS
 #   id   Check to act on. Repeatable for enable, disable and run
@@ -153,7 +154,8 @@ set -eu
 #       recheck cannot work fully
 #   2   Invalid usage
 #   3   Could not run, eg. no crontab command or a check without a valid cron
-#       pattern. For browse, no fzf, an fzf older than 0.73.0 or no terminal
+#       pattern. For browse, no fzf, an fzf older than 0.73.0 or no terminal.
+#       For run, it could not create the marker of at least one check
 #
 # SEE ALSO
 #   crontab, recheck-bar, open-os-menu, nvim, fzf, awk
