@@ -1,0 +1,43 @@
+#!/bin/sh
+
+# zettel recent
+#
+# Print the last 5 zettels placed, with every zettel of their lineages, as one
+# tree in Folgezettel order. The newest has "newest" after its name, behind a
+# tab. Print nothing when the box holds no zettel.
+# zettel runs this file, never call it directly.
+
+set -eu
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/zettels.sh"
+
+RECENT_COUNT=5 # how many zettels count as recent
+
+# ╭───
+# │ Main
+# ╰───
+
+[ "$#" -eq 0 ] || _fail 2 '"recent" takes no arguments'
+
+RECENT_IDS=$(find_newest_ids "$RECENT_COUNT")
+
+if [ -z "$RECENT_IDS" ]; then
+  exit 0
+fi
+
+NEWEST_ID=$(printf '%s\n' "$RECENT_IDS" | head -n 1)
+
+# Two recent zettels can share a parent. sort_ids puts equal ids on adjacent
+# lines, so uniq keeps one. An id is digits and letters, safe to split
+for RECENT_ID in $RECENT_IDS; do
+  print_lineage "$RECENT_ID"
+done | sort_ids | uniq | while read -r ID; do
+  if [ "$ID" = "$NEWEST_ID" ]; then
+    print_tree_row "$ID" "newest"
+  else
+    print_tree_row "$ID"
+  fi
+done | print_tree
+
+exit 0

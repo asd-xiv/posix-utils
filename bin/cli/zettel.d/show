@@ -1,0 +1,55 @@
+#!/bin/sh
+
+# zettel show [--color] <id>
+#
+# Print the lineage of a zettel as a tree, an empty line, then its text. With
+# --color, print the text through bat when bat is there, in color. The picker
+# and the browser call it for the preview. An empty id prints nothing: the
+# picker has one row without an id.
+# zettel runs this file, never call it directly.
+
+set -eu
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/zettels.sh"
+
+SHOULD_COLOR="" # --color, "true" or ""
+
+# ╭───
+# │ Main
+# ╰───
+
+case "${1:-}" in
+  --color)
+    SHOULD_COLOR="true"
+    shift
+    ;;
+  -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
+esac
+
+[ "$#" -eq 1 ] || _fail 2 '"show" needs one id'
+
+if [ -z "$1" ]; then
+  exit 0
+fi
+
+is_id "$1" || _fail 2 -v id "$1" "Not an id"
+SHOWN_FILE=$(find_zettel_file "$1") || _fail 2 -v id "$1" "No such zettel"
+
+# An id is digits and letters, safe to split
+for ID in $(print_lineage "$1"); do
+  print_tree_row "$ID"
+done | print_tree
+
+printf '\n'
+
+# bat sees no terminal in a preview, so show tells it to color and not to page
+if [ -n "$SHOULD_COLOR" ] && [ -z "${NO_COLOR:-}" ] \
+  && command -v bat >/dev/null 2>&1; then
+  bat --color always --style plain --paging never --language markdown \
+    -- "$SHOWN_FILE"
+else
+  cat -- "$SHOWN_FILE"
+fi
+
+exit 0

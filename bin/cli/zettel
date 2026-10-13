@@ -1,0 +1,162 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   zettel - A Zettelkasten: write a thought down, place it in a box of zettels
+#
+# SYNOPSIS
+#   zettel create
+#   zettel place <file>
+#   zettel ls [--rows]
+#   zettel show [--color] <id>
+#   zettel recent
+#   zettel browse
+#   zettel edit <id>
+#   zettel health
+#   zettel -h | --help
+#
+# DESCRIPTION
+#   A draft is one thought, one file in the folder of its day:
+#   ~/NeoNotes/draft/<year>-<day of year>/<time>.md. Line 1 of a draft is its
+#   claim, the thought as one sentence, written as "# <claim>".
+#
+#   A zettel is a note with an id, a file in the box:
+#   ~/NeoNotes/box/<id>.<slug>.md. The slug is the claim as a file name. The
+#   id is a Folgezettel id, eg. 1b3: 1b3 stands behind 1b, and 1b behind 1.
+#   That chain is the lineage of 1b3. An id holds no padding and never changes.
+#
+#   To place a draft is to give it an id behind a parent. Place a draft behind
+#   the zettel that made you think of it. Pick no parent when none did. The
+#   draft then gets the next top-level id.
+#
+#     create    Open a new draft in Neovim, in this terminal. Line 1 is "# ",
+#               and Neovim puts the cursor on line 3. When Neovim closes: a
+#               draft with no text is removed, a draft with no claim stays,
+#               a draft with a claim goes to "place". A draft also stays when
+#               Neovim ends with an error, eg. by ":cq"
+#     place     Place a draft. Show every zettel in fzf, the cursor on the
+#               last one placed. Type to search the names and the texts.
+#               Enter places the draft behind the zettel under the cursor,
+#               or at the top level on the row "+ no parent". Esc keeps the
+#               draft. The first zettel of a box gets the id 1, with no
+#               question. Print the path of the new zettel
+#     ls        Print the id and the file name of every zettel, with a tab
+#               between them, in Folgezettel order
+#     show      Print the lineage of a zettel as a tree, an empty line, then
+#               its text. An empty id prints nothing
+#     recent    Print the last 5 zettels placed with their lineage, as one
+#               tree. The newest has "newest" after its name, behind a tab
+#     browse    Open the browser: every zettel in fzf, with "show <id>" as
+#               the preview. Enter opens the zettel under the cursor with
+#               "edit", Esc closes the browser
+#     edit      Open a zettel in Neovim, in this terminal
+#     health    Print each reason zettel cannot work fully on this system,
+#               one per line: a missing command or a script path that is
+#               not safe. Print nothing when it finds none. open-os-menu
+#               runs health before it lets a person pick browse
+#
+#   The folder in PU_ZETTEL_DIR is the only record. A zettel holds the time of
+#   its placing on line 2, as "placed: <UTC time>". Only zettel shows the
+#   Folgezettel order: a tool that sorts names as text lists 10 before 2.
+#
+#   After zettel places a draft, it runs the on-place hook,
+#   ~/.config/zettel/on-place <id> <file>, if that file is executable. <file>
+#   is the path of the new zettel.
+#
+#   When Neovim closes after create or edit, and after a draft is placed,
+#   zettel runs the on-update hook, ~/.config/zettel/on-update, if that file
+#   is executable. zettel passes it no arguments. The call tells the hook
+#   that a draft or a zettel may be new, changed or removed. A hook that fails
+#   is a warning.
+#
+# ARGUMENTS
+#   file   Draft to place. Line 1 must hold a claim
+#   id     Zettel to show or to edit
+#
+# OPTIONS
+#   --rows       With ls, print the rows that the picker and the browser show
+#                in fzf, for "fzf --read0": id, file path and name, then the
+#                text on a second line, then a NUL
+#   --color      With show, print the text through bat when bat is there
+#   -h, --help   Print this help
+#
+# ENVIRONMENT
+#   PU_ZETTEL_DIR      Folder that holds "draft" and "box" (default: ~/NeoNotes)
+#   XDG_CONFIG_HOME   Folder that holds the zettel config (default: ~/.config)
+#   LOG_LEVEL         Last level to print (default: info)
+#   NO_COLOR          Disables color when set and non-empty, in log lines
+#                     and in the texts of the picker and the browser
+#
+# EXAMPLE
+#   zettel create
+#   zettel show 1b3
+#
+#   In ~/.config/zettel/on-update, to refresh the waybar module:
+#
+#     pkill -RTMIN+9 waybar
+#
+#   In ~/.config/zettel/on-place, to show the lineage of the new zettel:
+#
+#     notify-send "zettel" "$(zettel show "$1" | sed '/^$/q')"
+#
+# EXIT CODES
+#   0   Done. For create, also when the draft stays or is removed
+#   1   For health, zettel cannot work fully
+#   2   Invalid usage, eg. a draft with no claim or an id with no zettel
+#   3   Could not run, eg. no fzf, no Neovim or no terminal
+#   4   For place, no parent picked, the draft stays
+#
+# SEE ALSO
+#   zettel-bar, open-os-menu, nvim, fzf 0.53.0 or newer, awk, bat
+
+# tools/install symlinks this script, so "$0" names the link. realpath follows
+# it to find lib.sh and zettel.d
+SCRIPT_FILE=$(realpath "$0")
+SCRIPT_DIR=$(dirname "$SCRIPT_FILE")
+. "$SCRIPT_DIR/../lib.sh"
+
+# _log reads these
+export LOG_NAMESPACE="zettel"
+export LOG_LEVEL="${LOG_LEVEL:-info}"
+
+# ╭───
+# │ Bootstrap
+# ╰───
+
+case "${1:-}" in
+  -h | --help)
+    _show_help "$0"
+    exit 0
+    ;;
+  "")
+    _show_help "$0"
+    exit 2
+    ;;
+  --) shift ;;
+  -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
+esac
+
+[ "$#" -eq 0 ] && _fail 2 "No command given"
+
+COMMAND="$1"
+shift
+
+# "zettel place -- <file>" works like "zettel place <file>"
+if [ "${1:-}" = "--" ]; then
+  shift
+fi
+
+# ╭───
+# │ Main
+# ╰───
+
+# One file per command. A slug holds no "/" and no ".", so a command names
+# only a file in zettel.d, and never zettels.sh
+COMMAND_FILE="$SCRIPT_DIR/zettel.d/$COMMAND"
+
+if ! _is slug "$COMMAND" || [ ! -f "$COMMAND_FILE" ] || [ ! -x "$COMMAND_FILE" ]; then
+  _fail 2 -v command "$COMMAND" "Unknown command"
+fi
+
+exec "$COMMAND_FILE" "$@"

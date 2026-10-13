@@ -1,0 +1,34 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+
+# zettels.sh finds lib.sh from the folder of the command files
+SCRIPT_DIR="$SCRIPT_DIR/../zettel.d"
+# shellcheck source=../zettel.d/zettels.sh
+. "$SCRIPT_DIR/zettels.sh"
+
+_describe "zettel :: sort_ids"
+
+_test 'given [ids in no order] should [print parents first, numbers by value, z before aa]'
+prepare() { printf '%s\n' 10 1aa 1b3 2 1a10 1 1z 1a2 1b 1a 1a1; }
+actual() { sort_ids | tr '\n' ' '; }
+_expect equal actual.stdout '1 1a 1a1 1a2 1a10 1b 1b3 1z 1aa 2 10 '
+
+_test 'given [1e2 and 100] an id that reads as a number, should [keep 1e2 below 1]'
+prepare() { printf '%s\n' 100 1e2 2; }
+actual() { sort_ids | tr '\n' ' '; }
+_expect equal actual.stdout '1e2 2 100 '
+
+_test 'given [rows with text after a tab] should [sort by the id, keep the text]'
+prepare() { printf '%s\t%s\n' 10 10.ten.md 2 2.two.md 1a 1a.child.md; }
+actual() { sort_ids; }
+_expect equal actual.stdout '1a	1a.child.md
+2	2.two.md
+10	10.ten.md'
+
+_test 'given [no rows] should [print nothing]'
+prepare() { :; }
+actual() { sort_ids; }
+_expect equal actual.stdout ''

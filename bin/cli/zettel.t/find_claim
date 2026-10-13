@@ -1,0 +1,71 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+
+# zettels.sh finds lib.sh from the folder of the command files
+SCRIPT_DIR="$SCRIPT_DIR/../zettel.d"
+# shellcheck source=../zettel.d/zettels.sh
+. "$SCRIPT_DIR/zettels.sh"
+
+_describe "zettel :: find_claim"
+
+_test 'given [line 1 "# A claim"] should [print the claim]'
+prepare() { printf '# A claim\n\nThe text.\n' >note.md; }
+actual() { find_claim note.md; }
+_expect equal actual.stdout 'A claim'
+
+_test 'given [line 1 "#A claim"] no blank after "#", should [print the claim]'
+prepare() { printf '#A claim\n' >note.md; }
+actual() { find_claim note.md; }
+_expect equal actual.stdout 'A claim'
+
+_test 'given [blanks around the claim] should [print the claim without them]'
+prepare() { printf '#  \t A claim \t \n' >note.md; }
+actual() { find_claim note.md; }
+_expect equal actual.stdout 'A claim'
+
+_test 'given [a "#" inside the claim] should [keep it]'
+prepare() { printf '# Issue #12 is a duplicate\n' >note.md; }
+actual() { find_claim note.md; }
+_expect equal actual.stdout 'Issue #12 is a duplicate'
+
+_test 'given [line 1 a bare "#"] should [return 1]'
+prepare() { printf '#\n\nThe text.\n' >note.md; }
+actual() { find_claim note.md && echo yes || echo no; }
+_expect equal actual.stdout 'no'
+
+_test 'given [line 1 "# " with only blanks] should [return 1]'
+prepare() { printf '#  \n\nThe text.\n' >note.md; }
+actual() { find_claim note.md && echo yes || echo no; }
+_expect equal actual.stdout 'no'
+
+_test 'given [line 1 a "##" heading] should [return 1]'
+prepare() { printf '## A section\n' >note.md; }
+actual() { find_claim note.md && echo yes || echo no; }
+_expect equal actual.stdout 'no'
+
+_test 'given [the claim on line 2] should [return 1]'
+prepare() { printf '\n# A claim\n' >note.md; }
+actual() { find_claim note.md && echo yes || echo no; }
+_expect equal actual.stdout 'no'
+
+_test 'given [line 1 without "#"] should [return 1]'
+prepare() { printf 'The text.\n' >note.md; }
+actual() { find_claim note.md && echo yes || echo no; }
+_expect equal actual.stdout 'no'
+
+_test 'given [an empty file] should [return 1]'
+prepare() { : >note.md; }
+actual() { find_claim note.md && echo yes || echo no; }
+_expect equal actual.stdout 'no'
+
+_test 'given [no file] should [return 1]'
+actual() { find_claim note.md && echo yes || echo no; }
+_expect equal actual.stdout 'no'
+
+_test 'given [a claim and no newline at the end] should [print the claim]'
+prepare() { printf '# A claim' >note.md; }
+actual() { find_claim note.md; }
+_expect equal actual.stdout 'A claim'
