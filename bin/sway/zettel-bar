@@ -1,0 +1,115 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   zettel-bar - Print the count of zettels, as JSON for waybar
+#
+# SYNOPSIS
+#   zettel-bar [-h]
+#
+# DESCRIPTION
+#   Prints one JSON line for a waybar module with "return-type": "json".
+#
+#     text      The icon and the count of zettels, eg. "⚑ 12". An empty box
+#               gives "⚑ 0"
+#     tooltip   The last 5 zettels placed with their lineage, as a tree of
+#               file names in a fixed-width font. The newest is bold. Empty
+#               for an empty box
+#
+# OPTIONS
+#   -h, --help   Print this help
+#
+# EXAMPLE
+#   In the waybar config:
+#
+#     "custom/zettel": {
+#       "exec": "zettel-bar",
+#       "return-type": "json",
+#       "interval": 60,
+#       "signal": 9,
+#       "on-click": "$PU_TERMINAL zettel browse &"
+#     }
+#
+#   End the click command with "&". waybar does not refresh a module while
+#   one of its click commands runs. "zettel browse" runs until its fzf window
+#   closes.
+#
+#   waybar runs a click command in a shell. That shell reads PU_TERMINAL from
+#   the environment of waybar. PU_TERMINAL holds the command that opens a
+#   terminal window and runs the command written after it, eg. "alacritty
+#   --class float --command".
+#
+#   In ~/.config/zettel/on-update, to refresh the module after every change:
+#
+#     pkill -RTMIN+9 waybar
+#
+# EXIT CODES
+#   0   Line printed
+#   2   Invalid usage
+#   3   Could not run, eg. zettel failed
+#
+# SEE ALSO
+#   zettel, jq, waybar-custom(5)
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../lib.sh"
+
+# _log reads these
+export LOG_NAMESPACE="zettel-bar"
+export LOG_LEVEL="${LOG_LEVEL:-info}"
+
+# ╭───
+# │ Bootstrap
+# ╰───
+
+case "${1:-}" in
+  -h | --help)
+    _show_help "$0"
+    exit 0
+    ;;
+  "" | --) ;;
+  -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
+  *) _fail 2 -v argument "$1" "zettel-bar takes no arguments" ;;
+esac
+
+_require_cmd jq
+
+# ╭───
+# │ Main
+# ╰───
+
+ZETTEL_FILE="$SCRIPT_DIR/../cli/zettel"
+[ -x "$ZETTEL_FILE" ] \
+  || _fail 3 -v path "$ZETTEL_FILE" "zettel not found, install the cli group"
+
+ZETTELS=$("$ZETTEL_FILE" ls) || _fail 3 "zettel ls failed"
+
+# "zettel ls" prints one row per zettel. For an empty box it prints nothing,
+# and printf would make one empty row of that
+COUNT=0
+if [ -n "$ZETTELS" ]; then
+  COUNT=$(printf '%s\n' "$ZETTELS" | awk 'END { print NR }')
+fi
+
+ROWS=$("$ZETTEL_FILE" recent) || _fail 3 "zettel recent failed"
+
+# Turn the tab-separated rows of `zettel recent` into waybar output (JSON +
+# Pango). A row is a line of the tree. The row of the newest zettel ends with
+# a tab and a mark
+jq --null-input --compact-output \
+  --arg text "⚑ $COUNT" --arg rows "$ROWS" '
+  {
+    text: $text,
+    tooltip: (
+      if $rows == "" then ""
+      else
+        $rows | split("\n") | map(
+          split("\t") as [$line, $mark]
+          | if $mark then "<b>\($line | @html)</b>" else $line | @html end
+        ) | "<tt>\(join("\n"))</tt>"
+      end
+    )
+  }'
+
+exit 0
