@@ -221,44 +221,37 @@ search_file() {
 }
 ```
 
-### 6. Bootstrap
-
-- Never install a dependency. Guard it with `_require_cmd` after the help
-  branch, so `--help` works without them. Name it under `SEE ALSO`
-
-```sh
-# ╭───
-# │ Bootstrap
-# ╰───
-
-case "${1:-}" in
-  -h | --help)
-    _show_help "$0"
-    exit 0
-    ;;
-  "")
-    _show_help "$0"
-    exit 2
-    ;;
-esac
-
-_require_cmd grep
-```
-
-### 7. Flags and positionals
+### 6. Flags and positionals
 
 - Flags first, then the positionals
-  - Exception is a command word which comes before its flags, eg. 
+  - Exception is a command word which comes before its flags, eg.
     `recheck ls --color`, `fancy-log info --no-color`
 - Always handle `--`, always catch `-?*`. The `?` lets a lone `-` through
 - Guard before every `shift 2`. `dash` aborts with
   `shift: can't shift that many`
 - Name the shape a value must have and reject the rest. A list of bad shapes
   always misses an edge case
+- Never install a dependency. Guard it with `_require_cmd` after the flags and
+  the positionals are read, so `--help` works without it
+  - Name it under `SEE ALSO`
+  - Report invalid usage (exit `2`) before a missing dependency (exit `3`)
 
 ```sh
+# ╭───
+# │ Bootstrap
+# ╰───
+
+if [ "$#" -eq 0 ]; then
+  _show_help "$0"
+  exit 2
+fi
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    -h | --help)
+      _show_help "$0"
+      exit 0
+      ;;
     -i | --ignore-case)
       IGNORE_CASE="true"
       shift
@@ -283,9 +276,11 @@ done
 
 PATTERN="$1"
 shift
+
+_require_cmd grep
 ```
 
-### 8. Cleanup
+### 7. Cleanup
 
 - Register the trap before the first thing it must clean
 - End a signal trap by resending the signal. A trap stops the signal from ending
@@ -313,7 +308,7 @@ TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/find-in-files.XXXXXX") \
   || _fail 3 "Could not create a temporary directory"
 ```
 
-### 9. Main
+### 8. Main
 
 - Print results to stdout, everything else to stderr
   - `printf` over `echo`, data through `%s`
@@ -356,7 +351,7 @@ for FILE in "$@"; do
 done
 ```
 
-### 10. The last line
+### 9. The last line
 
 - Never end a script or a function on a bare `[ ] && { }`
   - A false test becomes the exit code, eg. `[ -n "$FOUND" ] && exit 0` alone
