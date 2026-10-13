@@ -18,7 +18,7 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 
 # shellcheck disable=SC2329 # called by trap
 cleanup() {
-  restore_title
+  _restore_title
 }
 
 trap cleanup EXIT                                    # normal exit
@@ -52,7 +52,7 @@ fi
 
 # Neovim with its 'title' option on renames the window. Hand it the same
 # title, so the window keeps one name. An id is a slug, safe between quotes
-set_title "$TITLE"
+_set_title "$TITLE"
 nvim -c "let &titlestring = '$TITLE'" "$@" \
   || _fail 3 "Neovim ended with an error, not synced"
 

@@ -11,8 +11,8 @@
 #   export LOG_LEVEL="${LOG_LEVEL:-info}"
 #
 # DESCRIPTION
-#   Domain-agnostic primitives: logging, predicates, guards, files, text and
-#   help. A script sources it, never executes it.
+#   Domain-agnostic primitives: logging, predicates, guards, files, text,
+#   terminal and help. A script sources it, never executes it.
 #
 #   A primitive prints its result to stdout. A predicate answers with its
 #   status and prints nothing. Everything else goes to stderr.
@@ -491,6 +491,35 @@ _diff_lines() {
         }
       }
     }'
+}
+
+# ╭───
+# │ Terminal
+# ╰───
+
+_HAS_TITLE="" # "true" once _set_title changed the window title
+
+# _set_title <title>
+#
+# Name the terminal window, when stderr is a terminal. The escape codes are
+# xterm's and most terminals read them, a flag such as --title differs per
+# terminal. The first code saves the old title, _restore_title restores it.
+_set_title() {
+  [ -t 2 ] || return 0
+
+  printf '\033[22;0t\033]0;%s\007' "$1" >&2
+  _HAS_TITLE="true"
+}
+
+# _restore_title
+#
+# Restore the title that _set_title saved. The window may be gone, and a
+# failed write must not stop the rest.
+_restore_title() {
+  if [ -n "$_HAS_TITLE" ]; then
+    printf '\033[23;0t' >&2 2>/dev/null || true
+    _HAS_TITLE=""
+  fi
 }
 
 # ╭───

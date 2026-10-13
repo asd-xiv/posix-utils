@@ -292,26 +292,3 @@ wait_for_enter() {
   # shellcheck disable=SC2034 # read needs a name, nobody reads it
   read -r wait_reply || true
 }
-
-HAS_TITLE="" # "true" once set_title changed the window title
-
-# set_title <title>
-# Name the terminal window, when stderr is a terminal. The escape codes are
-# xterm's and most terminals read them, a flag such as --title differs per
-# terminal. The first code saves the old title, restore_title restores it.
-set_title() {
-  [ -t 2 ] || return 0
-
-  printf '\033[22;0t\033]0;%s\007' "$1" >&2
-  HAS_TITLE="true"
-}
-
-# restore_title
-# Restore the title that set_title saved. The window may be gone, and a
-# failed write must not stop the rest.
-restore_title() {
-  if [ -n "$HAS_TITLE" ]; then
-    printf '\033[23;0t' >&2 2>/dev/null || true
-    HAS_TITLE=""
-  fi
-}
