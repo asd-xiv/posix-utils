@@ -9,21 +9,24 @@ set -eu
 #   open-os-menu [-h]
 #
 # DESCRIPTION
-#   Shows a menu in rofi, one item per command a person opens by hand. An
+#   Shows a menu in rofi, one item per command you open by hand. An
 #   item shows an icon, its name, its command and what it does. Type to find
 #   an item by any of them, or by a word about it, eg. "unicode" or "cron".
 #   Enter opens the item under the cursor. Esc closes the menu.
 #
 #   The items, and how each one opens:
 #
+#     Zettels   zettel browse    In a new terminal window, opened with
+#                                PU_TERMINAL. Needs the cli group
 #     Symbols   yank-symbol      In its own rofi window
 #     Checks    recheck browse   In a new terminal window, opened with
 #                                PU_TERMINAL. Needs the cli group
 #
 #   An item that cannot open stays in the menu, with the reason in place of
 #   what it does. You cannot pick it. open-os-menu gives the reason when the
-#   command is not installed or PU_TERMINAL is not set. Else the command gives
-#   it, eg. "recheck health" prints what recheck lacks on this system.
+#   command is not installed or PU_TERMINAL is not set. Else the health command
+#   of the item gives it, eg. "recheck health" prints what recheck lacks on this
+#   system.
 #
 #   After a pick, open-os-menu runs the command of the item and exits with its
 #   exit code. For an item that opens in a terminal window, it exits with the
@@ -49,14 +52,15 @@ set -eu
 #
 # EXIT CODES
 #   0       The command of the picked item, or the PU_TERMINAL command that
-#           ran it, ended with 0
+#           ran it, exited with 0
 #   2       Invalid usage
 #   3       Could not run, eg. no rofi or no display
 #   4       Nothing picked
-#   other   The exit code of that command
+#   other   The exit code of the command of the picked item, or of the
+#           PU_TERMINAL command that ran it
 #
 # SEE ALSO
-#   rofi, yank-symbol, recheck
+#   rofi, zettel, yank-symbol, recheck
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../lib.sh"
@@ -70,10 +74,12 @@ export LOG_LEVEL="${LOG_LEVEL:-info}"
 #   icon      one Unicode character
 #   command   a path under bin, then its arguments
 #   opens     "window" when the command opens its own window, "terminal"
-#             when it needs one. The menu opens a terminal with PU_TERMINAL
+#             when it runs in a terminal window. open-os-menu opens that
+#             window with PU_TERMINAL
 #   health    a command, written as "command" is, that prints why the item
 #             cannot open and exits 1. Empty when the item has none
-ITEMS='Ω|Symbols|sway/yank-symbol|window||Copy a symbol the keyboard lacks, eg. ă € → ─ ✓|unicode character diacritic currency arrow box
+ITEMS='⚑|Zettels|cli/zettel browse|terminal|cli/zettel health|Zettelkasten: browse the box, read each zettel in its lineage|zettelkasten notes thoughts ideas box folgezettel
+Ω|Symbols|sway/yank-symbol|window||Copy a symbol the keyboard lacks, eg. ă € → ─ ✓|unicode character diacritic currency arrow box
 ✓|Checks|cli/recheck browse|terminal|cli/recheck health|Browse the checks that cron runs: read each state, run one again|cron status monitor schedule'
 
 INSTRUCTION="<b>$LOG_NAMESPACE</b> :: type to find an item, eg. symbol or cron"
@@ -88,8 +94,8 @@ SHORTCUTS="[↑ ↓] move, [enter] open, [esc] close"
 # Print one rofi row per item of ITEMS.
 #
 # The loop reads ITEMS on file descriptor 3. A health command then keeps the
-# stdin of the menu, and tests such as [ -t 0 ] see the same stdin as the
-# command after the pick.
+# stdin of open-os-menu. Its tests, such as [ -t 0 ], see the stdin that the
+# command of the item gets after the pick.
 print_rows() {
   while IFS='|' read -r rows_icon rows_name rows_command rows_opens \
     rows_health rows_what rows_words <&3; do
@@ -137,9 +143,10 @@ _require_cmd rofi sed wc tr
 
 ITEM_COUNT=$(printf '%s\n' "$ITEMS" | wc -l | tr -d ' ')
 
-# rofi lays this over the theme of the user, which keeps its colors and font.
+# rofi lays this over the theme of the user. The theme keeps its colors and
+# font.
 #   mainbox          the instruction above the input, the shortcuts last
-#   textbox-footer   a text box this script adds, for the shortcuts. Its look
+#   textbox-footer   a text box open-os-menu adds, for the shortcuts. Its look
 #                    comes from a "textbox-footer" section in the theme
 #   listview         one row per item and no empty space under the last one
 MENU_THEME="mainbox { children: [ message, inputbar, listview, textbox-footer ]; }
@@ -164,8 +171,8 @@ case "$ROFI_STATUS" in
   *) _fail 3 -v status "$ROFI_STATUS" "rofi failed" ;;
 esac
 
-# With -no-custom and -format d, rofi prints only the number of a row it was
-# given
+# With -no-custom and -format d, rofi prints only the number of a row
+# that print_rows printed
 IFS='|' read -r _ _ PICKED_COMMAND PICKED_OPENS _ <<EOF
 $(printf '%s\n' "$ITEMS" | sed -n "${PICKED_NUMBER}p")
 EOF
@@ -178,7 +185,7 @@ PICKED_ARGS=${PICKED_COMMAND#"$PICKED_PATH"}
 set -- $PICKED_ARGS
 
 if [ "$PICKED_OPENS" = "terminal" ]; then
-  # Split the terminal command on purpose
+  # Split the PU_TERMINAL command on purpose
   # shellcheck disable=SC2086
   exec $PU_TERMINAL "$SCRIPT_DIR/../$PICKED_PATH" "$@"
 fi
