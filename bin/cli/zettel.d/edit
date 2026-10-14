@@ -4,8 +4,9 @@
 #
 # Open a zettel or a draft in Neovim, in this terminal. When Neovim closes,
 # run "sync --no-place": a new claim renames a zettel, a broken id lowers it to
-# the drafts, a fixed draft is elevated to the box. Wait for Enter when sync printed a line. The browser calls it
-# for Enter. It needs a terminal on stdin: the caller opens one.
+# the drafts, a fixed draft is elevated to the box. Wait for Enter when sync
+# printed a line. The browser calls it for Enter. It needs a terminal on
+# stdin: the caller opens one.
 # zettel runs this file, never call it directly.
 
 set -eu
@@ -43,7 +44,8 @@ _require_cmd nvim
 cd -- "$NOTES_DIR"
 
 # Neovim renames the window when its 'title' option is on, so titlestring
-# gives it the same title. _restore_title gives the window of the browser its title back
+# gives it the same title. _restore_title gives the window of the browser its
+# title back
 _set_title "$TITLE"
 EDITOR_STATUS=0
 nvim -c "let &titlestring = '$TITLE'" -- "$EDITED_FILE" || EDITOR_STATUS=$?

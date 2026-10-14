@@ -11,7 +11,7 @@
 #                          rejects to the drafts of today, with the reason in
 #                          a message above its claim. The rest get the name
 #                          "<id>.<slug of its claim>.md"
-#   refresh_drafts         Remove each draft with no text. A draft with a
+#   refresh_drafts         Remove each empty draft. A draft with a
 #                          claim and no "id:" goes to place, which writes an
 #                          id into it
 #   elevate_valid_drafts   Elevate each draft with a claim and "id:" to the
@@ -210,7 +210,7 @@ EOF
 }
 
 # refresh_drafts
-# Check each draft, newest first. Remove a draft with no text. Give a draft
+# Check each draft, newest first. Remove an empty draft. Give a draft
 # with a claim and no "id:" an id with place, unless SHOULD_PLACE is empty.
 # After place could not run once, count the next drafts as waiting.
 refresh_drafts() {
@@ -220,9 +220,9 @@ refresh_drafts() {
   while IFS= read -r drafts_file <&4; do
     [ -f "$drafts_file" ] || continue
 
-    if ! has_text "$drafts_file"; then
+    if is_empty_draft "$drafts_file"; then
       rm -- "$drafts_file"
-      _ok -v path "$drafts_file" "Removed a draft with no text"
+      _ok -v path "$drafts_file" "Removed an empty draft"
       printf '%s\n' printed
       continue
     fi

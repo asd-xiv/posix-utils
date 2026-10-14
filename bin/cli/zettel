@@ -6,7 +6,7 @@ set -eu
 #   zettel - A Zettelkasten: write a thought down, place it in a box of zettels
 #
 # SYNOPSIS
-#   zettel create
+#   zettel create [--behind <id>]
 #   zettel place <file>
 #   zettel sync [--no-place] [--wait]
 #   zettel ls [--drafts] [--rows]
@@ -45,7 +45,9 @@ set -eu
 #     create    Open a new draft in Neovim, in this terminal. Line 1 is "# ",
 #               and Neovim puts the cursor on line 3. When Neovim closes, run
 #               sync. When Neovim ends with an error, eg. by ":cq", run
-#               "sync --no-place". Wait for Enter when sync printed a line
+#               "sync --no-place". Wait for Enter when sync printed a line.
+#               With --behind, the draft starts with the next free child id
+#               of <id> in its front matter: sync elevates it with no picker
 #     place     Give a draft an id. Show every zettel in the picker, a list
 #               in fzf, the cursor on the last one placed. Type to search
 #               the names. Enter writes the next child id of the zettel
@@ -60,8 +62,9 @@ set -eu
 #                  zettel with a broken format, or with the id of a zettel
 #                  before it, to the drafts of today, with a message above
 #                  its claim. The rest get the name "<id>.<slug of claim>.md"
-#               2. Each draft, newest first. sync removes a draft with no
-#                  text. A draft with a claim and no "id:" goes to "place".
+#               2. Each draft, newest first. sync removes an empty draft:
+#                  no front matter, no claim, no body. A draft with a claim
+#                  and no "id:" goes to "place".
 #                  A claim with no letter a-z and no digit gets a message
 #               3. sync elevates each draft with a claim and "id:" to the
 #                  box, newest first. A draft with a broken format, or with
@@ -78,8 +81,9 @@ set -eu
 #     browse    Open the browser: every zettel in fzf, with "show" as the
 #               preview. Tab switches to the drafts, newest first, and
 #               back. A draft with a sync message shows "⚠" and the
-#               reason. Enter opens the file under the cursor with "edit",
-#               Esc closes the browser
+#               reason. Enter opens the file under the cursor with "edit".
+#               Alt+Enter opens a new draft with "create", behind the
+#               zettel under the cursor in the box. Esc closes the browser
 #     edit      Open a zettel or a draft in Neovim, in this terminal. When
 #               Neovim closes, run "sync --no-place". Wait for Enter when
 #               sync printed a line
@@ -107,6 +111,9 @@ set -eu
 #   id     Zettel to show or to edit
 #
 # OPTIONS
+#   --behind <id>
+#                With create, start the draft behind the zettel <id>. An
+#                empty <id> counts as none
 #   --drafts     With ls, print the path of every draft, newest first. With
 #                browse, open on the drafts
 #   --rows       With ls, print the rows that the picker and the browser show

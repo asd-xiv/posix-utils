@@ -13,6 +13,36 @@ date, then has up to five parts, in this order. Leave out a part that is empty.
 - **Acknowledgments**: a known gap the Decision accepts, with the reason or the
   thing that limits it, and no **Revisit when**
 
+## Open a new draft behind the zettel under the cursor, with Alt+Enter
+
+**2026-10-14**
+
+**Context:**
+
+- A thought often comes from the zettel the user reads in the browser
+- `sync` elevates a draft that holds a valid, free id, and opens no picker
+
+**Decision:**
+
+- Alt+Enter in the browser runs `create --behind <id>`, with the id under the
+  cursor
+  - `create` writes the next free child id of `<id>` into the front matter of
+    the new draft, in the buffer only. An id in a draft counts as taken
+  - In the drafts list, Alt+Enter opens a draft with no parent
+  - The user can edit or drop `id:` in Neovim. `sync` checks it as any other id
+- `sync` drops a draft only when it is empty: no front matter, no claim, no body
+  - Drop `has_text`, add `is_empty_draft`
+
+**Rejected:**
+
+- A draft with only a front matter counts as empty: `sync` would drop an id the
+  user kept on purpose
+
+**Acknowledgments:**
+
+- Two new drafts behind one parent, open at once, get the same id. `sync`
+  elevates the newer and writes a sync message into the older
+
 ## Switch the browser between the box and the drafts with Tab
 
 **2026-10-14**

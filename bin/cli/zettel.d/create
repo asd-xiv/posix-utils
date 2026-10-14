@@ -1,11 +1,13 @@
 #!/bin/sh
 
-# zettel create
+# zettel create [--behind <id>]
 #
 # Open a new draft in Neovim, in this terminal. Line 1 is "# ", for the claim,
-# and Neovim puts the cursor on line 3. When Neovim closes, run sync: it
-# removes a draft with no text, keeps a draft with no claim, and places a
-# draft with a claim. When Neovim ends with an error, run "sync --no-place":
+# and Neovim puts the cursor on line 3. With --behind, the draft starts with a
+# front matter that holds the next free child id of <id>, so sync elevates it
+# with no picker. An empty <id> counts as none. When Neovim closes, run sync:
+# it removes an empty draft, keeps a draft with no claim, and places a draft
+# with a claim. When Neovim ends with an error, run "sync --no-place":
 # the draft stays. Wait for Enter when sync printed a line. It needs a
 # terminal on stdin: the caller opens one.
 # zettel runs this file, never call it directly.
@@ -16,6 +18,7 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/zettels.sh"
 
 TITLE="zettel :: editor"
+BEHIND_ID="" # --behind, the id of the parent, "" for none
 
 # ╭───
 # │ Cleanup
@@ -35,7 +38,31 @@ trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
 # │ Main
 # ╰───
 
-[ "$#" -eq 0 ] || _fail 2 '"create" takes no arguments'
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --behind)
+      [ "$#" -lt 2 ] && _fail 2 "--behind needs an id, eg. 1b"
+      BEHIND_ID="$2"
+      shift 2
+      ;;
+    -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
+    *) _fail 2 '"create" takes no arguments' ;;
+  esac
+done
+
+# The lines Neovim starts with, as a Vim list
+DRAFT_LINES='"# ", "", ""'
+if [ -n "$BEHIND_ID" ]; then
+  get_zettel_file "$BEHIND_ID" >/dev/null
+
+  # An id in a draft counts as taken, as in place
+  NEW_ID=$(
+    { list_zettels | cut -f 1; find_draft_ids; } \
+      | build_next_child_id "$BEHIND_ID"
+  )
+  DRAFT_LINES="\"---\", \"id: $NEW_ID\", \"---\", \"\", $DRAFT_LINES"
+fi
+
 _require_cmd nvim
 [ -t 0 ] || _fail 3 '"create" needs a terminal'
 
@@ -52,12 +79,13 @@ cd -- "$NOTES_DIR"
 # when its 'title' option is on, so titlestring gives it the same title
 _set_title "$TITLE"
 
-# setline puts the three lines in the buffer, not in a file. With nomodified,
-# ":q" closes a buffer the user did not touch and no file is left
+# setline puts the lines in the buffer, not in a file. With nomodified, ":q"
+# closes a buffer the user did not touch and no file is left. "normal G" puts
+# the cursor on the last line, under the claim
 EDITOR_STATUS=0
 nvim \
   -c "let &titlestring = '$TITLE'" \
-  -c 'call setline(1, ["# ", "", ""])' \
+  -c "call setline(1, [$DRAFT_LINES])" \
   -c 'set nomodified' \
   -c 'normal G' \
   -c 'set spell' \

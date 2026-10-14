@@ -429,10 +429,11 @@ build_zettel_name() {
   printf '%s.%s.md' "$build_id" "$build_slug"
 }
 
-# has_text <file>
-# Return 0 when <file> holds a line that is not blank and not a bare "#".
-has_text() {
-  grep -q -v -e '^[[:space:]]*$' -e '^#[[:space:]]*$' -- "$1"
+# is_empty_draft <file>
+# Return 0 when <file> holds no line the user wrote: each line is blank or a
+# bare "#". A front matter line, a claim or a body makes it not empty.
+is_empty_draft() {
+  ! grep -q -v -e '^[[:space:]]*$' -e '^#[[:space:]]*$' -- "$1"
 }
 
 # build_tree

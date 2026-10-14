@@ -1,0 +1,32 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+
+# zettels.sh finds lib.sh from the folder of the command files
+SCRIPT_DIR="$SCRIPT_DIR/../zettel.d"
+# shellcheck source=../zettel.d/zettels.sh
+. "$SCRIPT_DIR/zettels.sh"
+
+_describe "zettel :: is_empty_draft"
+
+_test 'given [a bare "#" and blank lines] should [return 0]'
+prepare() { printf -- '# \n\n\n' >draft.md; }
+actual() { is_empty_draft draft.md && echo yes || echo no; }
+_expect equal actual.stdout 'yes'
+
+_test 'given [an empty file] should [return 0]'
+prepare() { : >draft.md; }
+actual() { is_empty_draft draft.md && echo yes || echo no; }
+_expect equal actual.stdout 'yes'
+
+_test 'given [a front matter with an id, and a bare "#"] should [return 1]'
+prepare() { printf -- '---\nid: 1b3\n---\n\n# \n' >draft.md; }
+actual() { is_empty_draft draft.md && echo yes || echo no; }
+_expect equal actual.stdout 'no'
+
+_test 'given [a body and no claim] should [return 1]'
+prepare() { printf -- '# \n\ntest again\n' >draft.md; }
+actual() { is_empty_draft draft.md && echo yes || echo no; }
+_expect equal actual.stdout 'no'
