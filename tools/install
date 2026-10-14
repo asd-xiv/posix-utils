@@ -11,7 +11,8 @@ PU_BIN_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/../bin"       # -b/--bin-dir
 PU_GROUP="cli"                                                 # -g/--group
 PU_REF="main"                                                  # -r/--ref
 
-# Fixed path, the one thing uninstall can find without being told
+# Proof the package is installed on your system and source of truth for
+# `tools/uninstall`
 PU_RECEIPT_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/posix-utils/receipt"
 
 # ╭───
@@ -47,6 +48,9 @@ DESCRIPTION
   cli    Terminal and CI, no display server
   sway   Sway session, needs Wayland and a notifier
 
+  Records what it did in a receipt, and links uninstall as pu-uninstall, so
+  removing all of it later needs neither options nor a second download.
+
   The bin dir is never added to PATH. Add it yourself.
 
 OPTIONS
@@ -66,15 +70,17 @@ FILES
                                        uninstall
   <data-dir>/<group>/                  The scripts, one folder per group
   <data-dir>/lib.sh                    Sourced by every script
+  <data-dir>/uninstall                 Linked as pu-uninstall, removes
+                                       everything install created
   <bin-dir>/<command>                  A symlink per command, flat for PATH
 
 EXAMPLE
   # straight through the shell, nothing left on disk
-  curl -fsSL https://raw.githubusercontent.com/asd-xiv/posix-utils/main/install \
+  curl -fsSL https://raw.githubusercontent.com/asd-xiv/posix-utils/main/tools/install \
     | sh -s -- --group all
 
   # keep the script. curl writes it 0644, so sh runs it and ./install does not
-  curl -fsSL https://raw.githubusercontent.com/asd-xiv/posix-utils/main/install -o install
+  curl -fsSL https://raw.githubusercontent.com/asd-xiv/posix-utils/main/tools/install -o install
   sh install --group all --ref v2.0.0
 
 EXIT CODES
@@ -88,17 +94,34 @@ SEE ALSO
 EOF
 }
 
-# unlink_group <group-dir>
-# Remove the bin links pointing into <group-dir>, so a command dropped upstream
-# disappears here too
-unlink_group() {
+# unlink_target <path>
+# Remove the bin links pointing at <path> or into it, so a command dropped
+# upstream disappears here too
+unlink_target() {
   for unlink_link in "$PU_BIN_DIR"/*; do
     [ ! -L "$unlink_link" ] && continue
 
+    # <path>=/data/cli matches /data/cli and /data/cli/jot, not /data/cli-old
     case "$(readlink "$unlink_link")" in
-      "$1"/*) rm -f "$unlink_link" ;;
+      "$1" | "$1"/*) rm -f "$unlink_link" ;;
     esac
   done
+}
+
+# link_command <script> <name>
+# Symlink one script into PU_BIN_DIR as <name>. Return 1 when the name is taken
+link_command() {
+  link_cmd="$PU_BIN_DIR/$2"
+
+  # Leave what someone else owns. unlink_target already removed every link of
+  # ours, so -e catches a file or dir, -L a broken link
+  if [ -e "$link_cmd" ] || [ -L "$link_cmd" ]; then
+    log "SKIP: $link_cmd already exists"
+    return 1
+  fi
+
+  chmod +x "$1"
+  ln -s "$1" "$link_cmd"
 }
 
 # link_group <group-dir> <group>
@@ -110,18 +133,9 @@ link_group() {
     # Skip the subfolders a group may hold next to its scripts, eg. assets
     [ ! -f "$link_script" ] && continue
 
-    chmod +x "$link_script"
-    link_cmd="$PU_BIN_DIR/$(basename "$link_script")"
-
-    # Leave what someone else owns. unlink_group already removed every link of
-    # ours, so -e catches a file or dir, -L a broken link
-    if [ -e "$link_cmd" ] || [ -L "$link_cmd" ]; then
-      log "SKIP: $link_cmd already exists"
-      continue
+    if link_command "$link_script" "$(basename "$link_script")"; then
+      link_count=$((link_count + 1))
     fi
-
-    ln -s "$link_script" "$link_cmd"
-    link_count=$((link_count + 1))
   done
 
   log "Linked $link_count command(s) from $2"
@@ -129,8 +143,7 @@ link_group() {
 
 # install_group <src> <group>
 # Copy one group into the data dir and relink its commands. Keep the folders
-# nested, each script resolves ../lib.sh through its symlink. Unlink before the
-# copy, so a failure midway leaves no link pointing at a deleted tree
+# nested, each script resolves ../lib.sh through its symlink.
 install_group() {
   install_src_dir="$1/bin/$2"
   install_data_dir="$PU_DATA_DIR/$2"
@@ -138,7 +151,9 @@ install_group() {
   [ ! -d "$install_src_dir" ] \
     && fail 4 "Expected bin/$2 in the $PU_REF archive"
 
-  unlink_group "$install_data_dir"
+  # Unlink before the copy, so a failure midway leaves no link pointing at a
+  # deleted tree
+  unlink_target "$install_data_dir"
 
   rm -rf "$install_data_dir"
   cp -R "$install_src_dir" "$PU_DATA_DIR/"
@@ -146,8 +161,24 @@ install_group() {
   link_group "$install_data_dir" "$2"
 }
 
+# install_uninstall <src>
+# Copy uninstall next to the scripts and link it as pu-uninstall, so removing
+# needs no second download. Its link points into the data dir, so uninstall
+# sweeps it up like any other command
+install_uninstall() {
+  install_uninstall_file="$1/tools/uninstall"
+
+  [ ! -f "$install_uninstall_file" ] \
+    && fail 4 "Expected tools/uninstall in the $PU_REF archive"
+
+  unlink_target "$PU_DATA_DIR/uninstall"
+  cp "$install_uninstall_file" "$PU_DATA_DIR/uninstall"
+
+  link_command "$PU_DATA_DIR/uninstall" "pu-uninstall" || :
+}
+
 # write_receipt <archive-url>
-# List the install paths for uninstall to read, instead of it asking again
+# List the install paths for uninstall to read
 write_receipt() {
   mkdir -p "$(dirname "$PU_RECEIPT_FILE")" \
     || fail 3 "Could not create the receipt directory"
@@ -269,6 +300,8 @@ mkdir -p "$PU_DATA_DIR" "$PU_BIN_DIR" \
 
 # Copy the shared library every group sources
 cp "$TEMP_SRC_DIR/bin/lib.sh" "$PU_DATA_DIR/lib.sh"
+
+install_uninstall "$TEMP_SRC_DIR"
 
 for GROUP in cli sway; do
   [ "$PU_GROUP" != "all" ] && [ "$PU_GROUP" != "$GROUP" ] && continue
