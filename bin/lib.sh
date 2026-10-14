@@ -522,6 +522,18 @@ _restore_title() {
   fi
 }
 
+# _wait_for_enter
+#
+# Stop until the user presses Enter. A window opened only for the calling
+# command closes with it, before the user reads what it shows. Without a
+# terminal on stdin, read takes the next line or finds none, and the wait
+# ends at once.
+_wait_for_enter() {
+  printf 'Press Enter to continue ' >&2
+  # shellcheck disable=SC2034 # read needs a name, nobody reads it
+  read -r _wait_reply || true
+}
+
 # ╭───
 # │ Help
 # ╰───

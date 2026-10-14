@@ -63,7 +63,7 @@ nvim -c "let &titlestring = '$TITLE'" "$@" \
 # here. A sync that printed neither exits at once and the window closes
 "$RECHECK_FILE" sync --wait || {
   STATUS=$?
-  wait_for_enter
+  _wait_for_enter
   exit "$STATUS"
 }
 
