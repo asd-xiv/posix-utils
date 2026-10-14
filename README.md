@@ -5,11 +5,13 @@
 
 > Composable, portable POSIX shell scripts.
 
-- :shell: No bashisms, no GNU-only flags. Runs under `dash`, BusyBox `ash` and
-  `bash`
-- :book: Every script carries its own man page: `fancy-log --help`
-- :robot: Ships the `write-posix-sh` skill with the conventions every script
-  here follows
+- :shell: No bashisms, no GNU-only flags
+- :test_tube: CI lints and tests every script under the `/bin/sh` of
+  `alpine:3.22` (BusyBox `ash`), `debian:trixie-slim` (`dash`) and
+  `archlinux:latest` (`bash`)
+- :robot: Ships the `write-posix-sh` skill for AI agents
+
+## Table of Contents
 
 <!-- vim-markdown-toc GFM -->
 
