@@ -1,18 +1,21 @@
 #!/bin/sh
 
-# zettel browse
+# zettel browse [--drafts]
 #
-# Open the browser: every zettel in fzf, in Folgezettel order, with "show
-# <id>" as the preview. Type to search the names. Enter opens the zettel under
-# the cursor with "edit". When Neovim closes, the browser reads the box again.
-# Esc closes the browser. It needs fzf, Neovim and a terminal on stdin: the
-# caller opens one.
+# Open the browser: every zettel in fzf, in Folgezettel order, with "show" as
+# the preview. Tab switches to the drafts, newest first, and back. With
+# --drafts, open on the drafts. Type to search the names. Enter opens the file
+# under the cursor with "edit". When Neovim closes, the browser reads the list
+# again. Esc closes the browser. It needs fzf, Neovim and a terminal on stdin:
+# the caller opens one.
 # zettel runs this file, never call it directly.
 
 set -eu
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/zettels.sh"
+
+SHOULD_OPEN_DRAFTS="" # --drafts, "true" or ""
 
 # ╭───
 # │ Cleanup
@@ -32,37 +35,72 @@ trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
 # │ Main
 # ╰───
 
-[ "$#" -eq 0 ] || _fail 2 '"browse" takes no arguments'
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --drafts)
+      SHOULD_OPEN_DRAFTS="true"
+      shift
+      ;;
+    -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
+    *) _fail 2 '"browse" takes no arguments' ;;
+  esac
+done
 
 _require_cmd fzf nvim
 [ -t 0 ] || _fail 3 '"browse" needs a terminal'
 
 ZETTELS=$(list_zettels)
-if [ -z "$ZETTELS" ]; then
-  _info -v box "$BOX_DIR" "The box holds no zettel"
+DRAFTS=$(list_draft_files)
+if [ -z "$ZETTELS" ] && [ -z "$DRAFTS" ]; then
+  _info -v dir "$NOTES_DIR" "No zettel and no draft"
   exit 0
+fi
+
+# fzf has no state, so its prompt tells which list is open. Tab and Enter read
+# it in a "transform" and run one of these: switch the prompt and the keys on
+# the preview border, then read the list
+# shellcheck disable=SC2016,SC2089 # the shell of fzf expands $PUBLIC_FILE
+BROWSE_BOX_ACTIONS='change-prompt(box> )+change-preview-label( [enter] open, [tab] drafts, [esc] close )+reload("$PUBLIC_FILE" ls --rows)'
+# shellcheck disable=SC2016,SC2089 # the shell of fzf expands $PUBLIC_FILE
+BROWSE_DRAFTS_ACTIONS='change-prompt(drafts> )+change-preview-label( [enter] open, [tab] box, [esc] close )+reload("$PUBLIC_FILE" ls --drafts --rows)'
+# shellcheck disable=SC2090 # fzf reads the quotes, this shell does not
+export BROWSE_BOX_ACTIONS BROWSE_DRAFTS_ACTIONS
+
+PROMPT="box> "
+LABEL=" [enter] open, [tab] drafts, [esc] close "
+if [ -n "$SHOULD_OPEN_DRAFTS" ]; then
+  PROMPT="drafts> "
+  LABEL=" [enter] open, [tab] box, [esc] close "
 fi
 
 # A waybar click finds an open browser by this title
 _set_title "zettel :: browser"
 
-# A row is what list_rows prints. fzf shows and searches the name.
-#   {1}               the id under the cursor
+# A row is what list_rows or list_draft_rows prints. fzf shows and searches
+# the name.
+#   {2}               the path under the cursor
 #   execute           runs "edit" in this terminal, then shows the list again
-#   reload            reads the box again: the user may have changed or
-#                     removed the zettel in Neovim
+#   transform         prints the actions for the list that is open, or for
+#                     the other one on tab. Enter reads the list again: the
+#                     user may have changed or removed the file in Neovim
 #   --preview-label   the keys, on the bottom border of the preview
 STATUS=0
-# shellcheck disable=SC2016 # the shell of fzf expands $PUBLIC_FILE
-printf '%s\n' "$ZETTELS" \
-  | list_rows \
-  | fzf --layout reverse --info hidden \
-    --delimiter "$TAB" --with-nth 3 \
-    --preview '"$PUBLIC_FILE" show --color {1}' \
-    --preview-window "right,50%,wrap" \
-    --preview-label " [enter] open, [esc] close " \
-    --preview-label-pos "0:bottom" \
-    --bind 'enter:execute("$PUBLIC_FILE" edit {1})+reload("$PUBLIC_FILE" ls --rows)' \
+# shellcheck disable=SC2016 # the shell of fzf expands the variables
+{
+  if [ -n "$SHOULD_OPEN_DRAFTS" ]; then
+    printf '%s\n' "$DRAFTS" | list_draft_rows
+  else
+    printf '%s\n' "$ZETTELS" | list_rows
+  fi
+} | fzf --layout reverse --info hidden \
+  --delimiter "$TAB" --with-nth 3 \
+  --prompt "$PROMPT" \
+  --preview '"$PUBLIC_FILE" show --color {2}' \
+  --preview-window "right,50%,wrap" \
+  --preview-label "$LABEL" \
+  --preview-label-pos "0:bottom" \
+  --bind 'tab:transform:case "$FZF_PROMPT" in box*) printf "%s" "$BROWSE_DRAFTS_ACTIONS" ;; *) printf "%s" "$BROWSE_BOX_ACTIONS" ;; esac' \
+  --bind 'enter:execute("$PUBLIC_FILE" edit {2})+transform:case "$FZF_PROMPT" in box*) printf "%s" "$BROWSE_BOX_ACTIONS" ;; *) printf "%s" "$BROWSE_DRAFTS_ACTIONS" ;; esac' \
   || STATUS=$?
 
 # fzf: 1 is no match, 130 is Esc or Ctrl+C. Closing the browser is no error

@@ -13,6 +13,36 @@ date, then has up to five parts, in this order. Leave out a part that is empty.
 - **Acknowledgments**: a known gap the Decision accepts, with the reason or the
   thing that limits it, and no **Revisit when**
 
+## Switch the browser between the box and the drafts with Tab
+
+**2026-10-14**
+
+**Context:**
+
+- The browser listed the zettels only. The user could open a draft with a sync
+  message only from outside `zettel`
+- The record of 2026-10-13 deferred a command that lists the drafts and opens
+  one again
+- fzf has no variable that one key binding sets and another reads
+
+**Decision:**
+
+- Tab switches the browser between the box and the drafts
+  - The prompt holds which list is open: `box> ` or `drafts> `. The bindings of
+    Tab and Enter read it in a `transform` action
+  - `browse --drafts` opens on the drafts. The box is the default
+- A draft row shows the day folder, the name and the claim of the draft. A draft
+  without a claim shows its first line of text instead
+- The row of a draft with a sync message shows `⚠` and the reason
+- `show` and `edit` take a zettel id or the path of a draft or a zettel
+- The picker of `place` lists zettels only: a parent is a zettel
+
+**Rejected:**
+
+- "box" for the whole folder in `PU_ZETTEL_DIR`: a draft is outside the box
+  until `sync` elevates it, as a slip on the desk is outside Luhmann's box
+- `--box drafts|zettels`: two lists and one default need a yes/no flag only
+
 ## Show one line per zettel in the picker and the browser
 
 **2026-10-14**

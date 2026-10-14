@@ -1,10 +1,11 @@
 #!/bin/sh
 
-# zettel ls [--rows]
+# zettel ls [--drafts] [--rows]
 #
 # Print the id and the file name of every zettel, with a tab between them, in
-# Folgezettel order. With --rows, print the rows the picker and the browser
-# show in fzf instead.
+# Folgezettel order. With --drafts, print the path of every draft instead,
+# newest first. With --rows, print the rows the picker and the browser show in
+# fzf.
 # zettel runs this file, never call it directly.
 
 set -eu
@@ -12,18 +13,36 @@ set -eu
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/zettels.sh"
 
+SHOULD_LIST_DRAFTS="" # --drafts, "true" or ""
+SHOULD_PRINT_ROWS=""  # --rows, "true" or ""
+
 # ╭───
 # │ Main
 # ╰───
 
-case "${1:-}" in
-  "") list_zettels ;;
-  --rows)
-    [ "$#" -eq 1 ] || _fail 2 '"ls --rows" takes no arguments'
-    list_zettels | list_rows
-    ;;
-  -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
-  *) _fail 2 '"ls" takes no arguments' ;;
-esac
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --drafts)
+      SHOULD_LIST_DRAFTS="true"
+      shift
+      ;;
+    --rows)
+      SHOULD_PRINT_ROWS="true"
+      shift
+      ;;
+    -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
+    *) _fail 2 '"ls" takes no arguments' ;;
+  esac
+done
+
+if [ -n "$SHOULD_LIST_DRAFTS" ] && [ -n "$SHOULD_PRINT_ROWS" ]; then
+  list_draft_files | list_draft_rows
+elif [ -n "$SHOULD_LIST_DRAFTS" ]; then
+  list_draft_files
+elif [ -n "$SHOULD_PRINT_ROWS" ]; then
+  list_zettels | list_rows
+else
+  list_zettels
+fi
 
 exit 0

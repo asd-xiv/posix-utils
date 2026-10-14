@@ -1,11 +1,11 @@
 #!/bin/sh
 
-# zettel show [--color] <id>
+# zettel show [--color] <id|file>
 #
-# Print the lineage of a zettel as a tree, an empty line, then its text. With
-# --color, print the text through bat when bat is there, in color. The picker
-# and the browser call it for the preview. Print nothing for an empty
-# id: the picker has one row without an id.
+# Print the lineage of a zettel as a tree, an empty line, then its text. For a
+# draft, print its text only. With --color, print the text through bat when
+# bat is there, in color. The picker and the browser call it for the preview.
+# Print nothing for an empty argument: the picker has one row without an id.
 # zettel runs this file, never call it directly.
 
 set -eu
@@ -27,20 +27,27 @@ case "${1:-}" in
   -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
 esac
 
-[ "$#" -eq 1 ] || _fail 2 '"show" needs one id'
+[ "$#" -eq 1 ] || _fail 2 '"show" needs one id or file'
 
 if [ -z "$1" ]; then
   exit 0
 fi
 
-SHOWN_FILE=$(get_zettel_file "$1")
+SHOWN_FILE=$(get_note_file "$1")
+SHOWN_ID="${SHOWN_FILE##*/}"
+SHOWN_ID="${SHOWN_ID%%.*}"
 
-# An id is digits and letters, safe to split
-for ID in $(build_lineage "$1"); do
-  build_tree_row "$ID"
-done | build_tree
+# A draft has no lineage
+case "$SHOWN_FILE" in
+  "$BOX_DIR"/*)
+    # An id is digits and letters, safe to split
+    for ID in $(build_lineage "$SHOWN_ID"); do
+      build_tree_row "$ID"
+    done | build_tree
 
-printf '\n'
+    printf '\n'
+    ;;
+esac
 
 # bat sees no terminal in a preview, so show tells it to color and not to page
 if [ -n "$SHOULD_COLOR" ] && [ -z "${NO_COLOR:-}" ] \

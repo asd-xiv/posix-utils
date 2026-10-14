@@ -62,12 +62,6 @@ list_note_files() {
   done
 }
 
-# build_message <reason>
-# Print the message that sync writes above the claim of a file.
-build_message() {
-  printf '> [!WARNING] zettel sync: %s. Fix it, then remove this message.' "$1"
-}
-
 # lower_to_drafts <file> <reason>
 # Lower a zettel to the drafts of today, under its name, with <reason> in a
 # message above its claim. Keep it in the box, with a warning, when a draft of

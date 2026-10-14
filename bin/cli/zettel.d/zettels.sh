@@ -25,6 +25,10 @@ PLACE_HOOK_FILE="$CONFIG_DIR/on-place"
 # shellcheck disable=SC2034 # the command files read it
 UPDATE_HOOK_FILE="$CONFIG_DIR/on-update"
 TAB=$(printf '\t')
+# sync writes a message above the claim of a file that breaks a rule. The
+# drafts list of the browser reads the reason back out of it
+MESSAGE_START="> [!WARNING] zettel sync: "
+MESSAGE_END=". Fix it, then remove this message."
 NL="
 "
 
@@ -517,6 +521,42 @@ list_draft_files() {
   done | LC_ALL=C sort -r
 }
 
+# list_draft_rows
+# Read draft paths from stdin, as list_draft_files prints them. Print one row
+# per draft for fzf, in the three fields of list_rows, with no id:
+# "TAB <file path> TAB <mark><day folder>/<name>  <text>". The text is the
+# first line after the front matter: the claim, or the first line of text. A
+# draft with a sync message gets "⚠ " as its mark and the reason as its text.
+# The others get two spaces, so the names line up.
+list_draft_rows() {
+  while IFS= read -r draft_row_file; do
+    [ -n "$draft_row_file" ] || continue
+
+    # A tab would end the field, so it becomes a space
+    draft_row_text=$(
+      awk '
+        NR == 1 && $0 == "---" { front = 1; next }
+        front == 1 { if ($0 == "---") { front = 2 }; next }
+        /^[ \t]*#?[ \t]*$/ { next }
+        { gsub(/\t/, " "); print; exit }' "$draft_row_file"
+    )
+
+    draft_row_mark="  "
+    case "$draft_row_text" in
+      "$MESSAGE_START"*)
+        draft_row_mark="⚠ "
+        draft_row_text="${draft_row_text#"$MESSAGE_START"}"
+        draft_row_text="${draft_row_text%"$MESSAGE_END"}"
+        ;;
+      "#"*) draft_row_text=$(trim_blanks "${draft_row_text#"#"}") ;;
+    esac
+
+    draft_row_name="${draft_row_file#"$DRAFT_DIR"/}"
+    printf '\t%s\t%s%s  %s\n' "$draft_row_file" "$draft_row_mark" \
+      "${draft_row_name%.md}" "$draft_row_text"
+  done
+}
+
 # find_draft_ids
 # Print the valid id in the front matter of each draft, one per line. A
 # zettel that sync lowered to the drafts keeps its id there, so place does not
@@ -548,6 +588,30 @@ find_zettel_file() {
   done
 
   return 1
+}
+
+# build_message <reason>
+# Print the message that sync writes above the claim of a file.
+build_message() {
+  printf '%s%s%s' "$MESSAGE_START" "$1" "$MESSAGE_END"
+}
+
+# get_note_file <id|file>
+# Print the path of a zettel, for an id, or of a draft or a zettel, for a file
+# path. A path holds a "/", an id never does. Exit 2 when the zettel is not
+# there, or when the file is not a draft or a zettel.
+get_note_file() {
+  case "$1" in
+    */../* | ../* | */..)
+      _fail 2 -v path "$1" "Not a draft or a zettel"
+      ;;
+    "$BOX_DIR"/*.md | "$DRAFT_DIR"/*/*.md)
+      [ -f "$1" ] || _fail 2 -v path "$1" "No such file"
+      printf '%s' "$1"
+      ;;
+    */*) _fail 2 -v path "$1" "Not a draft or a zettel" ;;
+    *) get_zettel_file "$1" ;;
+  esac
 }
 
 # get_zettel_file <id>
