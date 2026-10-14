@@ -9,28 +9,28 @@ SCRIPT_DIR="$SCRIPT_DIR/../zettel.d"
 # shellcheck source=../zettel.d/zettels.sh
 . "$SCRIPT_DIR/zettels.sh"
 
-_describe "zettel :: print_slug"
+_describe "zettel :: build_slug"
 
 _test 'given [a sentence with a comma] should [print it in lower case with one "-" per gap]'
-actual() { print_slug 'A draft is a day, not an idea'; }
+actual() { build_slug 'A draft is a day, not an idea'; }
 _expect equal actual.stdout 'a-draft-is-a-day-not-an-idea'
 
 _test 'given [punctuation at both ends] should [print no "-" at either end]'
-actual() { print_slug '  "Why 2 + 2 = 4?"  '; }
+actual() { build_slug '  "Why 2 + 2 = 4?"  '; }
 _expect equal actual.stdout 'why-2-2-4'
 
 _test 'given [letters outside ASCII] should [leave them out]'
-actual() { print_slug 'Țara nouă'; }
+actual() { build_slug 'Țara nouă'; }
 _expect equal actual.stdout 'ara-nou'
 
 _test 'given [a claim that is a slug already] should [print it as it is]'
-actual() { print_slug 'place-in-the-same-sitting'; }
+actual() { build_slug 'place-in-the-same-sitting'; }
 _expect equal actual.stdout 'place-in-the-same-sitting'
 
 _test 'given [only punctuation] should [return 1 and print nothing]'
-actual() { print_slug '?!' && echo yes || echo no; }
+actual() { build_slug '?!' && echo yes || echo no; }
 _expect equal actual.stdout 'no'
 
 _test 'given [an empty claim] should [return 1]'
-actual() { print_slug '' && echo yes || echo no; }
+actual() { build_slug '' && echo yes || echo no; }
 _expect equal actual.stdout 'no'

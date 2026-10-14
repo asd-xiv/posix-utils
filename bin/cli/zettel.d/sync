@@ -240,7 +240,7 @@ refresh_drafts() {
       continue
     fi
 
-    if ! print_slug "$drafts_claim" >/dev/null; then
+    if ! build_slug "$drafts_claim" >/dev/null; then
       write_message "$drafts_file" "The claim holds no letter a-z and no digit"
       continue
     fi

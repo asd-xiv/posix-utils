@@ -63,10 +63,10 @@ sort_ids() {
   }' | LC_ALL=C sort | cut -f 2-
 }
 
-# print_lineage <id>
+# build_lineage <id>
 # Print the ids from the top-level id down to <id>, one per line: 1b3 gives 1,
 # 1b and 1b3.
-print_lineage() {
+build_lineage() {
   printf '%s\n' "$1" | awk '{
     rest = $0; id = ""
     while (length(rest) > 0) {
@@ -80,14 +80,14 @@ print_lineage() {
   }'
 }
 
-# print_next_child_id <parent-id>
+# build_next_child_id <parent-id>
 # Read the ids in use from stdin, print the id of the next child of
 # <parent-id>: its largest child plus one. An empty <parent-id> stands for the
 # top level. The children of an id that ends in a digit are runs of letters: a
 # to z, then aa, ab. All other children are numbers from 1. A gap stays empty,
 # because an id never changes. When the user removes the largest child, place
 # gives its id again.
-print_next_child_id() {
+build_next_child_id() {
   LC_ALL=C awk -v parent="$1" '
     # The run of letters after <letters>: a -> b, z -> aa, az -> ba, zz -> aaa
     function next_letters(letters,    alphabet, place, at) {
@@ -137,12 +137,12 @@ print_next_child_id() {
     }'
 }
 
-# print_slug <claim>
+# build_slug <claim>
 # Print the slug of <claim>: lower case, each run of characters
 # outside a-z0-9 as one "-", no "-" at either end. tr runs in the C locale,
 # so a letter outside ASCII is outside a-z. Return 1 and print nothing when
 # nothing is left.
-print_slug() {
+build_slug() {
   slug_text=$(
     printf '%s' "$1" \
       | LC_ALL=C tr '[:upper:]' '[:lower:]' \
@@ -387,7 +387,7 @@ validate_zettel() {
     return 1
   fi
 
-  if ! print_slug "$validate_claim" >/dev/null; then
+  if ! build_slug "$validate_claim" >/dev/null; then
     printf '%s' 'The claim holds no letter a-z and no digit'
     return 1
   fi
@@ -420,7 +420,7 @@ build_zettel_name() {
   validate_zettel "$1" >/dev/null || return 1
 
   build_id=$(find_front_matter_value id "$1")
-  build_slug=$(print_slug "$(find_claim "$1")")
+  build_slug=$(build_slug "$(find_claim "$1")")
 
   printf '%s.%s.md' "$build_id" "$build_slug"
 }
@@ -431,7 +431,7 @@ has_text() {
   grep -q -v -e '^[[:space:]]*$' -e '^#[[:space:]]*$' -- "$1"
 }
 
-# print_tree
+# build_tree
 # Read rows from stdin, "<id> TAB <label>" or "<id> TAB <label> TAB <mark>",
 # in Folgezettel order. Print one line per row: the label, behind an indent
 # and "└ " below the top level. The mark stays after the label, behind a tab.
@@ -439,7 +439,7 @@ has_text() {
 #   1.lorem.md
 #    └ 1b.ipsum.md
 #        └ 1b3.dolor.md
-print_tree() {
+build_tree() {
   awk -F '\t' '{
     # The depth is the count of runs in the id, less one
     rest = $1
@@ -575,11 +575,11 @@ find_newest_ids() {
   done | LC_ALL=C sort -r | head -n "$1" | cut -f 2
 }
 
-# print_tree_row <id> [mark]
-# Print the row print_tree reads for a zettel: its id, a tab, its file name,
+# build_tree_row <id> [mark]
+# Print the row build_tree reads for a zettel: its id, a tab, its file name,
 # then a tab and <mark> when given. An id without a zettel gets the id as its
 # label.
-print_tree_row() {
+build_tree_row() {
   row_label="$1"
   if row_file=$(find_zettel_file "$1"); then
     row_label="${row_file##*/}"

@@ -31,13 +31,13 @@ NEWEST_ID=$(printf '%s\n' "$RECENT_IDS" | head -n 1)
 # Two recent zettels can share a parent. sort_ids puts equal ids on adjacent
 # lines, so uniq keeps one. An id is digits and letters, safe to split
 for RECENT_ID in $RECENT_IDS; do
-  print_lineage "$RECENT_ID"
+  build_lineage "$RECENT_ID"
 done | sort_ids | uniq | while read -r ID; do
   if [ "$ID" = "$NEWEST_ID" ]; then
-    print_tree_row "$ID" "newest"
+    build_tree_row "$ID" "newest"
   else
-    print_tree_row "$ID"
+    build_tree_row "$ID"
   fi
-done | print_tree
+done | build_tree
 
 exit 0
