@@ -188,13 +188,15 @@ _fail() {
 #   version            0-9 in groups, one dot between two groups, eg. 1.13.4
 #   slug               A-Za-z0-9_-, starts with a letter or a digit
 #   identifier         A-Za-z0-9_, cannot start with a digit
+#   folgezettel        a-z0-9, starts with 1-9, a run of digits never starts
+#                      with 0, eg. 1b3. 1b03 and 1b3 would name one place
 #
 # RETURNS
 #   0   <value> has the shape
 #   1   <value> does not have it, or is empty
 #
 # EXIT
-#   3   <type> is not one of the four and <value> is not empty, or the call
+#   3   <type> is not one of the five and <value> is not empty, or the call
 #       does not have two positionals
 _is() {
   [ "$#" -eq 2 ] || _fail 3 "_is needs <type> <value>"
@@ -224,6 +226,11 @@ _is() {
     identifier)
       case "$2" in
         *[!A-Za-z0-9_]* | [0-9]*) return 1 ;;
+      esac
+      ;;
+    folgezettel)
+      case "$2" in
+        *[!0-9a-z]* | [!1-9]* | *[a-z]0*) return 1 ;;
       esac
       ;;
     *)
