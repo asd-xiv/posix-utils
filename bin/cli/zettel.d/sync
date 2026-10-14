@@ -6,23 +6,23 @@
 # parts:
 #
 #   refresh_box            Each zettel, oldest "placed:" first. A zettel
-#                          without "id:" gets the id of its name. A zettel
-#                          that validate_zettel or validate_box_entry rejects
-#                          goes to the drafts of today, with the reason in a
-#                          message above its claim. The rest get the name
+#                          without "id:" gets the id of its name. Lower a
+#                          zettel that validate_zettel or validate_box_entry
+#                          rejects to the drafts of today, with the reason in
+#                          a message above its claim. The rest get the name
 #                          "<id>.<slug of its claim>.md"
 #   refresh_drafts         Remove each draft with no text. A draft with a
 #                          claim and no "id:" goes to place, which writes an
 #                          id into it
-#   elevate_valid_drafts   Each draft with a claim and "id:", newest first,
-#                          moves into the box. A draft that validate_zettel
+#   elevate_valid_drafts   Elevate each draft with a claim and "id:" to the
+#                          box, newest first. A draft that validate_zettel
 #                          or validate_box_entry rejects stays, with the
 #                          reason in a message above its claim
 #
 # The message is not a claim, so sync leaves the file alone until the user
 # removes it. When the id of a zettel differs from the id in its old name, the
 # id changed, and sync writes the time into "placed:". Run the on-place hook
-# for each draft that enters the box. Remove the empty day folders. Run the
+# for each draft elevated to the box. Remove the empty day folders. Run the
 # on-update hook when the list of drafts and zettels changed, also when sync
 # fails or stops on Ctrl+C. Exit 3 when place could not run.
 #
@@ -68,11 +68,11 @@ build_message() {
   printf '> [!WARNING] zettel sync: %s. Fix it, then remove this message.' "$1"
 }
 
-# move_to_drafts <file> <reason>
-# Move a zettel to the drafts of today, under its name, with <reason> in a
+# lower_to_drafts <file> <reason>
+# Lower a zettel to the drafts of today, under its name, with <reason> in a
 # message above its claim. Keep it in the box, with a warning, when a draft of
 # today has its name.
-move_to_drafts() {
+lower_to_drafts() {
   moved_dir=$(make_day_dir)
   moved_file="$moved_dir/${1##*/}"
 
@@ -87,7 +87,7 @@ move_to_drafts() {
   write_atomic "$moved_file" build_with_message "$(build_message "$2")" "$1"
   rm -- "$1"
 
-  _warn -v path "$moved_file" "$2. Moved to the drafts"
+  _warn -v path "$moved_file" "$2. Lowered to the drafts"
   printf '%s\n' printed
 }
 
@@ -150,7 +150,7 @@ move_into_box() {
     return 0
   fi
 
-  _ok -v path "$into_file" "Moved into the box"
+  _ok -v path "$into_file" "Elevated to the box"
   run_hook "$PLACE_HOOK_FILE" "$into_id" "$into_file"
 }
 
@@ -196,13 +196,13 @@ refresh_box() {
     fi
 
     if ! box_reason=$(validate_zettel "$box_file"); then
-      move_to_drafts "$box_file" "$box_reason"
+      lower_to_drafts "$box_file" "$box_reason"
       continue
     fi
 
     box_id=$(find_front_matter_value id "$box_file")
     if ! box_reason=$(validate_box_entry "$box_id" "$box_taken"); then
-      move_to_drafts "$box_file" "$box_reason"
+      lower_to_drafts "$box_file" "$box_reason"
       continue
     fi
 
@@ -350,7 +350,7 @@ fi
 # A part that fails ends sync after it moved a file. The trap runs the hook
 # then too
 NOTE_FILES=$(list_note_files)
-trap finish_sync EXIT                                     # normal exit, error
+trap finish_sync EXIT                                    # normal exit, error
 trap 'finish_sync; trap - EXIT INT; kill -INT $$' INT    # Ctrl+C
 trap 'finish_sync; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout
 trap 'finish_sync; trap - EXIT HUP; kill -HUP $$' HUP    # closed window

@@ -56,16 +56,16 @@ set -eu
 #               picker. An id in a draft counts as taken. Print the id
 #     sync      Make the box and the drafts follow the rules:
 #               1. Each zettel, oldest "placed:" first. A zettel
-#                  without "id:" gets the id of its name. A zettel with a
-#                  broken format, or with the id of a zettel before it,
-#                  goes to the drafts of today with a message above its
-#                  claim. The rest get the name "<id>.<slug of claim>.md"
+#                  without "id:" gets the id of its name. sync lowers a
+#                  zettel with a broken format, or with the id of a zettel
+#                  before it, to the drafts of today, with a message above
+#                  its claim. The rest get the name "<id>.<slug of claim>.md"
 #               2. Each draft, newest first. sync removes a draft with no
 #                  text. A draft with a claim and no "id:" goes to "place".
 #                  A claim with no letter a-z and no digit gets a message
-#               3. Each draft with a claim and "id:", newest first, moves
-#                  into the box. A draft with a broken format, or with a
-#                  taken id, stays with a message above its claim
+#               3. sync elevates each draft with a claim and "id:" to the
+#                  box, newest first. A draft with a broken format, or with
+#                  a taken id, stays with a message above its claim
 #               A file with a message stays until you remove the message.
 #               When the id of a zettel changes, "placed:" gets the time
 #     ls        Print the id and the file name of every zettel, with a tab
@@ -81,8 +81,9 @@ set -eu
 #               closes, run "sync --no-place". Wait for Enter when sync
 #               printed a line
 #     health    Print each reason zettel cannot work fully on this system,
-#               one per line: a missing command. Print nothing when it finds none. open-os-menu
-#               runs health before it lets you pick browse
+#               one per line: a missing command. Print nothing when it
+#               finds none. open-os-menu runs health before it lets you
+#               pick browse
 #
 #   The folder in PU_ZETTEL_DIR is the only record. Only zettel shows the
 #   Folgezettel order: a tool that sorts names as text lists 10 before 2.
