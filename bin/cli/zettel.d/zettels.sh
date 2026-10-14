@@ -508,7 +508,7 @@ list_zettels() {
 
 # list_draft_files
 # Print the path of every draft, newest first. A day folder and the name of a
-# new draft sort in the order of time. A zettel that sync moved to the drafts
+# new draft sort in the order of time. A zettel that sync lowered to the drafts
 # keeps its name, which does not.
 list_draft_files() {
   for listed_draft in "$DRAFT_DIR"/*/*.md; do
@@ -519,7 +519,7 @@ list_draft_files() {
 
 # find_draft_ids
 # Print the valid id in the front matter of each draft, one per line. A
-# zettel that sync moved to the drafts keeps its id there, so place does not
+# zettel that sync lowered to the drafts keeps its id there, so place does not
 # give it to another zettel.
 find_draft_ids() {
   list_draft_files | while IFS= read -r draft_ids_file; do
