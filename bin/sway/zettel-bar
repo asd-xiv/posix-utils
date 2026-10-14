@@ -9,7 +9,7 @@ set -eu
 #   zettel-bar [-h]
 #
 # DESCRIPTION
-#   Prints one JSON line for a waybar module with "return-type": "json".
+#   Print one JSON line for a waybar module with "return-type": "json".
 #
 #     text      The icon and the count of zettels, eg. "⚑ 12". An empty box
 #               gives "⚑ 0"
@@ -85,12 +85,9 @@ ZETTEL_FILE="$SCRIPT_DIR/../cli/zettel"
 
 ZETTELS=$("$ZETTEL_FILE" ls) || _fail 3 "zettel ls failed"
 
-# "zettel ls" prints one row per zettel. For an empty box it prints nothing,
-# and printf would make one empty row of that
-COUNT=0
-if [ -n "$ZETTELS" ]; then
-  COUNT=$(printf '%s\n' "$ZETTELS" | awk 'END { print NR }')
-fi
+# "zettel ls" prints one row per zettel. awk counts a last line without a
+# newline, and an empty box gives 0
+COUNT=$(printf '%s' "$ZETTELS" | awk 'END { print NR }')
 
 ROWS=$("$ZETTEL_FILE" recent) || _fail 3 "zettel recent failed"
 
