@@ -48,11 +48,11 @@ set -eu
 #               "sync --no-place". Wait for Enter when sync printed a line
 #     place     Give a draft an id. Show every zettel in the picker, a list
 #               in fzf, the cursor on the last one placed. Type to search
-#               the names and the bodies. Enter writes the next child id of
-#               the zettel under the cursor into the front matter of the
-#               draft, or the next top-level id on the row "+ no parent".
-#               sync then moves the draft into the box. Esc keeps the draft
-#               as it is. The first zettel of a box gets the id 1, with no
+#               the names. Enter writes the next child id of the zettel
+#               under the cursor into the front matter of the draft, or the
+#               next top-level id on the row "+ no parent". sync then
+#               elevates the draft to the box. Esc keeps the draft as it
+#               is. The first zettel of a box gets the id 1, with no
 #               picker. An id in a draft counts as taken. Print the id
 #     sync      Make the box and the drafts follow the rules:
 #               1. Each zettel, oldest "placed:" first. A zettel
@@ -104,8 +104,7 @@ set -eu
 #
 # OPTIONS
 #   --rows       With ls, print the rows that the picker and the browser show
-#                in fzf, for "fzf --read0": id, file path and name, then the
-#                text on a second line, then a NUL
+#                in fzf: id, file path and name, with a tab between them
 #   --color      With show, print the text through bat when bat is there
 #   --no-place   With sync, place no draft. Print how many drafts with a
 #                claim wait. Without a terminal on stdin, sync places none
@@ -118,7 +117,7 @@ set -eu
 #   XDG_CONFIG_HOME   Folder that holds the zettel config (default: ~/.config)
 #   LOG_LEVEL         Last level to print (default: info)
 #   NO_COLOR          Disables color when set and non-empty, in log lines
-#                     and in the texts of the picker and the browser
+#                     and in the preview
 #
 # EXAMPLE
 #   zettel create
@@ -141,7 +140,7 @@ set -eu
 #   4   For place, no parent picked, the draft stays
 #
 # SEE ALSO
-#   zettel-bar, open-os-menu, nvim, fzf 0.53.0 or newer, awk, bat
+#   zettel-bar, open-os-menu, nvim, fzf, awk, bat
 
 # tools/install symlinks this script, so "$0" names the link. realpath follows
 # it to find lib.sh and zettel.d

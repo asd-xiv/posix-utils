@@ -4,7 +4,7 @@
 #
 # Print the id and the file name of every zettel, with a tab between them, in
 # Folgezettel order. With --rows, print the rows the picker and the browser
-# show in fzf instead, each with a NUL at its end.
+# show in fzf instead.
 # zettel runs this file, never call it directly.
 
 set -eu

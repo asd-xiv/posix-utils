@@ -3,10 +3,10 @@
 # zettel browse
 #
 # Open the browser: every zettel in fzf, in Folgezettel order, with "show
-# <id>" as the preview. Type to search the names and the bodies. Enter opens
-# the zettel under the cursor with "edit". When Neovim closes, the browser
-# reads the box again. Esc closes the browser. It needs fzf, Neovim and a
-# terminal on stdin: the caller opens one.
+# <id>" as the preview. Type to search the names. Enter opens the zettel under
+# the cursor with "edit". When Neovim closes, the browser reads the box again.
+# Esc closes the browser. It needs fzf, Neovim and a terminal on stdin: the
+# caller opens one.
 # zettel runs this file, never call it directly.
 
 set -eu
@@ -46,8 +46,7 @@ fi
 # A waybar click finds an open browser by this title
 _set_title "zettel :: browser"
 
-# A row is what list_rows prints. fzf shows and searches the name and the
-# body.
+# A row is what list_rows prints. fzf shows and searches the name.
 #   {1}               the id under the cursor
 #   execute           runs "edit" in this terminal, then shows the list again
 #   reload            reads the box again: the user may have changed or
@@ -57,7 +56,7 @@ STATUS=0
 # shellcheck disable=SC2016 # the shell of fzf expands $PUBLIC_FILE
 printf '%s\n' "$ZETTELS" \
   | list_rows \
-  | fzf --read0 --ansi --layout reverse --info hidden \
+  | fzf --layout reverse --info hidden \
     --delimiter "$TAB" --with-nth 3 \
     --preview '"$PUBLIC_FILE" show --color {1}' \
     --preview-window "right,50%,wrap" \
