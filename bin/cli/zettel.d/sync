@@ -1,0 +1,381 @@
+#!/bin/sh
+
+# zettel sync [--no-place] [--wait]
+#
+# Make the box and the drafts follow the rules of the Zettelkasten, in three
+# parts:
+#
+#   refresh_box            Each zettel, oldest "placed:" first. A zettel
+#                          without "id:" gets the id of its name. A zettel
+#                          that validate_zettel or validate_box_entry rejects
+#                          goes to the drafts of today, with the reason in a
+#                          message above its claim. The rest get the name
+#                          "<id>.<slug of its claim>.md"
+#   refresh_drafts         Remove each draft with no text. A draft with a
+#                          claim and no "id:" goes to place, which writes an
+#                          id into it
+#   elevate_valid_drafts   Each draft with a claim and "id:", newest first,
+#                          moves into the box. A draft that validate_zettel
+#                          or validate_box_entry rejects stays, with the
+#                          reason in a message above its claim
+#
+# The message is not a claim, so sync leaves the file alone until the user
+# removes it. When the id of a zettel differs from the id in its old name, the
+# id changed, and sync writes the time into "placed:". Run the on-place hook
+# for each draft that enters the box. Remove the empty day folders. Run the
+# on-update hook when the list of drafts and zettels changed, also when sync
+# fails or stops on Ctrl+C. Exit 3 when place could not run.
+#
+# With --no-place, or without a terminal on stdin, refresh_drafts runs no
+# picker and prints how many drafts wait for one. With --wait, sync waits for
+# Enter after it printed a line. When sync fails, it ends before that wait:
+# the caller waits.
+# zettel runs this file, never call it directly.
+
+set -eu
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/zettels.sh"
+
+SHOULD_PLACE="true" # --no-place, or no terminal on stdin, sets it to ""
+SHOULD_WAIT=""      # --wait, "true" or ""
+
+# ╭───
+# │ Primitives
+# ╰───
+
+# Each function below prints a word on stdout for each thing it did:
+#
+#   printed   it printed a line on stderr
+#   failed    place could not run
+#
+# The main part runs each of the three parts in $(...) and reads the words.
+# The parts print words, not a status: a call in a condition turns 'set -e'
+# off inside it, so a failed write would not stop the part.
+
+# list_note_files
+# Print the path of each zettel and each draft, one per line.
+list_note_files() {
+  for note_file in "$BOX_DIR"/*.md "$DRAFT_DIR"/*/*.md; do
+    [ -f "$note_file" ] || continue
+    printf '%s\n' "$note_file"
+  done
+}
+
+# build_message <reason>
+# Print the message that sync writes above the claim of a file.
+build_message() {
+  printf '> [!WARNING] zettel sync: %s. Fix it, then remove this message.' "$1"
+}
+
+# move_to_drafts <file> <reason>
+# Move a zettel to the drafts of today, under its name, with <reason> in a
+# message above its claim. Keep it in the box, with a warning, when a draft of
+# today has its name.
+move_to_drafts() {
+  moved_dir=$(make_day_dir)
+  moved_file="$moved_dir/${1##*/}"
+
+  if [ -e "$moved_file" ]; then
+    _warn -v path "$1" -v draft "$moved_file" \
+      "$2. A draft has its name, the zettel stays"
+    printf '%s\n' printed
+    return 0
+  fi
+
+  # Write a hidden file first, then rename it: no command reads half a draft
+  write_atomic "$moved_file" build_with_message "$(build_message "$2")" "$1"
+  rm -- "$1"
+
+  _warn -v path "$moved_file" "$2. Moved to the drafts"
+  printf '%s\n' printed
+}
+
+# write_message <draft-file> <reason>
+# Write <reason> in a message above the claim of a draft.
+write_message() {
+  write_atomic "$1" build_with_message "$(build_message "$2")" "$1"
+
+  _warn -v path "$1" "$2. The draft stays, with a message"
+  printf '%s\n' printed
+}
+
+# move_into_box <file>
+# Move a zettel that validate_zettel accepts to "<id>.<slug>.md" in the box:
+# rename a zettel of the box, move a draft. When the id changed, write the time
+# into "placed:": the old name is "<id>.<slug>.md" with another id, or a draft
+# has no such name and gets its id now. Run the on-place hook for a draft. Keep
+# the name, with a warning, when another file has the new one.
+move_into_box() {
+  into_name=$(build_zettel_name "$1")
+  into_file="$BOX_DIR/$into_name"
+
+  if [ "$1" = "$into_file" ]; then
+    return 0
+  fi
+
+  if [ -e "$into_file" ]; then
+    _warn -v path "$1" -v name "$into_name" "A file has the new name, it stays"
+    printf '%s\n' printed
+    return 0
+  fi
+
+  into_id="${into_name%%.*}"
+  into_old_name="${1##*/}"
+  into_is_draft=""
+  if [ "${1%/*}" != "$BOX_DIR" ]; then
+    into_is_draft="true"
+  fi
+
+  # A zettel of the box whose name lost its id keeps its time
+  into_has_new_id=""
+  if is_zettel_name "$into_old_name"; then
+    if [ "${into_old_name%%.*}" != "$into_id" ]; then
+      into_has_new_id="true"
+    fi
+  elif [ -n "$into_is_draft" ]; then
+    into_has_new_id="true"
+  fi
+
+  if [ -n "$into_has_new_id" ]; then
+    write_front_matter_value placed "$(print_now)" "$1"
+  fi
+
+  mkdir -p -- "$BOX_DIR"
+  mv -- "$1" "$into_file"
+  printf '%s\n' printed
+
+  if [ -z "$into_is_draft" ]; then
+    _ok -v path "$1" -v name "$into_name" "Renamed"
+    return 0
+  fi
+
+  _ok -v path "$into_file" "Moved into the box"
+  run_hook "$PLACE_HOOK_FILE" "$into_id" "$into_file"
+}
+
+# refresh_box
+# Check each zettel, oldest "placed:" first: the first of two zettels with one
+# id keeps it. A zettel whose id changed counts as placed now, so it comes
+# after the zettel that held the id. Without "placed:", a zettel counts as the
+# oldest. Two zettels placed at one time go by path.
+refresh_box() {
+  box_now=$(print_now)
+  box_taken=""
+
+  # A row per zettel: "<time> TAB <file>". "-" stands for no time and sorts
+  # before a time
+  box_rows=$(
+    for box_file in "$BOX_DIR"/*.md; do
+      [ -f "$box_file" ] || continue
+
+      box_time=$(find_front_matter_value placed "$box_file") || box_time=""
+      box_id=$(find_front_matter_value id "$box_file") || box_id=""
+      box_name="${box_file##*/}"
+
+      if [ -n "$box_id" ] && is_zettel_name "$box_name" \
+        && [ "$box_id" != "${box_name%%.*}" ]; then
+        box_time="$box_now"
+      fi
+
+      printf '%s\t%s\n' "${box_time:--}" "$box_file"
+    done | LC_ALL=C sort
+  )
+
+  # shellcheck disable=SC2034 # read needs a name for the time
+  while IFS="$TAB" read -r box_time box_file <&4; do
+    [ -n "$box_file" ] || continue
+
+    box_name_id="${box_file##*/}"
+    box_name_id="${box_name_id%%.*}"
+    if ! has_front_matter_key id "$box_file" \
+      && _is folgezettel "$box_name_id"; then
+      write_front_matter_value id "$box_name_id" "$box_file"
+      _ok -v path "$box_file" "Added the id of the name to the front matter"
+      printf '%s\n' printed
+    fi
+
+    if ! box_reason=$(validate_zettel "$box_file"); then
+      move_to_drafts "$box_file" "$box_reason"
+      continue
+    fi
+
+    box_id=$(find_front_matter_value id "$box_file")
+    if ! box_reason=$(validate_box_entry "$box_id" "$box_taken"); then
+      move_to_drafts "$box_file" "$box_reason"
+      continue
+    fi
+
+    box_taken="$box_taken$box_id$NL"
+    move_into_box "$box_file"
+  done 4<<EOF
+$box_rows
+EOF
+
+  return 0
+}
+
+# refresh_drafts
+# Check each draft, newest first. Remove a draft with no text. Give a draft
+# with a claim and no "id:" an id with place, unless SHOULD_PLACE is empty.
+# After place could not run once, count the next drafts as waiting.
+refresh_drafts() {
+  drafts_waiting=0
+  drafts_place_status=0
+
+  while IFS= read -r drafts_file <&4; do
+    [ -f "$drafts_file" ] || continue
+
+    if ! has_text "$drafts_file"; then
+      rm -- "$drafts_file"
+      _ok -v path "$drafts_file" "Removed a draft with no text"
+      printf '%s\n' printed
+      continue
+    fi
+
+    drafts_claim=$(find_claim "$drafts_file") || continue
+
+    # A draft with "id:", valid or not, is for elevate_valid_drafts
+    if has_front_matter_key id "$drafts_file"; then
+      continue
+    fi
+
+    if ! print_slug "$drafts_claim" >/dev/null; then
+      write_message "$drafts_file" "The claim holds no letter a-z and no digit"
+      continue
+    fi
+
+    if [ -z "$SHOULD_PLACE" ] || [ "$drafts_place_status" -eq 3 ]; then
+      drafts_waiting=$((drafts_waiting + 1))
+      continue
+    fi
+
+    # place prints the id on stdout, where the words go. It prints why it
+    # placed nothing on stderr: 4 is no parent picked
+    drafts_place_status=0
+    "$PUBLIC_FILE" place "$drafts_file" >/dev/null || drafts_place_status=$?
+    printf '%s\n' printed
+
+    case "$drafts_place_status" in
+      0 | 4) ;;
+      *)
+        drafts_place_status=3
+        printf '%s\n' failed
+        ;;
+    esac
+  done 4<<EOF
+$(list_draft_files)
+EOF
+
+  if [ "$drafts_waiting" -gt 0 ]; then
+    _info -v count "$drafts_waiting" \
+      'Drafts with a claim wait for an id, give them one with "zettel sync" in a terminal'
+    printf '%s\n' printed
+  fi
+
+  return 0
+}
+
+# elevate_valid_drafts
+# Move each draft with a claim and "id:" into the box, newest first. Of two
+# drafts with one id, the newer gets it. Run after refresh_box: the names in
+# the box hold the ids.
+elevate_valid_drafts() {
+  elevate_taken="$(find_ids)$NL"
+
+  while IFS= read -r elevate_file <&4; do
+    [ -f "$elevate_file" ] || continue
+    find_claim "$elevate_file" >/dev/null || continue
+
+    if ! has_front_matter_key id "$elevate_file"; then
+      continue
+    fi
+
+    if ! elevate_reason=$(validate_zettel "$elevate_file"); then
+      write_message "$elevate_file" "$elevate_reason"
+      continue
+    fi
+
+    elevate_id=$(find_front_matter_value id "$elevate_file")
+    if ! elevate_reason=$(validate_box_entry "$elevate_id" "$elevate_taken"); then
+      write_message "$elevate_file" "$elevate_reason"
+      continue
+    fi
+
+    elevate_taken="$elevate_taken$elevate_id$NL"
+    move_into_box "$elevate_file"
+  done 4<<EOF
+$(list_draft_files)
+EOF
+
+  return 0
+}
+
+# ╭───
+# │ Finish
+# ╰───
+
+NOTE_FILES="" # the paths of list_note_files when sync started
+
+# shellcheck disable=SC2329 # called by trap
+finish_sync() {
+  if [ "$(list_note_files)" != "$NOTE_FILES" ]; then
+    run_hook "$UPDATE_HOOK_FILE"
+  fi
+}
+
+# ╭───
+# │ Main
+# ╰───
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --no-place)
+      SHOULD_PLACE=""
+      shift
+      ;;
+    --wait)
+      SHOULD_WAIT="true"
+      shift
+      ;;
+    -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
+    *) _fail 2 '"sync" takes no arguments' ;;
+  esac
+done
+
+if [ ! -t 0 ]; then
+  SHOULD_PLACE=""
+fi
+
+# A part that fails ends sync after it moved a file. The trap runs the hook
+# then too
+NOTE_FILES=$(list_note_files)
+trap finish_sync EXIT                                     # normal exit, error
+trap 'finish_sync; trap - EXIT INT; kill -INT $$' INT    # Ctrl+C
+trap 'finish_sync; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout
+trap 'finish_sync; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
+
+# One part per assignment: 'set -e' sees the status of a lone assignment only
+BOX_WORDS=$(refresh_box)
+DRAFTS_WORDS=$(refresh_drafts)
+ELEVATE_WORDS=$(elevate_valid_drafts)
+WORDS="$BOX_WORDS$DRAFTS_WORDS$ELEVATE_WORDS"
+
+# rmdir removes a folder only when it is empty
+for DAY_DIR in "$DRAFT_DIR"/*/; do
+  rmdir -- "$DAY_DIR" 2>/dev/null || true
+done
+
+# The hook runs before the wait: the bar shows the new box while the user reads
+finish_sync
+trap - EXIT INT TERM HUP
+
+case "$WORDS" in
+  *failed*) _fail 3 "place could not run, the drafts stay" ;;
+esac
+
+if [ -n "$SHOULD_WAIT" ] && [ -n "$WORDS" ]; then
+  _wait_for_enter
+fi
+
+exit 0

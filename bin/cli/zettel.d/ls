@@ -20,7 +20,7 @@ case "${1:-}" in
   "") list_zettels ;;
   --rows)
     [ "$#" -eq 1 ] || _fail 2 '"ls --rows" takes no arguments'
-    list_rows
+    list_zettels | list_rows
     ;;
   -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
   *) _fail 2 '"ls" takes no arguments' ;;

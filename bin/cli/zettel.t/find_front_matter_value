@@ -1,0 +1,56 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+
+# zettels.sh finds lib.sh from the folder of the command files
+SCRIPT_DIR="$SCRIPT_DIR/../zettel.d"
+# shellcheck source=../zettel.d/zettels.sh
+. "$SCRIPT_DIR/zettels.sh"
+
+
+_describe "zettel :: find_front_matter_value"
+_test 'given [a key in the front matter] should [print its value]'
+prepare() { printf -- '---\nid: 1b3\nplaced: 2026-10-14T12:00:00Z\n---\n\n# A claim\n' >note.md; }
+actual() { find_front_matter_value placed note.md; }
+_expect equal actual.stdout '2026-10-14T12:00:00Z'
+
+_test 'given [blanks around the value, none after ":"] should [print the value without them]'
+prepare() { printf -- '---\nid:1b3 \t\n---\n' >note.md; }
+actual() { find_front_matter_value id note.md; }
+_expect equal actual.stdout '1b3'
+
+_test 'given [a key with no value] should [print nothing and return 0]'
+prepare() { printf -- '---\nid:\n---\n' >note.md; }
+actual() { find_front_matter_value id note.md; }
+_expect equal actual.exit 0
+
+_test 'given ["idea:", a longer key that starts with "id"] should [return 1]'
+prepare() { printf -- '---\nidea: 1b3\n---\n' >note.md; }
+actual() { find_front_matter_value id note.md; }
+_expect equal actual.exit 1
+
+_test 'given [the key after the front matter] should [return 1]'
+prepare() { printf -- '---\nplaced: x\n---\n\nid: 1b3\n' >note.md; }
+actual() { find_front_matter_value id note.md; }
+_expect equal actual.exit 1
+
+_test 'given [no "---" on line 1] should [return 1]'
+prepare() { printf -- '# A claim\n---\nid: 1b3\n---\n' >note.md; }
+actual() { find_front_matter_value id note.md; }
+_expect equal actual.exit 1
+
+_test 'given [no file] should [return 1]'
+actual() { find_front_matter_value id note.md; }
+_expect equal actual.exit 1
+
+_test 'given [front matter that never ends] should [return 2]'
+prepare() { printf -- '---\nid: 1b3\n# A claim\n' >note.md; }
+actual() { find_front_matter_value id note.md; }
+_expect equal actual.exit 2
+
+_test 'given [a closing "---" without a newline] should [print the value]'
+prepare() { printf -- '---\nid: 1b3\n---' >note.md; }
+actual() { find_front_matter_value id note.md; }
+_expect equal actual.stdout '1b3'

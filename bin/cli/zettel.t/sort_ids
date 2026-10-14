@@ -16,7 +16,7 @@ prepare() { printf '%s\n' 10 1aa 1b3 2 1a10 1 1z 1a2 1b 1a 1a1; }
 actual() { sort_ids | tr '\n' ' '; }
 _expect equal actual.stdout '1 1a 1a1 1a2 1a10 1b 1b3 1z 1aa 2 10 '
 
-_test 'given [1e2 and 100] an id that reads as a number, should [keep 1e2 below 1]'
+_test 'given [1e2 and 100] an id that reads as a number, should [sort 1e2 before 2, not as 100]'
 prepare() { printf '%s\n' 100 1e2 2; }
 actual() { sort_ids | tr '\n' ' '; }
 _expect equal actual.stdout '1e2 2 100 '

@@ -4,8 +4,8 @@
 #
 # Print the lineage of a zettel as a tree, an empty line, then its text. With
 # --color, print the text through bat when bat is there, in color. The picker
-# and the browser call it for the preview. An empty id prints nothing: the
-# picker has one row without an id.
+# and the browser call it for the preview. Print nothing for an empty
+# id: the picker has one row without an id.
 # zettel runs this file, never call it directly.
 
 set -eu
@@ -33,8 +33,7 @@ if [ -z "$1" ]; then
   exit 0
 fi
 
-is_id "$1" || _fail 2 -v id "$1" "Not an id"
-SHOWN_FILE=$(find_zettel_file "$1") || _fail 2 -v id "$1" "No such zettel"
+SHOWN_FILE=$(get_zettel_file "$1")
 
 # An id is digits and letters, safe to split
 for ID in $(print_lineage "$1"); do

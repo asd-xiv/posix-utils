@@ -20,7 +20,7 @@ RECENT_COUNT=5 # how many zettels count as recent
 
 [ "$#" -eq 0 ] || _fail 2 '"recent" takes no arguments'
 
-RECENT_IDS=$(find_newest_ids "$RECENT_COUNT")
+RECENT_IDS=$(list_zettels | find_newest_ids "$RECENT_COUNT")
 
 if [ -z "$RECENT_IDS" ]; then
   exit 0

@@ -1,0 +1,58 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+
+# zettels.sh finds lib.sh from the folder of the command files
+SCRIPT_DIR="$SCRIPT_DIR/../zettel.d"
+# shellcheck source=../zettel.d/zettels.sh
+. "$SCRIPT_DIR/zettels.sh"
+
+
+_describe "zettel :: build_with_front_matter_field"
+
+_test 'given [front matter without the key] should [put the field last in it]'
+prepare() { printf -- '---\nid: 1b3\n---\n\n# A claim\n' >note.md; }
+actual() { build_with_front_matter_field placed x note.md; }
+_expect equal actual.stdout '---
+id: 1b3
+placed: x
+---
+
+# A claim'
+
+_test 'given [front matter with the key] should [replace its line in place]'
+prepare() { printf -- '---\nid: 1b3\nplaced: x\ntags: a\n---\n\n# A claim\n' >note.md; }
+actual() { build_with_front_matter_field placed y note.md; }
+_expect equal actual.stdout '---
+id: 1b3
+placed: y
+tags: a
+---
+
+# A claim'
+
+_test 'given ["idea:", a longer key that starts with "id"] should [add the field, keep that line]'
+prepare() { printf -- '---\nidea: z\n---\n' >note.md; }
+actual() { build_with_front_matter_field id 1b3 note.md; }
+_expect equal actual.stdout '---
+idea: z
+id: 1b3
+---'
+
+_test 'given [no front matter] should [add one, and an empty line after it]'
+prepare() { printf -- '# A claim\n' >note.md; }
+actual() { build_with_front_matter_field id 1b3 note.md; }
+_expect equal actual.stdout '---
+id: 1b3
+---
+
+# A claim'
+
+_test 'given [an empty file] should [print only the front matter]'
+prepare() { : >note.md; }
+actual() { build_with_front_matter_field id 1b3 note.md; }
+_expect equal actual.stdout '---
+id: 1b3
+---'

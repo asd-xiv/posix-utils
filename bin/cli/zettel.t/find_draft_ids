@@ -1,0 +1,28 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+
+# zettels.sh finds lib.sh from the folder of the command files
+SCRIPT_DIR="$SCRIPT_DIR/../zettel.d"
+# shellcheck source=../zettel.d/zettels.sh
+. "$SCRIPT_DIR/zettels.sh"
+
+_describe "zettel :: find_draft_ids"
+
+_test 'given [drafts with and without an id] should [print the valid ids, newest draft first]'
+prepare() {
+  mkdir -p draft/26-286 draft/26-287
+  printf -- '---\nid: 2\n---\n\n# Old\n' >draft/26-286/2.old.md
+  printf -- '# No id\n' >draft/26-287/101010.md
+  printf -- '---\nid: 1b03\n---\n' >draft/26-287/bad.md
+  printf -- '---\nid: 7a\n---\n' >draft/26-287/7a.new.md
+}
+actual() { DRAFT_DIR=draft find_draft_ids; }
+_expect equal actual.stdout '7a
+2'
+
+_test 'given [no draft folder] should [print nothing]'
+actual() { DRAFT_DIR=draft find_draft_ids; }
+_expect equal actual.stdout ''

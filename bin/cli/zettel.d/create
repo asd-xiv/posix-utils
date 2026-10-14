@@ -3,10 +3,11 @@
 # zettel create
 #
 # Open a new draft in Neovim, in this terminal. Line 1 is "# ", for the claim,
-# and Neovim puts the cursor on line 3. When Neovim closes: run the on-update
-# hook, then remove a draft with no text, keep a draft with no claim, hand a
-# draft with a claim to "place". Keep the draft too when Neovim ends with an
-# error. It needs a terminal on stdin: the caller opens one.
+# and Neovim puts the cursor on line 3. When Neovim closes, run sync: it
+# removes a draft with no text, keeps a draft with no claim, and places a
+# draft with a claim. When Neovim ends with an error, run "sync --no-place":
+# the draft stays. Wait for Enter when sync printed a line. It needs a
+# terminal on stdin: the caller opens one.
 # zettel runs this file, never call it directly.
 
 set -eu
@@ -15,16 +16,6 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/zettels.sh"
 
 TITLE="zettel :: editor"
-
-# ╭───
-# │ Primitives
-# ╰───
-
-# has_text <file>
-# Return 0 when <file> holds a line that is not blank and not a bare "#".
-has_text() {
-  grep -q -v -e '^[[:space:]]*$' -e '^#[[:space:]]*$' -- "$1"
-}
 
 # ╭───
 # │ Cleanup
@@ -48,22 +39,21 @@ trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
 _require_cmd nvim
 [ -t 0 ] || _fail 3 '"create" needs a terminal'
 
-DAY_DIR="$DRAFT_DIR/$(date +%y-%j)"
-DRAFT_FILE="$DAY_DIR/$(date +%H%M%S).md"
+DRAFT_FILE="$(make_day_dir)/$(date +%H%M%S).md"
 
 # Neovim would write "# " over line 1 of a draft that is already there
 [ ! -e "$DRAFT_FILE" ] \
   || _fail 3 -v path "$DRAFT_FILE" "A draft of this second exists, try again"
 
-mkdir -p -- "$DAY_DIR"
 # The file pickers of Neovim start in the folder Neovim starts in
 cd -- "$NOTES_DIR"
 
+# A waybar click finds an open editor by this title. Neovim renames the window
+# when its 'title' option is on, so titlestring gives it the same title
+_set_title "$TITLE"
+
 # setline puts the three lines in the buffer, not in a file. With nomodified,
 # ":q" closes a buffer the user did not touch and no file is left
-# A waybar click finds an open editor by this title. Neovim with its 'title'
-# option on renames the window, so it gets the same title
-_set_title "$TITLE"
 EDITOR_STATUS=0
 nvim \
   -c "let &titlestring = '$TITLE'" \
@@ -74,31 +64,19 @@ nvim \
   -c startinsert \
   -- "$DRAFT_FILE" || EDITOR_STATUS=$?
 
-# A draft came, changed or went. "place" runs the hook again after its work
-run_hook "$UPDATE_HOOK_FILE"
-
-if [ ! -f "$DRAFT_FILE" ] || ! has_text "$DRAFT_FILE"; then
-  rm -f -- "$DRAFT_FILE"
-  remove_empty_day_dir "$DAY_DIR"
-  exit 0
-fi
-
+SYNC_FLAG=""
 if [ "$EDITOR_STATUS" -ne 0 ]; then
-  _info -v path "$DRAFT_FILE" "Neovim ended with an error, the draft stays"
-  exit 0
+  _info -v path "$DRAFT_FILE" "Neovim ended with an error, sync places no draft"
+  SYNC_FLAG="--no-place"
 fi
 
-if ! find_claim "$DRAFT_FILE" >/dev/null; then
-  _info -v path "$DRAFT_FILE" "No claim on line 1, the draft stays"
-  exit 0
-fi
+# sync places every draft with a claim, this one first: it is the newest.
+# "sync --wait" waits when it printed a line. When sync fails, it ends before
+# that wait, so create waits here
+"$PUBLIC_FILE" sync ${SYNC_FLAG:+"$SYNC_FLAG"} --wait || {
+  STATUS=$?
+  _wait_for_enter
+  exit "$STATUS"
+}
 
-PLACE_STATUS=0
-"$PUBLIC_FILE" place "$DRAFT_FILE" || PLACE_STATUS=$?
-
-# 4 is no parent picked. The draft stays, which is no failure for create
-if [ "$PLACE_STATUS" -eq 4 ]; then
-  exit 0
-fi
-
-exit "$PLACE_STATUS"
+exit 0

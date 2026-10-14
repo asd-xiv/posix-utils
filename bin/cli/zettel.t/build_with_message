@@ -1,0 +1,49 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+
+# zettels.sh finds lib.sh from the folder of the command files
+SCRIPT_DIR="$SCRIPT_DIR/../zettel.d"
+# shellcheck source=../zettel.d/zettels.sh
+. "$SCRIPT_DIR/zettels.sh"
+
+
+_describe "zettel :: build_with_message"
+_test 'given [front matter] should [put the message below it, between empty lines]'
+prepare() { printf -- '---\nid: 1b3\n---\n\n# A claim\n' >note.md; }
+actual() { build_with_message "> A reason" note.md; }
+_expect equal actual.stdout '---
+id: 1b3
+---
+
+> A reason
+
+# A claim'
+
+_test 'given [no front matter] should [put the message on line 1]'
+prepare() { printf -- '# A claim\n' >note.md; }
+actual() { build_with_message "> A reason" note.md; }
+_expect equal actual.stdout '> A reason
+
+# A claim'
+
+_test 'given [front matter that never ends] should [put the message on line 1]'
+prepare() { printf -- '---\nid: 1b3\n# A claim\n' >note.md; }
+actual() { build_with_message "> A reason" note.md; }
+_expect equal actual.stdout '> A reason
+
+---
+id: 1b3
+# A claim'
+
+_test 'given [a "\n" in the message] should [print it as written]'
+prepare() { printf -- '# A claim\n' >note.md; }
+actual() { build_with_message 'C:\new' note.md; }
+_expect start-with actual.stdout 'C:\new'
+
+_test 'given [an empty file] should [print only the message]'
+prepare() { : >note.md; }
+actual() { build_with_message "> A reason" note.md; }
+_expect equal actual.stdout '> A reason'

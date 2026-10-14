@@ -69,3 +69,18 @@ _test 'given [a claim and no newline at the end] should [print the claim]'
 prepare() { printf '# A claim' >note.md; }
 actual() { find_claim note.md; }
 _expect equal actual.stdout 'A claim'
+
+_test 'given [a zettel: front matter, an empty line, the claim] should [print the claim]'
+prepare() { printf -- '---\nid: 1\nplaced: 2026-10-13T09:34:02Z\n---\n\n# A claim\n\nThe text.\n' >note.md; }
+actual() { find_claim note.md; }
+_expect equal actual.stdout 'A claim'
+
+_test 'given [front matter, then a message above the claim] should [return 1]'
+prepare() { printf -- '---\nid: 1\n---\n\n> [!WARNING] zettel sync: a reason.\n\n# A claim\n' >note.md; }
+actual() { find_claim note.md && echo yes || echo no; }
+_expect equal actual.stdout 'no'
+
+_test 'given [front matter that never ends] should [return 1]'
+prepare() { printf -- '---\nid: 1\n# A claim\n' >note.md; }
+actual() { find_claim note.md && echo yes || echo no; }
+_expect equal actual.stdout 'no'
