@@ -1,0 +1,30 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+
+# zettels.sh finds lib.sh from the folder of the command files
+SCRIPT_DIR="$SCRIPT_DIR/../zettel.d"
+# shellcheck source=../zettel.d/zettels.sh
+. "$SCRIPT_DIR/zettels.sh"
+
+_describe "zettel :: list_draft_rows"
+
+_test 'given [a draft with a claim] should [print no id, the path, the name and the claim]'
+prepare() { mkdir -p draft/26-287 && printf -- '#  A claim\n\nThe text.\n' >draft/26-287/101010.md; }
+actual() { printf '%s\n' draft/26-287/101010.md | DRAFT_DIR=draft list_draft_rows; }
+_expect equal actual.stdout "$(printf '\tdraft/26-287/101010.md\t  26-287/101010  A claim')"
+
+_test 'given [a draft with no claim] should [print its first line of text]'
+prepare() { mkdir -p draft/26-287 && printf -- '# \n\ntest\tagain\n' >draft/26-287/101010.md; }
+actual() { printf '%s\n' draft/26-287/101010.md | DRAFT_DIR=draft list_draft_rows; }
+_expect end-with actual.stdout '  26-287/101010  test again'
+
+_test 'given [a sync message after the front matter] should [print the mark and the reason]'
+prepare() {
+  mkdir -p draft/26-287
+  printf -- '---\nid: 2\n---\n\n%s\n\n# Two\n' "$(build_message "The id 2 is taken")" >draft/26-287/2.two.md
+}
+actual() { printf '%s\n' draft/26-287/2.two.md | DRAFT_DIR=draft list_draft_rows; }
+_expect end-with actual.stdout '⚠ 26-287/2.two  The id 2 is taken'

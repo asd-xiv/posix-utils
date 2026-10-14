@@ -1,10 +1,10 @@
 #!/bin/sh
 
-# zettel edit <id>
+# zettel edit <id|file>
 #
-# Open a zettel in Neovim, in this terminal. When Neovim closes, run
-# "sync --no-place": a new claim renames the zettel, a broken id moves it back
-# to the drafts. Wait for Enter when sync printed a line. The browser calls it
+# Open a zettel or a draft in Neovim, in this terminal. When Neovim closes,
+# run "sync --no-place": a new claim renames a zettel, a broken id lowers it to
+# the drafts, a fixed draft is elevated to the box. Wait for Enter when sync printed a line. The browser calls it
 # for Enter. It needs a terminal on stdin: the caller opens one.
 # zettel runs this file, never call it directly.
 
@@ -33,8 +33,8 @@ trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
 # │ Main
 # ╰───
 
-[ "$#" -eq 1 ] || _fail 2 '"edit" needs one id'
-EDITED_FILE=$(get_zettel_file "$1")
+[ "$#" -eq 1 ] || _fail 2 '"edit" needs one id or file'
+EDITED_FILE=$(get_note_file "$1")
 
 _require_cmd nvim
 [ -t 0 ] || _fail 3 '"edit" needs a terminal'

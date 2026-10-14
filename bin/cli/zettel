@@ -9,11 +9,11 @@ set -eu
 #   zettel create
 #   zettel place <file>
 #   zettel sync [--no-place] [--wait]
-#   zettel ls [--rows]
-#   zettel show [--color] <id>
+#   zettel ls [--drafts] [--rows]
+#   zettel show [--color] <id|file>
 #   zettel recent
-#   zettel browse
-#   zettel edit <id>
+#   zettel browse [--drafts]
+#   zettel edit <id|file>
 #   zettel health
 #   zettel -h | --help
 #
@@ -71,15 +71,18 @@ set -eu
 #     ls        Print the id and the file name of every zettel, with a tab
 #               between them, in Folgezettel order
 #     show      Print the lineage of a zettel as a tree, an empty line, then
-#               its text. Print nothing for an empty id
+#               its text. For a draft, print its text only. Print nothing
+#               for an empty argument
 #     recent    Print the last 5 zettels placed with their lineage, as one
 #               tree. The newest has "newest" after its name, behind a tab
-#     browse    Open the browser: every zettel in fzf, with "show <id>" as
-#               the preview. Enter opens the zettel under the cursor with
-#               "edit", Esc closes the browser
-#     edit      Open a zettel in Neovim, in this terminal. When Neovim
-#               closes, run "sync --no-place". Wait for Enter when sync
-#               printed a line
+#     browse    Open the browser: every zettel in fzf, with "show" as the
+#               preview. Tab switches to the drafts, newest first, and
+#               back. A draft with a sync message shows "⚠" and the
+#               reason. Enter opens the file under the cursor with "edit",
+#               Esc closes the browser
+#     edit      Open a zettel or a draft in Neovim, in this terminal. When
+#               Neovim closes, run "sync --no-place". Wait for Enter when
+#               sync printed a line
 #     health    Print each reason zettel cannot work fully on this system,
 #               one per line: a missing command. Print nothing when it
 #               finds none. open-os-menu runs health before it lets you
@@ -99,12 +102,16 @@ set -eu
 #   warns when a hook fails.
 #
 # ARGUMENTS
-#   file   Draft to place. It must hold a claim, and no id
+#   file   For place, a draft that holds a claim and no id. For show and
+#          edit, a draft or a zettel: a path in the draft or the box folder
 #   id     Zettel to show or to edit
 #
 # OPTIONS
+#   --drafts     With ls, print the path of every draft, newest first. With
+#                browse, open on the drafts
 #   --rows       With ls, print the rows that the picker and the browser show
-#                in fzf: id, file path and name, with a tab between them
+#                in fzf: id, file path and name, with a tab between them. A
+#                draft row has no id
 #   --color      With show, print the text through bat when bat is there
 #   --no-place   With sync, place no draft. Print how many drafts with a
 #                claim wait. Without a terminal on stdin, sync places none
