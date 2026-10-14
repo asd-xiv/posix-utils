@@ -2,9 +2,10 @@
 
 # zettel edit <id>
 #
-# Open a zettel in Neovim, in this terminal. Run the on-update hook when
-# Neovim closes: the zettel may be changed or gone. The browser calls it for
-# Enter. It needs a terminal on stdin: the caller opens one.
+# Open a zettel in Neovim, in this terminal. When Neovim closes, run
+# "sync --no-place": a new claim renames the zettel, a broken id moves it back
+# to the drafts. Wait for Enter when sync printed a line. The browser calls it
+# for Enter. It needs a terminal on stdin: the caller opens one.
 # zettel runs this file, never call it directly.
 
 set -eu
@@ -33,8 +34,7 @@ trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
 # ╰───
 
 [ "$#" -eq 1 ] || _fail 2 '"edit" needs one id'
-is_id "$1" || _fail 2 -v id "$1" "Not an id"
-EDITED_FILE=$(find_zettel_file "$1") || _fail 2 -v id "$1" "No such zettel"
+EDITED_FILE=$(get_zettel_file "$1")
 
 _require_cmd nvim
 [ -t 0 ] || _fail 3 '"edit" needs a terminal'
@@ -42,13 +42,19 @@ _require_cmd nvim
 # The file pickers of Neovim start in the folder Neovim starts in
 cd -- "$NOTES_DIR"
 
-# Neovim with its 'title' option on renames the window, so it gets the same
-# title. _restore_title gives the window of the browser its title back
+# Neovim renames the window when its 'title' option is on, so titlestring
+# gives it the same title. _restore_title gives the window of the browser its title back
 _set_title "$TITLE"
 EDITOR_STATUS=0
 nvim -c "let &titlestring = '$TITLE'" -- "$EDITED_FILE" || EDITOR_STATUS=$?
 
-run_hook "$UPDATE_HOOK_FILE"
+# "sync --wait" waits when it printed a line. When sync fails, it ends before
+# that wait, so edit waits here
+"$PUBLIC_FILE" sync --no-place --wait || {
+  STATUS=$?
+  _wait_for_enter
+  exit "$STATUS"
+}
 
 if [ "$EDITOR_STATUS" -ne 0 ]; then
   _fail 3 "Neovim ended with an error"

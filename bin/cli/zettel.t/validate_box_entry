@@ -1,0 +1,24 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+
+# zettels.sh finds lib.sh from the folder of the command files
+SCRIPT_DIR="$SCRIPT_DIR/../zettel.d"
+# shellcheck source=../zettel.d/zettels.sh
+. "$SCRIPT_DIR/zettels.sh"
+
+_describe "zettel :: validate_box_entry"
+
+_test 'given [an id no other zettel holds] should [print nothing and return 0]'
+actual() { validate_box_entry 1b3 "$(printf '1\n1b\n1b30')"; }
+_expect equal actual.exit 0
+
+_test 'given [an id another zettel holds] should [print why and return 1]'
+actual() { validate_box_entry 1b3 "$(printf '1\n1b3\n2')"; }
+_expect equal actual.stdout 'The id 1b3 is taken by another zettel'
+
+_test 'given [no taken ids] should [return 0]'
+actual() { validate_box_entry 1 ""; }
+_expect equal actual.exit 0

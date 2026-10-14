@@ -1,0 +1,42 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+
+# zettels.sh finds lib.sh from the folder of the command files
+SCRIPT_DIR="$SCRIPT_DIR/../zettel.d"
+# shellcheck source=../zettel.d/zettels.sh
+. "$SCRIPT_DIR/zettels.sh"
+
+_describe "zettel :: validate_zettel"
+
+_test 'given [an id, a claim and a text] should [print nothing and return 0]'
+prepare() { printf -- '---\nid: 1b3\nplaced: x\n---\n\n# A claim\n\nThe text.\n' >note.md; }
+actual() { validate_zettel note.md; }
+_expect equal actual.exit 0
+
+_test 'given [no front matter] should [print why and return 1]'
+prepare() { printf -- '# A claim\n' >note.md; }
+actual() { validate_zettel note.md; }
+_expect equal actual.stdout 'No "id:" in the front matter'
+
+_test 'given [front matter that never ends] should [print why]'
+prepare() { printf -- '---\nid: 1b3\n# A claim\n' >note.md; }
+actual() { validate_zettel note.md; }
+_expect equal actual.stdout 'The front matter has no closing "---"'
+
+_test 'given [an id that is not a Folgezettel id] should [print why]'
+prepare() { printf -- '---\nid: 1b03\n---\n\n# A claim\n' >note.md; }
+actual() { validate_zettel note.md; }
+_expect equal actual.stdout 'The front matter holds "id: 1b03", not an id'
+
+_test 'given [a message above the claim] should [print that the claim is missing]'
+prepare() { printf -- '---\nid: 1b3\n---\n\n> A reason\n\n# A claim\n' >note.md; }
+actual() { validate_zettel note.md; }
+_expect equal actual.stdout 'No claim, "# <claim>" after the front matter'
+
+_test 'given [a claim with no letter a-z and no digit] should [print why]'
+prepare() { printf -- '---\nid: 1b3\n---\n\n# ¿?\n' >note.md; }
+actual() { validate_zettel note.md; }
+_expect equal actual.stdout 'The claim holds no letter a-z and no digit'

@@ -1,0 +1,22 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+
+# zettels.sh finds lib.sh from the folder of the command files
+SCRIPT_DIR="$SCRIPT_DIR/../zettel.d"
+# shellcheck source=../zettel.d/zettels.sh
+. "$SCRIPT_DIR/zettels.sh"
+
+_describe "zettel :: build_zettel_name"
+
+_test 'given [a valid zettel] should [print the id, the slug of the claim and ".md"]'
+prepare() { printf -- '---\nid: 1b3\n---\n\n# Atomic locks, with noclobber\n' >old.md; }
+actual() { build_zettel_name old.md; }
+_expect equal actual.stdout '1b3.atomic-locks-with-noclobber.md'
+
+_test 'given [a zettel validate_zettel rejects] should [print nothing and return 1]'
+prepare() { printf -- '# A claim\n' >old.md; }
+actual() { build_zettel_name old.md; }
+_expect equal actual.exit 1

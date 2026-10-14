@@ -8,6 +8,7 @@ set -eu
 # SYNOPSIS
 #   zettel create
 #   zettel place <file>
+#   zettel sync [--no-place] [--wait]
 #   zettel ls [--rows]
 #   zettel show [--color] <id>
 #   zettel recent
@@ -22,56 +23,82 @@ set -eu
 #   claim, the thought as one sentence, written as "# <claim>".
 #
 #   A zettel is a note with an id, a file in the box:
-#   ~/NeoNotes/box/<id>.<slug>.md. The slug is the claim as a file name. The
-#   id is a Folgezettel id, eg. 1b3: 1b3 stands behind 1b, and 1b behind 1.
-#   That chain is the lineage of 1b3. An id holds no padding and never changes.
+#   ~/NeoNotes/box/<id>.<slug>.md. The id is a Folgezettel id, eg. 1b3: 1b3
+#   stands behind 1b, and 1b behind 1. That chain is the lineage of 1b3. An id
+#   holds no padding and never changes. The front matter of a zettel holds its
+#   id and the time of its placing:
+#
+#     ---
+#     id: 1b3
+#     placed: 2026-10-14T12:00:00Z
+#     ---
+#
+#     # <claim>
+#
+#   The front matter holds the id, the claim gives the slug. sync builds the
+#   name from them.
 #
 #   To place a draft is to give it an id behind a parent. Place a draft behind
 #   the zettel that made you think of it. Pick no parent when none did. The
 #   draft then gets the next top-level id.
 #
 #     create    Open a new draft in Neovim, in this terminal. Line 1 is "# ",
-#               and Neovim puts the cursor on line 3. When Neovim closes: a
-#               draft with no text is removed, a draft with no claim stays,
-#               a draft with a claim goes to "place". A draft also stays when
-#               Neovim ends with an error, eg. by ":cq"
-#     place     Place a draft. Show every zettel in fzf, the cursor on the
-#               last one placed. Type to search the names and the texts.
-#               Enter places the draft behind the zettel under the cursor,
-#               or at the top level on the row "+ no parent". Esc keeps the
-#               draft. The first zettel of a box gets the id 1, with no
-#               question. Print the path of the new zettel
+#               and Neovim puts the cursor on line 3. When Neovim closes, run
+#               sync. When Neovim ends with an error, eg. by ":cq", run
+#               "sync --no-place". Wait for Enter when sync printed a line
+#     place     Give a draft an id. Show every zettel in the picker, a list
+#               in fzf, the cursor on the last one placed. Type to search
+#               the names and the bodies. Enter writes the next child id of
+#               the zettel under the cursor into the front matter of the
+#               draft, or the next top-level id on the row "+ no parent".
+#               sync then moves the draft into the box. Esc keeps the draft
+#               as it is. The first zettel of a box gets the id 1, with no
+#               picker. An id in a draft counts as taken. Print the id
+#     sync      Make the box and the drafts follow the rules:
+#               1. Each zettel, oldest "placed:" first. A zettel
+#                  without "id:" gets the id of its name. A zettel with a
+#                  broken format, or with the id of a zettel before it,
+#                  goes to the drafts of today with a message above its
+#                  claim. The rest get the name "<id>.<slug of claim>.md"
+#               2. Each draft, newest first. sync removes a draft with no
+#                  text. A draft with a claim and no "id:" goes to "place".
+#                  A claim with no letter a-z and no digit gets a message
+#               3. Each draft with a claim and "id:", newest first, moves
+#                  into the box. A draft with a broken format, or with a
+#                  taken id, stays with a message above its claim
+#               A file with a message stays until you remove the message.
+#               When the id of a zettel changes, "placed:" gets the time
 #     ls        Print the id and the file name of every zettel, with a tab
 #               between them, in Folgezettel order
 #     show      Print the lineage of a zettel as a tree, an empty line, then
-#               its text. An empty id prints nothing
+#               its text. Print nothing for an empty id
 #     recent    Print the last 5 zettels placed with their lineage, as one
 #               tree. The newest has "newest" after its name, behind a tab
 #     browse    Open the browser: every zettel in fzf, with "show <id>" as
 #               the preview. Enter opens the zettel under the cursor with
 #               "edit", Esc closes the browser
-#     edit      Open a zettel in Neovim, in this terminal
+#     edit      Open a zettel in Neovim, in this terminal. When Neovim
+#               closes, run "sync --no-place". Wait for Enter when sync
+#               printed a line
 #     health    Print each reason zettel cannot work fully on this system,
-#               one per line: a missing command or a script path that is
-#               not safe. Print nothing when it finds none. open-os-menu
-#               runs health before it lets a person pick browse
+#               one per line: a missing command. Print nothing when it finds none. open-os-menu
+#               runs health before it lets you pick browse
 #
-#   The folder in PU_ZETTEL_DIR is the only record. A zettel holds the time of
-#   its placing on line 2, as "placed: <UTC time>". Only zettel shows the
+#   The folder in PU_ZETTEL_DIR is the only record. Only zettel shows the
 #   Folgezettel order: a tool that sorts names as text lists 10 before 2.
 #
-#   After zettel places a draft, it runs the on-place hook,
+#   When sync moves a draft into the box, it runs the on-place hook,
 #   ~/.config/zettel/on-place <id> <file>, if that file is executable. <file>
 #   is the path of the new zettel.
 #
-#   When Neovim closes after create or edit, and after a draft is placed,
-#   zettel runs the on-update hook, ~/.config/zettel/on-update, if that file
-#   is executable. zettel passes it no arguments. The call tells the hook
-#   that a draft or a zettel may be new, changed or removed. A hook that fails
-#   is a warning.
+#   After sync adds, renames, moves or removes a file, it runs the on-update
+#   hook, ~/.config/zettel/on-update, if that file is executable. zettel passes
+#   it no arguments. The call tells the hook that the list of drafts or zettels
+#   changed. sync does not call it for a change to the text alone. zettel
+#   warns when a hook fails.
 #
 # ARGUMENTS
-#   file   Draft to place. Line 1 must hold a claim
+#   file   Draft to place. It must hold a claim, and no id
 #   id     Zettel to show or to edit
 #
 # OPTIONS
@@ -79,10 +106,14 @@ set -eu
 #                in fzf, for "fzf --read0": id, file path and name, then the
 #                text on a second line, then a NUL
 #   --color      With show, print the text through bat when bat is there
+#   --no-place   With sync, place no draft. Print how many drafts with a
+#                claim wait. Without a terminal on stdin, sync places none
+#   --wait       With sync, wait for Enter after sync printed a line: a
+#                change, a warning or the count of drafts that wait
 #   -h, --help   Print this help
 #
 # ENVIRONMENT
-#   PU_ZETTEL_DIR      Folder that holds "draft" and "box" (default: ~/NeoNotes)
+#   PU_ZETTEL_DIR     Folder that holds "draft" and "box" (default: ~/NeoNotes)
 #   XDG_CONFIG_HOME   Folder that holds the zettel config (default: ~/.config)
 #   LOG_LEVEL         Last level to print (default: info)
 #   NO_COLOR          Disables color when set and non-empty, in log lines
@@ -104,7 +135,8 @@ set -eu
 #   0   Done. For create, also when the draft stays or is removed
 #   1   For health, zettel cannot work fully
 #   2   Invalid usage, eg. a draft with no claim or an id with no zettel
-#   3   Could not run, eg. no fzf, no Neovim or no terminal
+#   3   Could not run, eg. no fzf, no Neovim or no terminal. For sync,
+#       place could not run
 #   4   For place, no parent picked, the draft stays
 #
 # SEE ALSO
