@@ -13,6 +13,99 @@ date, then has up to five parts, in this order. Leave out a part that is empty.
 - **Acknowledgments**: a known gap the Decision accepts, with the reason or the
   thing that limits it, and no **Revisit when**
 
+## Keep the rules of the box and the drafts in `zettel sync`
+
+**2026-10-14**
+
+**Context:**
+
+- The name of a zettel was the only copy of its id
+  - A rename by hand or by another app loses the id, and with it the lineage
+- Syncthing keeps a conflict copy under a new name, with the same text
+- A new claim in `edit` left the old slug in the name
+- The user edits several files in one Neovim session and expects each change to
+  apply when Neovim closes
+
+**Decision:**
+
+- The front matter of a zettel holds `id:` and `placed:`
+  - `sync` builds the name from the text: the id from the front matter, the slug
+    from the claim
+  - `placed:` is the time the zettel got its id. `sync` writes a new time when
+    the id differs from the id in the old name
+- `sync` runs every rule of the box and the drafts, in three parts
+  - `refresh_box` checks each zettel, oldest `placed:` first
+  - `refresh_drafts` removes the drafts with no text and runs the picker for a
+    draft with a claim and no `id:`
+  - `elevate_valid_drafts` moves each draft with a claim and `id:` into the box
+- `sync` runs two checks on the box and on the drafts: one for the format, one
+  for the rules of the box
+  - `validate_zettel` checks one file: the front matter closes, `id:` is a
+    Folgezettel id, a claim gives a slug
+  - `validate_box_entry` checks the box: no other zettel holds the id
+  - `sync` moves a zettel that fails a check to the drafts. It keeps a draft
+    that fails a check in the drafts. Each gets the reason in a message above
+    its claim. The message is not a claim, so `sync` leaves the file alone until
+    the user removes it
+- The first file to reach an id keeps it
+  - `refresh_box` goes oldest `placed:` first. A zettel whose id changed counts
+    as placed now, so the zettel that held the id keeps it
+  - `elevate_valid_drafts` runs after `refresh_box`, so `sync` never moves a
+    zettel out of the box to make room for a draft
+- `place` writes `id:` and `placed:` into the draft. `sync` is the only command
+  that writes into the box
+  - `place` skips each id in a draft, so a zettel that left the box returns
+    under its id
+- `_is folgezettel` in `lib.sh` accepts digits and lowercase letters, a digit
+  from 1 to 9 first, and no run of digits that starts with 0
+  - `1b03` and `1b3` would name one position in the tree
+- `create` runs `sync`. `edit` runs `sync --no-place`: only a user who just
+  wrote a draft gets a picker
+- `sync` runs the on-place hook when a draft enters the box
+- `sync` runs the on-update hook from its exit, when the list of drafts and
+  zettels differs from the list at its start
+  - A failure or Ctrl+C after a move still runs the hook. A part does not report
+    its changes, so it cannot forget one
+
+**Rejected:**
+
+- A folder for zettels that break a rule: the drafts already hold them, each
+  with a message
+- `sync` reads the id from the name, not from the front matter: a rename by hand
+  would give a zettel a new id, and with it a new parent
+- Every zettel that shares an id goes back to the drafts: no zettel would hold
+  the id, and its children would lose their parent
+- A draft with a taken id enters the box and the older of the two keeps the id:
+  a fix to one file would make `sync` move another out of the box
+- `sync` on each save in Neovim: a rename under an open buffer makes the next
+  `:w` write the old name back
+- Pickers after `edit`: `sync` would open a picker for a draft from last week
+  while the user reads the box
+
+**Deferred:**
+
+- One letter per run in `_is folgezettel`, so `1ab` is not an id
+  - **Revisit when** a parent that ends in a digit gets a 27th child. With one
+    letter per run, `place` must then refuse it
+- A stamp file, so `sync` reads only the files changed since the last sync, and
+  `--force` to read all
+  - **Revisit when** a `sync` that changes nothing takes more than 200 ms
+- A rule of the box that a parent must exist, eg. `2` for `2b`
+  - **Revisit when** a zettel without a parent confuses the user. The rule must
+    warn and move nothing: otherwise `sync` would move each child of a zettel
+    that left the box out of the box
+
+**Acknowledgments:**
+
+- `sync` moves a zettel with no claim to the drafts. `show` and `recent` print
+  its bare id in the lineage of each child until it returns
+- `create` and `sync` open the picker again for a draft with a claim that the
+  user skipped
+- `sync` has no test file: it opens fzf and changes the box and the drafts
+  - Each pure primitive it uses has one test file, eg. `validate_zettel`,
+    `validate_box_entry` and `build_zettel_name`. `has_text` and the `list_`
+    primitives have none
+
 ## Place a draft in the sitting where the user wrote it, with `zettel`
 
 **2026-10-13**
