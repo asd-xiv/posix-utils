@@ -1,0 +1,48 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../lib.sh"
+
+_describe "lib.sh :: _is folgezettel"
+
+_test 'given [1] should [return 0]'
+actual() { _is folgezettel 1 && echo yes || echo no; }
+_expect equal actual.stdout 'yes'
+
+_test 'given [12] a number of two digits, should [return 0]'
+actual() { _is folgezettel 12 && echo yes || echo no; }
+_expect equal actual.stdout 'yes'
+
+_test 'given [1b3] should [return 0]'
+actual() { _is folgezettel 1b3 && echo yes || echo no; }
+_expect equal actual.stdout 'yes'
+
+_test 'given [1aa2] a run of two letters, should [return 0]'
+actual() { _is folgezettel 1aa2 && echo yes || echo no; }
+_expect equal actual.stdout 'yes'
+
+_test 'given [an empty string] should [return 1]'
+actual() { _is folgezettel "" && echo yes || echo no; }
+_expect equal actual.stdout 'no'
+
+_test 'given [a1] an id that starts with a letter, should [return 1]'
+actual() { _is folgezettel a1 && echo yes || echo no; }
+_expect equal actual.stdout 'no'
+
+_test 'given [01] a padded number, should [return 1]'
+actual() { _is folgezettel 01 && echo yes || echo no; }
+_expect equal actual.stdout 'no'
+
+_test 'given [1b03] a padded number after a letter, should [return 1]'
+actual() { _is folgezettel 1b03 && echo yes || echo no; }
+_expect equal actual.stdout 'no'
+
+_test 'given [1B] an upper case letter, should [return 1]'
+actual() { _is folgezettel 1B && echo yes || echo no; }
+_expect equal actual.stdout 'no'
+
+_test 'given [1.b] a character that is no digit and no letter, should [return 1]'
+actual() { _is folgezettel 1.b && echo yes || echo no; }
+_expect equal actual.stdout 'no'
