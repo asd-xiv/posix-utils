@@ -13,6 +13,30 @@ date, then has up to five parts, in this order. Leave out a part that is empty.
 - **Acknowledgments**: a known gap the Decision accepts, with the reason or the
   thing that limits it, and no **Revisit when**
 
+## Show one line per zettel in the picker and the browser
+
+**2026-10-14**
+
+**Context:**
+
+- Each row in fzf had a second line: the body of the zettel, dim
+  - fzf searched the names and the bodies
+  - Two-line rows need `--read0`, a NUL after each row and fzf 0.53.0 or newer
+
+**Decision:**
+
+- A row is one line: the id, the path and the name, with a tab between them
+  - fzf shows and searches the name only
+
+**Rejected:**
+
+- The body in a field fzf does not show, for search: fzf searches only the
+  fields that `--with-nth` shows
+
+**Acknowledgments:**
+
+- A word that is only in the body no longer finds the zettel
+
 ## Keep the rules of the box and the drafts in `zettel sync`
 
 **2026-10-14**

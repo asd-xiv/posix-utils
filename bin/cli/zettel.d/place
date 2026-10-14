@@ -50,8 +50,8 @@ if [ -n "$IDS" ]; then
         '$0 "" == id "" { print NR + 1; exit }'
   )
 
-  # A row is what list_rows prints. fzf shows and searches the name and the
-  # body, and prints the whole row.
+  # A row is what list_rows prints. fzf shows and searches the name, and prints
+  # the whole row.
   #   {1}               the id under the cursor, empty on the row "+ no parent"
   #   load:pos          puts the cursor on the last zettel placed, once the
   #                     list is complete
@@ -64,9 +64,9 @@ if [ -n "$IDS" ]; then
   # shellcheck disable=SC2016 # the shell of fzf expands $PUBLIC_FILE
   PICKED_ROW=$(
     {
-      printf '\t\t%s\000' "+ no parent"
+      printf '\t\t%s\n' "+ no parent"
       printf '%s\n' "$ZETTELS" | list_rows
-    } | fzf --read0 --ansi --layout reverse --info hidden \
+    } | fzf --layout reverse --info hidden \
       --delimiter "$TAB" --with-nth 3 \
       --header "place: $CLAIM" \
       --preview '"$PUBLIC_FILE" show --color {1}' \

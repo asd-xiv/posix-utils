@@ -593,102 +593,27 @@ build_tree_row() {
 }
 
 # list_rows
-# Read the rows of list_zettels from stdin. Print one row per zettel for "fzf --read0", in Folgezettel order:
-# "<id> TAB <file path> TAB <indent><file name>", then a NUL. The indent is two
-# spaces per step of the lineage. A zettel with a body has a second line in its
-# row: the body, the text after the claim, as one line, so fzf searches it.
-# list_rows prints it dim, unless NO_COLOR is set and non-empty.
+# Read the rows of list_zettels from stdin. Print one row per zettel for fzf,
+# in Folgezettel order: "<id> TAB <file path> TAB <indent><file name>". The
+# indent is two spaces per step of the lineage.
 list_rows() {
-  rows_names=$(cut -f 2)
-  [ -n "$rows_names" ] || return 0
+  # awk reads the box path from its environment, because awk -v rewrites a
+  # backslash in it
+  ROWS_BOX_DIR="$BOX_DIR" awk -F '\t' '
+    $1 != "" {
+      # The depth is the count of runs in the id, less one
+      rest = $1
+      depth = gsub(/[0-9]+/, "", rest) - 1
+      rest = $1
+      depth += gsub(/[a-z]+/, "", rest)
 
-  rows_is_dim="true"
-  if [ -n "${NO_COLOR:-}" ]; then
-    rows_is_dim=""
-  fi
-
-  # A subshell, so the cd stays here. awk reads the box path from its
-  # environment, because awk -v rewrites a backslash in it. A zettel that is an
-  # empty file gives awk no line, so awk walks its list of files to print a
-  # row for that zettel too
-  (
-    cd -- "$BOX_DIR" || exit 3
-    # shellcheck disable=SC2086 # a name is an id, a slug and ".md", safe to split
-    ROWS_BOX_DIR="$BOX_DIR" awk -v is_dim="$rows_is_dim" '
-      function put_row(name, text,    id, rest, depth, indent, step) {
-        id = name
-        sub(/\..*$/, "", id)
-
-        rest = id
-        depth = gsub(/[0-9]+/, "", rest) - 1
-        rest = id
-        depth += gsub(/[a-z]+/, "", rest)
-
-        indent = ""
-        for (step = 0; step < depth; step++) {
-          indent = indent "  "
-        }
-
-        if (text != "") {
-          if (is_dim != "") {
-            text = "\033[2m" text "\033[0m"
-          }
-          text = "\n" indent "  " text
-        }
-
-        # No awk prints a NUL on every system. tr turns this character into one
-        printf "%s\t%s/%s\t%s%s%s\036", id, box_dir, name, indent, name, text
+      indent = ""
+      for (step = 0; step < depth; step++) {
+        indent = indent "  "
       }
 
-      BEGIN { box_dir = ENVIRON["ROWS_BOX_DIR"] }
-
-      FNR == 1 {
-        if (at > 0) {
-          put_row(ARGV[at], text)
-        }
-        for (at++; ARGV[at] != FILENAME; at++) {
-          put_row(ARGV[at], "")
-        }
-
-        text = ""
-        is_front_matter = ($0 == "---")
-        is_past_claim = 0
-
-        if (is_front_matter) {
-          next
-        }
-      }
-
-      is_front_matter {
-        if ($0 == "---") {
-          is_front_matter = 0
-        }
-        next
-      }
-
-      # The claim is the first line with text, when it starts with "#"
-      !is_past_claim && /^[ \t]*$/ { next }
-      !is_past_claim {
-        is_past_claim = 1
-        if ($0 ~ /^#/) {
-          next
-        }
-      }
-
-      /[^ \t]/ {
-        gsub(/\t/, " ")
-        text = (text == "" ? $0 : text " " $0)
-      }
-
-      END {
-        if (at > 0) {
-          put_row(ARGV[at], text)
-        }
-        for (at++; at < ARGC; at++) {
-          put_row(ARGV[at], "")
-        }
-      }' $rows_names
-  ) | tr '\036' '\000'
+      printf "%s\t%s/%s\t%s%s\n", $1, ENVIRON["ROWS_BOX_DIR"], $2, indent, $2
+    }'
 }
 
 # run_hook <hook-file> [arg...]
