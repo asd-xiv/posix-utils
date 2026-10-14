@@ -36,9 +36,9 @@ fi
 SHOWN_FILE=$(get_zettel_file "$1")
 
 # An id is digits and letters, safe to split
-for ID in $(print_lineage "$1"); do
-  print_tree_row "$ID"
-done | print_tree
+for ID in $(build_lineage "$1"); do
+  build_tree_row "$ID"
+done | build_tree
 
 printf '\n'
 

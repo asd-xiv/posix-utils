@@ -26,7 +26,7 @@ DRAFT_FILE="$1"
 
 CLAIM=$(find_claim "$DRAFT_FILE") \
   || _fail 2 -v path "$DRAFT_FILE" 'No claim: "# <claim>" on line 1, or after the front matter'
-print_slug "$CLAIM" >/dev/null \
+build_slug "$CLAIM" >/dev/null \
   || _fail 2 -v claim "$CLAIM" "The claim holds no letter a-z and no digit"
 
 # sync moves a draft with an id, place has nothing to do
@@ -94,7 +94,7 @@ if [ -n "$IDS" ]; then
 fi
 
 ID=$(
-  { printf '%s\n' "$IDS"; find_draft_ids; } | print_next_child_id "$PARENT_ID"
+  { printf '%s\n' "$IDS"; find_draft_ids; } | build_next_child_id "$PARENT_ID"
 )
 
 write_front_matter_value id "$ID" "$DRAFT_FILE"
