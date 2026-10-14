@@ -80,7 +80,7 @@ if [ "$OLD_BLOCK" = "$NEW_BLOCK" ]; then
   _info "Crontab unchanged"
 
   if [ "$WAIT_FLAG" = "--wait" ]; then
-    wait_for_enter
+    _wait_for_enter
   fi
 
   exit 0
@@ -100,7 +100,7 @@ run_hook "$UPDATE_HOOK_FILE"
 _ok "Crontab updated"
 
 if [ "${1:-}" = "--wait" ]; then
-  wait_for_enter
+  _wait_for_enter
 fi
 
 exit 0

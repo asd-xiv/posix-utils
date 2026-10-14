@@ -283,12 +283,3 @@ list_cron_lines() {
 
   return 0
 }
-
-# wait_for_enter
-# Stop until the user presses Enter. A window opened only for the calling
-# command closes with it, before the user reads what it shows.
-wait_for_enter() {
-  printf 'Press Enter to close ' >&2
-  # shellcheck disable=SC2034 # read needs a name, nobody reads it
-  read -r wait_reply || true
-}

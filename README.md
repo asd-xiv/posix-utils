@@ -189,10 +189,11 @@ or 2.
 
 ### Terminal
 
-| Function             | Does                                                            |
-| -------------------- | --------------------------------------------------------------- |
-| `_set_title <title>` | Set the title of the terminal window, when stderr is a terminal |
-| `_restore_title`     | Restore the title the window had before `_set_title`            |
+| Function             | Does                                                                                   |
+| -------------------- | -------------------------------------------------------------------------------------- |
+| `_set_title <title>` | Set the title of the terminal window, when stderr is a terminal                        |
+| `_restore_title`     | Restore the title the window had before `_set_title`                                   |
+| `_wait_for_enter`    | Stop until the user presses Enter, so a window that closes with the command stays open |
 
 ### Help
 
