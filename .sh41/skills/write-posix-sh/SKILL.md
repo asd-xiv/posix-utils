@@ -231,6 +231,8 @@ search_file() {
   `shift: can't shift that many`
 - Name the shape a value must have and reject the rest. A list of bad shapes
   always misses an edge case
+- Use a boolean flag instead of a value with two choices and a default, eg.
+  `--ignore-case`, not `--case <match|ignore>`
 - Never install a dependency. Guard it with `_require_cmd` after the flags and
   the positionals are read, so `--help` works without it
   - Name it under `SEE ALSO`
