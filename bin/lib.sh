@@ -28,6 +28,7 @@
 #                   An unknown level ends the script with 2 at the first log
 #                   line
 #   LOG_NAMESPACE   Label printed before the message
+#   NO_LOG_TIME     Hides the time when set and non-empty
 #   NO_COLOR        Disables color when set and non-empty
 #   TERM            Disables color when unset, empty or "dumb"
 #
@@ -107,12 +108,13 @@ _log() {
   esac
 
   if _has_color; then
-    printf '\033[90m%s\033[0m \033[1;%sm%s\033[0m ' \
-      "$(date +%T)" "$log_color" "$log_label" >&2
+    [ -z "${NO_LOG_TIME:-}" ] && printf '\033[90m%s\033[0m ' "$(date +%T)" >&2
+    printf '\033[1;%sm%s\033[0m ' "$log_color" "$log_label" >&2
     [ -n "${LOG_NAMESPACE:-}" ] \
       && printf '\033[90m%s:\033[0m ' "$LOG_NAMESPACE" >&2
   else
-    printf '%s %s ' "$(date +%T)" "$log_label" >&2
+    [ -z "${NO_LOG_TIME:-}" ] && printf '%s ' "$(date +%T)" >&2
+    printf '%s ' "$log_label" >&2
     [ -n "${LOG_NAMESPACE:-}" ] && printf '%s: ' "$LOG_NAMESPACE" >&2
   fi
 

@@ -1,0 +1,39 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../lib.sh"
+
+_describe "lib.sh :: _log"
+
+_test 'given [NO_LOG_TIME unset] should [print the time before the level]'
+actual() {
+  unset NO_LOG_TIME LOG_NAMESPACE
+  _log error "hi" 2>&1 | awk '{ print NF, $2, $3 }'
+}
+_expect equal actual.stdout '3 ERR hi'
+
+_test 'given [NO_LOG_TIME empty] should [print the time before the level]'
+actual() {
+  unset LOG_NAMESPACE
+  NO_LOG_TIME=""
+  _log error "hi" 2>&1 | awk '{ print NF, $2, $3 }'
+}
+_expect equal actual.stdout '3 ERR hi'
+
+_test 'given [NO_LOG_TIME non-empty] should [print no time]'
+actual() {
+  unset LOG_NAMESPACE
+  NO_LOG_TIME=1
+  _log error "hi" 2>&1
+}
+_expect equal actual.stdout 'ERR hi'
+
+_test 'given [NO_LOG_TIME and a namespace] should [print the namespace after the level]'
+actual() {
+  NO_LOG_TIME=1
+  LOG_NAMESPACE="vblocks"
+  _log error -v key "value" "hi" 2>&1
+}
+_expect equal actual.stdout 'ERR vblocks: hi key=value'

@@ -35,6 +35,7 @@ set -eu
 #   LOG_LEVEL       Last level to print, in the order under ARGUMENTS
 #                   (default: info). An unknown level ends fancy-log with 2
 #   LOG_NAMESPACE   Label printed before the message
+#   NO_LOG_TIME     Hides the time when set and non-empty
 #   NO_COLOR        Disables color when set and non-empty
 #   TERM            Disables color when unset, empty or "dumb"
 #

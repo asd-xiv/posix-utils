@@ -133,6 +133,7 @@ _log info -v path "src/main.c" "Reading"
 | --------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `LOG_LEVEL`     | Last level to print, in the order of `_log` (default: info). An unknown level ends the script with 2 at the first log line |
 | `LOG_NAMESPACE` | Label printed before the message                                                                                           |
+| `NO_LOG_TIME`   | Hides the time when set and non-empty                                                                                      |
 | `NO_COLOR`      | Disables color when set and non-empty                                                                                      |
 | `TERM`          | Disables color when unset, empty or "dumb"                                                                                 |
 
