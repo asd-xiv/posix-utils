@@ -37,3 +37,19 @@ actual() {
   _log error -v key "value" "hi" 2>&1
 }
 _expect equal actual.stdout 'ERR vblocks: hi key=value'
+
+_test 'given [-- before a message that starts with -v] should [print the message as written]'
+actual() {
+  NO_LOG_TIME=1
+  unset LOG_NAMESPACE
+  _log error -v key "value" -- "-v is a flag" 2>&1
+}
+_expect equal actual.stdout 'ERR -v is a flag key=value'
+
+_test 'given [-- before a message that starts with --] should [drop the -- and print the message]'
+actual() {
+  NO_LOG_TIME=1
+  unset LOG_NAMESPACE
+  _log error -- "--max needs a count" 2>&1
+}
+_expect equal actual.stdout 'ERR --max needs a count'

@@ -74,13 +74,14 @@ _has_color() {
   [ -t "${1:-2}" ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != "dumb" ]
 }
 
-# _log <level> [-v <key> <val>]... <message>...
+# _log <level> [-v <key> <val>]... [--] <message>...
 #
 # Print one line to stderr at <level>. Print nothing when <level> comes after
 # LOG_LEVEL in this order: error < warning < success < info < debug.
 #
 # <level> also has short forms: err, wrn, warn, suc, succ, inf, dbg. -v has the
-# long form --var.
+# long form --var. -- ends the pairs, so a message that starts with -v prints as
+# written.
 #
 # Data always goes through %s. Only the format string holds escapes, so a
 # value containing a backslash prints as written.
@@ -133,6 +134,10 @@ _log() {
         fi
         shift 3
         ;;
+      --)
+        shift
+        break
+        ;;
       *) break ;;
     esac
   done
@@ -146,7 +151,7 @@ _log() {
   return 0
 }
 
-# _debug, _info, _ok, _warn, _error [-v <key> <val>]... <message>...
+# _debug, _info, _ok, _warn, _error [-v <key> <val>]... [--] <message>...
 #
 # Call _log at one level: debug, info, success, warning, error.
 #
@@ -158,7 +163,7 @@ _ok() { _log success "$@"; }
 _warn() { _log warning "$@"; }
 _error() { _log error "$@"; }
 
-# _fail <code> [-v <key> <val>]... <message>...
+# _fail <code> [-v <key> <val>]... [--] <message>...
 #
 # Print at error level, then exit with <code>.
 #

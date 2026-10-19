@@ -122,12 +122,12 @@ _log info -v path "src/main.c" "Reading"
 # => 14:32:07 INF find-in-files: Reading path=src/main.c
 ```
 
-| Function                                        | Does                                                           |
-| ----------------------------------------------- | -------------------------------------------------------------- |
-| `_log <level> [-v <key> <val>]... <message>...` | Print one line to stderr at `<level>`                          |
-| `_debug`, `_info`, `_ok`, `_warn`, `_error`     | Call `_log` at one level: debug, info, success, warning, error |
-| `_fail <code> [-v <key> <val>]... <message>...` | Print at error level, then exit with `<code>`                  |
-| `_has_color [fd]`                               | Tell if `<fd>` can show color                                  |
+| Function                                             | Does                                                           |
+| ---------------------------------------------------- | -------------------------------------------------------------- |
+| `_log <level> [-v <key> <val>]... [--] <message>...` | Print one line to stderr at `<level>`                          |
+| `_debug`, `_info`, `_ok`, `_warn`, `_error`          | Call `_log` at one level: debug, info, success, warning, error |
+| `_fail <code> [-v <key> <val>]... [--] <message>...` | Print at error level, then exit with `<code>`                  |
+| `_has_color [fd]`                                    | Tell if `<fd>` can show color                                  |
 
 | Variable        | Does                                                                                                                       |
 | --------------- | -------------------------------------------------------------------------------------------------------------------------- |
