@@ -167,9 +167,11 @@ set -eu
 ### 3. Domain-agnostic primitives
 
 - Read `bin/lib.sh` before you write a script and reuse what fits
-- Write a new primitive in the script. When a second script needs it, elevate it
-  to `lib.sh` with its comment. Drop the domain from its name, eg.
-  `_ping_service_x` -> `_http_ping <url>`
+- Write a new primitive in the script
+- When a second script needs it, elevate it to `lib.sh`
+  - Drop the domain from its name, eg. `_ping_service_x` -> `_http_ping <url>`
+  - Start its variable prefix with `lib_`, eg. `lib_hp_status`, to avoid
+    collisions with the variables of a script that sources it
 - `bin/cli/fancy-log` is the command form of `_log`, for a shell that does not
   source `lib.sh`
 
@@ -250,8 +252,8 @@ _search_file() {
 ### 6. Flags and positionals
 
 - Flags first, then the positionals
-  - The exception is a command word, eg. `ls` in `recheck ls --color` or
-    `info` in `fancy-log info --no-color`. It comes before its flags
+  - The exception is a command word, eg. `ls` in `recheck ls --color` or `info`
+    in `fancy-log info --no-color`. It comes before its flags
 - Always handle `--`, always catch `-?*`. The `?` lets a lone `-` through
 - Guard before every `shift 2`. `dash` aborts with
   `shift: can't shift that many`

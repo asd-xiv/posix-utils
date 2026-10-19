@@ -92,45 +92,45 @@ _has_color() {
 # EXIT
 #   2   <level> or LOG_LEVEL is not a level or a short form
 _log() {
-  log_level="$1"
+  lib_l_level="$1"
   shift
 
-  log_rank=$(_level_rank "$log_level") || exit 2
-  log_cutoff=$(_level_rank "${LOG_LEVEL:-info}") || exit 2
+  lib_l_rank=$(_level_rank "$lib_l_level") || exit 2
+  lib_l_cutoff=$(_level_rank "${LOG_LEVEL:-info}") || exit 2
 
-  [ "$log_rank" -le "$log_cutoff" ] || return 0
+  [ "$lib_l_rank" -le "$lib_l_cutoff" ] || return 0
 
-  case "$log_level" in
-    error | err) log_label="ERR" log_color=31 ;;
-    warning | wrn | warn) log_label="WRN" log_color=33 ;;
-    success | suc | succ) log_label="SUC" log_color=32 ;;
-    info | inf) log_label="INF" log_color=34 ;;
-    debug | dbg) log_label="DBG" log_color=90 ;;
+  case "$lib_l_level" in
+    error | err) lib_l_label="ERR" lib_l_color=31 ;;
+    warning | wrn | warn) lib_l_label="WRN" lib_l_color=33 ;;
+    success | suc | succ) lib_l_label="SUC" lib_l_color=32 ;;
+    info | inf) lib_l_label="INF" lib_l_color=34 ;;
+    debug | dbg) lib_l_label="DBG" lib_l_color=90 ;;
   esac
 
   if _has_color; then
     [ -z "${NO_LOG_TIME:-}" ] && printf '\033[90m%s\033[0m ' "$(date +%T)" >&2
-    printf '\033[1;%sm%s\033[0m ' "$log_color" "$log_label" >&2
+    printf '\033[1;%sm%s\033[0m ' "$lib_l_color" "$lib_l_label" >&2
     [ -n "${LOG_NAMESPACE:-}" ] \
       && printf '\033[90m%s:\033[0m ' "$LOG_NAMESPACE" >&2
   else
     [ -z "${NO_LOG_TIME:-}" ] && printf '%s ' "$(date +%T)" >&2
-    printf '%s ' "$log_label" >&2
+    printf '%s ' "$lib_l_label" >&2
     [ -n "${LOG_NAMESPACE:-}" ] && printf '%s: ' "$LOG_NAMESPACE" >&2
   fi
 
   # Collect the pairs here and print them after the message.
-  log_pairs=""
+  lib_l_pairs=""
   while [ "$#" -gt 1 ]; do
     case "$1" in
       -v | --var)
         [ "$#" -lt 3 ] && break
 
-        log_value=$(printf '%s' "$3" | tr '\n' ',')
+        lib_l_value=$(printf '%s' "$3" | tr '\n' ',')
         if _has_color; then
-          log_pairs="${log_pairs}$(printf ' \033[90m%s=\033[0m%s' "$2" "$log_value")"
+          lib_l_pairs="${lib_l_pairs}$(printf ' \033[90m%s=\033[0m%s' "$2" "$lib_l_value")"
         else
-          log_pairs="${log_pairs}$(printf ' %s=%s' "$2" "$log_value")"
+          lib_l_pairs="${lib_l_pairs}$(printf ' %s=%s' "$2" "$lib_l_value")"
         fi
         shift 3
         ;;
@@ -145,7 +145,7 @@ _log() {
   # The positionals left are the message. Join them with a space, as echo
   # does.
   printf '%s' "$*" >&2
-  [ -n "$log_pairs" ] && printf '%s' "$log_pairs" >&2
+  [ -n "$lib_l_pairs" ] && printf '%s' "$lib_l_pairs" >&2
   printf '\n' >&2
 
   return 0
@@ -171,16 +171,16 @@ _error() { _log error "$@"; }
 #   <code>   <code> is 1 to 125
 #   2        <code> is not 1 to 125, or LOG_LEVEL is not a level or a short form
 _fail() {
-  fail_code=$(printf '%d' "${1:-}" 2>/dev/null) || fail_code=0
+  lib_f_code=$(printf '%d' "${1:-}" 2>/dev/null) || lib_f_code=0
 
-  if [ "$fail_code" -lt 1 ] || [ "$fail_code" -gt 125 ]; then
+  if [ "$lib_f_code" -lt 1 ] || [ "$lib_f_code" -gt 125 ]; then
     _log error -v got "${1:-}" "_fail needs an exit code of 1 to 125"
     exit 2
   fi
 
   shift
   _log error "$@"
-  exit "$fail_code"
+  exit "$lib_f_code"
 }
 
 # ╭───
@@ -255,14 +255,14 @@ _is() {
 # EXIT
 #   3   The shell cannot find a <cmd>
 _require_cmd() {
-  require_missing=""
-  for require_cmd in "$@"; do
-    command -v "$require_cmd" >/dev/null 2>&1 \
-      || require_missing="${require_missing:+$require_missing, }$require_cmd"
+  lib_rc_missing=""
+  for lib_rc_cmd in "$@"; do
+    command -v "$lib_rc_cmd" >/dev/null 2>&1 \
+      || lib_rc_missing="${lib_rc_missing:+$lib_rc_missing, }$lib_rc_cmd"
   done
 
-  [ -n "$require_missing" ] \
-    && _fail 3 -v missing "$require_missing" "Required commands not found"
+  [ -n "$lib_rc_missing" ] \
+    && _fail 3 -v missing "$lib_rc_missing" "Required commands not found"
 
   return 0
 }
@@ -275,18 +275,18 @@ _require_cmd() {
 #   2   A <NAME> is unset or empty
 #   3   A <NAME> is not an identifier
 _require_var() {
-  require_missing=""
-  for require_name in "$@"; do
-    _is identifier "$require_name" \
-      || _fail 3 -v name "$require_name" "_require_var takes variable names"
+  lib_rv_missing=""
+  for lib_rv_name in "$@"; do
+    _is identifier "$lib_rv_name" \
+      || _fail 3 -v name "$lib_rv_name" "_require_var takes variable names"
 
-    eval "require_value=\${$require_name:-}"
-    [ -z "$require_value" ] \
-      && require_missing="${require_missing:+$require_missing, }$require_name"
+    eval "lib_rv_value=\${$lib_rv_name:-}"
+    [ -z "$lib_rv_value" ] \
+      && lib_rv_missing="${lib_rv_missing:+$lib_rv_missing, }$lib_rv_name"
   done
 
-  [ -n "$require_missing" ] \
-    && _fail 2 -v missing "$require_missing" "Required variables not set"
+  [ -n "$lib_rv_missing" ] \
+    && _fail 2 -v missing "$lib_rv_missing" "Required variables not set"
 
   return 0
 }
@@ -316,9 +316,9 @@ _download_file() {
 # EXIT
 #   3   Neither /usr/local/bin nor ~/.local/bin is a writable directory
 _resolve_bin_dir() {
-  for resolve_dir in /usr/local/bin "${HOME:-}/.local/bin"; do
-    [ -d "$resolve_dir" ] && [ -w "$resolve_dir" ] && {
-      printf '%s' "$resolve_dir"
+  for lib_rbd_dir in /usr/local/bin "${HOME:-}/.local/bin"; do
+    [ -d "$lib_rbd_dir" ] && [ -w "$lib_rbd_dir" ] && {
+      printf '%s' "$lib_rbd_dir"
       return 0
     }
   done
@@ -374,16 +374,16 @@ _has_valid_markers() {
   fi
 
   # The line number of each marker. -F -x is the whole line, as written
-  markers_begin=$(printf '%s\n' "$3" | grep -n -F -x -e "$1" | cut -d ':' -f 1)
-  markers_end=$(printf '%s\n' "$3" | grep -n -F -x -e "$2" | cut -d ':' -f 1)
+  lib_hvm_begin=$(printf '%s\n' "$3" | grep -n -F -x -e "$1" | cut -d ':' -f 1)
+  lib_hvm_end=$(printf '%s\n' "$3" | grep -n -F -x -e "$2" | cut -d ':' -f 1)
 
   # Each is one number, when its marker is there once
-  case "$markers_begin:$markers_end" in
+  case "$lib_hvm_begin:$lib_hvm_end" in
     :) return 0 ;;                   # neither marker
     *[!0-9:]* | :* | *:) return 1 ;; # one is there twice, or one is missing
   esac
 
-  [ "$markers_begin" -lt "$markers_end" ] || return 1
+  [ "$lib_hvm_begin" -lt "$lib_hvm_end" ] || return 1
 
   return 0
 }
@@ -400,10 +400,10 @@ _has_valid_markers() {
 # EXIT
 #   3   A marker is empty or holds a newline
 _find_block() {
-  find_text=$(cat)
-  _has_valid_markers "$1" "$2" "$find_text" || return 1
+  lib_fb_text=$(cat)
+  _has_valid_markers "$1" "$2" "$lib_fb_text" || return 1
 
-  printf '%s\n' "$find_text" \
+  printf '%s\n' "$lib_fb_text" \
     | BLOCK_BEGIN_MARKER="$1" BLOCK_END_MARKER="$2" awk '
       BEGIN {
         begin = ENVIRON["BLOCK_BEGIN_MARKER"] ""
@@ -433,15 +433,15 @@ _find_block() {
 # EXIT
 #   3   A marker is empty or holds a newline
 _replace_block() {
-  replace_text=$(cat)
-  _has_valid_markers "$1" "$2" "$replace_text" || return 1
+  lib_rb_text=$(cat)
+  _has_valid_markers "$1" "$2" "$lib_rb_text" || return 1
 
   # A marker inside the block would make two blocks of it
   if printf '%s\n' "$3" | grep -q -F -x -e "$1" -e "$2"; then
     return 2
   fi
 
-  _end_with_newline "$replace_text" | BLOCK_BEGIN_MARKER="$1" BLOCK_END_MARKER="$2" BLOCK_LINES="$3" awk '
+  _end_with_newline "$lib_rb_text" | BLOCK_BEGIN_MARKER="$1" BLOCK_END_MARKER="$2" BLOCK_LINES="$3" awk '
     function put_block() {
       if (lines != "") {
         print begin
@@ -473,12 +473,12 @@ _replace_block() {
 # Print the "-" lines red and the "+" lines green when stdout can show color,
 # see _has_color.
 _diff_lines() {
-  diff_color=""
+  lib_dl_color=""
   if _has_color 1; then
-    diff_color="true"
+    lib_dl_color="true"
   fi
 
-  DIFF_OLD_TEXT="$1" DIFF_NEW_TEXT="$2" awk -v color="$diff_color" '
+  DIFF_OLD_TEXT="$1" DIFF_NEW_TEXT="$2" awk -v color="$lib_dl_color" '
     BEGIN {
       old_count = split(ENVIRON["DIFF_OLD_TEXT"], old_lines, "\n")
       new_count = split(ENVIRON["DIFF_NEW_TEXT"], new_lines, "\n")
@@ -545,7 +545,7 @@ _restore_title() {
 _wait_for_enter() {
   printf 'Press Enter to continue ' >&2
   # shellcheck disable=SC2034 # read needs a name, nobody reads it
-  read -r _wait_reply || true
+  read -r lib_wfe_reply || true
 }
 
 # ╭───
