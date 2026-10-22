@@ -9,7 +9,6 @@ SCRIPT_DIR="$SCRIPT_DIR/../zettel.d"
 # shellcheck source=../zettel.d/zettels.sh
 . "$SCRIPT_DIR/zettels.sh"
 
-
 _describe "zettel :: find_front_matter_value"
 _test 'given [a key in the front matter] should [print its value]'
 prepare() { printf -- '---\nid: 1b3\nplaced: 2026-10-14T12:00:00Z\n---\n\n# A claim\n' >note.md; }

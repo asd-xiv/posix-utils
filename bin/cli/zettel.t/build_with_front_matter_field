@@ -9,7 +9,6 @@ SCRIPT_DIR="$SCRIPT_DIR/../zettel.d"
 # shellcheck source=../zettel.d/zettels.sh
 . "$SCRIPT_DIR/zettels.sh"
 
-
 _describe "zettel :: build_with_front_matter_field"
 
 _test 'given [front matter without the key] should [put the field last in it]'

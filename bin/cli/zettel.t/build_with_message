@@ -9,7 +9,6 @@ SCRIPT_DIR="$SCRIPT_DIR/../zettel.d"
 # shellcheck source=../zettel.d/zettels.sh
 . "$SCRIPT_DIR/zettels.sh"
 
-
 _describe "zettel :: build_with_message"
 _test 'given [front matter] should [put the message below it, between empty lines]'
 prepare() { printf -- '---\nid: 1b3\n---\n\n# A claim\n' >note.md; }

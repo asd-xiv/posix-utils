@@ -57,7 +57,10 @@ if [ -n "$BEHIND_ID" ]; then
 
   # An id in a draft counts as taken, as in place
   NEW_ID=$(
-    { list_zettels | cut -f 1; find_draft_ids; } \
+    {
+      list_zettels | cut -f 1
+      find_draft_ids
+    } \
       | build_next_child_id "$BEHIND_ID"
   )
   DRAFT_LINES="\"---\", \"id: $NEW_ID\", \"---\", \"\", $DRAFT_LINES"

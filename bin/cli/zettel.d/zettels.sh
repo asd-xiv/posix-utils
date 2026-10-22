@@ -704,4 +704,3 @@ make_day_dir() {
   mkdir -p -- "$day_dir"
   printf '%s' "$day_dir"
 }
-

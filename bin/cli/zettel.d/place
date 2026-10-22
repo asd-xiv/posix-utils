@@ -94,7 +94,10 @@ if [ -n "$IDS" ]; then
 fi
 
 ID=$(
-  { printf '%s\n' "$IDS"; find_draft_ids; } | build_next_child_id "$PARENT_ID"
+  {
+    printf '%s\n' "$IDS"
+    find_draft_ids
+  } | build_next_child_id "$PARENT_ID"
 )
 
 write_front_matter_value id "$ID" "$DRAFT_FILE"
