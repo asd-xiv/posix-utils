@@ -24,9 +24,10 @@
 #   ends the script with the shell's own code.
 #
 # ENVIRONMENT
-#   LOG_LEVEL       Last level to print, in the order of _log (default: info).
-#                   An unknown level ends the script with 2 at the first log
-#                   line
+#   LOG_LEVEL       Last level to print, in the order error < warning < info
+#                   < debug, in any case or as a short form: err, warn, wrn,
+#                   inf, dbg (default: info). An unknown level ends the script
+#                   with 2 at its first _log call
 #   LOG_NAMESPACE   Label printed before the message
 #   NO_LOG_TIME     Hides the time when set and non-empty
 #   NO_COLOR        Disables color when set and non-empty
@@ -41,20 +42,22 @@
 
 # _level_rank <level>
 #
-# Print the rank of <level>, from 0 for error to 4 for debug.
+# Print the rank of <level>, from 0 for error to 3 for debug. Read <level> in
+# any case, as a name or a short form: error/err, warning/warn/wrn, info/inf,
+# debug/dbg.
 #
 # RETURNS
-#   1   <level> is not a level or a short form, the reason is on stderr
+#   1   <level> is not a level or a short form. Prints the reason to stderr
 _level_rank() {
-  case "$1" in
+  case $(printf '%s' "$1" | tr '[:upper:]' '[:lower:]') in
     error | err) printf '0' ;;
-    warning | wrn | warn) printf '1' ;;
-    success | suc | succ) printf '2' ;;
-    info | inf) printf '3' ;;
-    debug | dbg) printf '4' ;;
+    warning | warn | wrn) printf '1' ;;
+    info | inf) printf '2' ;;
+    debug | dbg) printf '3' ;;
     *)
-      # Not through _log, which calls back here
-      printf 'lib.sh/_level_rank: Unknown log level "%s". Use error, warning, success, info or debug\n' \
+      # Print with printf: _log calls _level_rank, so an unknown LOG_LEVEL
+      # would loop
+      printf 'lib.sh/_level_rank: Unknown log level "%s". Use error, warning, info or debug\n' \
         "$1" >&2
       return 1
       ;;
@@ -74,14 +77,16 @@ _has_color() {
   [ -t "${1:-2}" ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != "dumb" ]
 }
 
-# _log <level> [-v <key> <val>]... [--] <message>...
+# _log <type> [-v <key> <val>]... [--] <message>...
 #
-# Print one line to stderr at <level>. Print nothing when <level> comes after
-# LOG_LEVEL in this order: error < warning < success < info < debug.
+# Print one line of <type> to stderr: error, warning, success, info or debug.
+# Print nothing when the level of <type> comes after LOG_LEVEL in this order:
+# error < warning < info < debug. success has no level, so LOG_LEVEL never
+# hides a success line.
 #
-# <level> also has short forms: err, wrn, warn, suc, succ, inf, dbg. -v has the
-# long form --var. -- ends the pairs, so a message that starts with -v prints as
-# written.
+# Read <type> in any case, as a name or a short form: err, warn, wrn, suc,
+# succ, inf, dbg. -v has the long form --var. -- ends the pairs, so a message
+# that starts with -v prints as written.
 #
 # Data always goes through %s. Only the format string holds escapes, so a
 # value containing a backslash prints as written.
@@ -90,23 +95,30 @@ _has_color() {
 # reads "a,b,c". <message> prints as written.
 #
 # EXIT
-#   2   <level> or LOG_LEVEL is not a level or a short form
+#   2   <type> is not a type or a short form, or LOG_LEVEL is not a level or a
+#       short form
 _log() {
-  lib_l_level="$1"
+  case $(printf '%s' "$1" | tr '[:upper:]' '[:lower:]') in
+    error | err) lib_l_level=error lib_l_label="ERR" lib_l_color=31 ;;
+    warning | warn | wrn) lib_l_level=warning lib_l_label="WRN" lib_l_color=33 ;;
+    success | suc | succ) lib_l_level="" lib_l_label="SUC" lib_l_color=32 ;;
+    info | inf) lib_l_level=info lib_l_label="INF" lib_l_color=34 ;;
+    debug | dbg) lib_l_level=debug lib_l_label="DBG" lib_l_color=90 ;;
+    *)
+      printf 'lib.sh/_log: Unknown log type "%s". Use error, warning, success, info or debug\n' \
+        "$1" >&2
+      exit 2
+      ;;
+  esac
   shift
 
-  lib_l_rank=$(_level_rank "$lib_l_level") || exit 2
   lib_l_cutoff=$(_level_rank "${LOG_LEVEL:-info}") || exit 2
 
-  [ "$lib_l_rank" -le "$lib_l_cutoff" ] || return 0
-
-  case "$lib_l_level" in
-    error | err) lib_l_label="ERR" lib_l_color=31 ;;
-    warning | wrn | warn) lib_l_label="WRN" lib_l_color=33 ;;
-    success | suc | succ) lib_l_label="SUC" lib_l_color=32 ;;
-    info | inf) lib_l_label="INF" lib_l_color=34 ;;
-    debug | dbg) lib_l_label="DBG" lib_l_color=90 ;;
-  esac
+  # The success type has no level, so LOG_LEVEL never hides a success line
+  if [ -n "$lib_l_level" ]; then
+    lib_l_rank=$(_level_rank "$lib_l_level")
+    [ "$lib_l_rank" -le "$lib_l_cutoff" ] || return 0
+  fi
 
   if _has_color; then
     [ -z "${NO_LOG_TIME:-}" ] && printf '\033[90m%s\033[0m ' "$(date +%T)" >&2
@@ -153,7 +165,7 @@ _log() {
 
 # _debug, _info, _ok, _warn, _error [-v <key> <val>]... [--] <message>...
 #
-# Call _log at one level: debug, info, success, warning, error.
+# Call _log with one type: debug, info, success, warning, error.
 #
 # EXIT
 #   2   LOG_LEVEL is not a level or a short form
@@ -165,7 +177,7 @@ _error() { _log error "$@"; }
 
 # _fail <code> [-v <key> <val>]... [--] <message>...
 #
-# Print at error level, then exit with <code>.
+# Print an error line, then exit with <code>.
 #
 # EXIT
 #   <code>   <code> is 1 to 125

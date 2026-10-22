@@ -40,7 +40,7 @@
 
 | Script                       | Does                                                               | Needs                                                                                              |
 | ---------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| `cli/fancy-log`              | Print a log line with its time, level and namespace, in color      | terminal or CI                                                                                     |
+| `cli/fancy-log`              | Print a log line with its time, type and namespace, in color       | terminal or CI                                                                                     |
 | `cli/get-youtube-transcript` | Print the transcript of a YouTube video                            | curl, jq                                                                                           |
 | `cli/zettel`                 | A Zettelkasten: write a thought down, place it in a box of zettels | Neovim, fzf for `place` and `browse`. bat colors the preview when it is there                      |
 | `cli/omnipack`               | Install OS dependencies, package manager agnostic                  | terminal or CI                                                                                     |
@@ -122,26 +122,27 @@ _log info -v path "src/main.c" "Reading"
 # => 14:32:07 INF find-in-files: Reading path=src/main.c
 ```
 
-| Function                                             | Does                                                           |
-| ---------------------------------------------------- | -------------------------------------------------------------- |
-| `_log <level> [-v <key> <val>]... [--] <message>...` | Print one line to stderr at `<level>`                          |
-| `_debug`, `_info`, `_ok`, `_warn`, `_error`          | Call `_log` at one level: debug, info, success, warning, error |
-| `_fail <code> [-v <key> <val>]... [--] <message>...` | Print at error level, then exit with `<code>`                  |
-| `_has_color [fd]`                                    | Tell if `<fd>` can show color                                  |
+| Function                                             | Does                                                            |
+| ---------------------------------------------------- | --------------------------------------------------------------- |
+| `_log <type> [-v <key> <val>]... [--] <message>...`  | Print one line of `<type>` to stderr                            |
+| `_debug`, `_info`, `_ok`, `_warn`, `_error`          | Call `_log` with one type: debug, info, success, warning, error |
+| `_fail <code> [-v <key> <val>]... [--] <message>...` | Print an error line, then exit with `<code>`                    |
+| `_has_color [fd]`                                    | Tell if `<fd>` can show color                                   |
 
-| Variable        | Does                                                                                                                       |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `LOG_LEVEL`     | Last level to print, in the order of `_log` (default: info). An unknown level ends the script with 2 at the first log line |
-| `LOG_NAMESPACE` | Label printed before the message                                                                                           |
-| `NO_LOG_TIME`   | Hides the time when set and non-empty                                                                                      |
-| `NO_COLOR`      | Disables color when set and non-empty                                                                                      |
-| `TERM`          | Disables color when unset, empty or "dumb"                                                                                 |
+| Variable        | Does                                                                                                                                                                                                                     |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `LOG_LEVEL`     | Last level to print, in the order `error < warning < info < debug`, in any case or as a short form: `err`, `warn`, `wrn`, `inf`, `dbg` (default: info). An unknown level ends the script with 2 at its first `_log` call |
+| `LOG_NAMESPACE` | Label printed before the message                                                                                                                                                                                         |
+| `NO_LOG_TIME`   | Hides the time when set and non-empty                                                                                                                                                                                    |
+| `NO_COLOR`      | Disables color when set and non-empty                                                                                                                                                                                    |
+| `TERM`          | Disables color when unset, empty or "dumb"                                                                                                                                                                               |
 
-`_log` prints nothing when `<level>` comes after `LOG_LEVEL` in this order:
-`error < warning < success < info < debug`.
+`_log` prints nothing when the level of `<type>` comes after `LOG_LEVEL`.
+`success` has no level, so `LOG_LEVEL` never hides a `success` line.
 
-`<level>` also has short forms: `err`, `wrn`, `warn`, `suc`, `succ`, `inf`,
-`dbg`.
+`_log` reads `<type>` in any case, as a name or a short form: `err`, `warn`,
+`wrn`, `suc`, `succ`, `inf`, `dbg`. An unknown `<type>` ends the script with 2.
+`LOG_LEVEL` takes no `success`, `suc` or `succ`.
 
 > [!NOTE]  
 > `cli/fancy-log` is the command form of `_log`. Use it from a shell or a

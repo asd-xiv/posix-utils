@@ -3,10 +3,10 @@
 set -eu
 
 # NAME
-#   fancy-log - Print a log line with its time, level and namespace, in color
+#   fancy-log - Print a log line with its time, type and namespace, in color
 #
 # SYNOPSIS
-#   fancy-log <level> [--no-color] [-v <key> <val>]... <message>...
+#   fancy-log <type> [--no-color] [-v <key> <val>]... <message>...
 #   fancy-log -h | --help
 #
 # DESCRIPTION
@@ -14,17 +14,18 @@ set -eu
 #   source lib.sh. A script that sources lib.sh calls _log, or _debug, _info,
 #   _ok, _warn and _error, instead. Each call saves one process.
 #
-#   <level> is a command word, so it comes before the flags. fancy-log reads
-#   --help in place of <level>, and --no-color right after <level>. It passes
+#   <type> is a command word, so it comes before the flags. fancy-log reads
+#   --help in place of <type>, and --no-color right after <type>. It passes
 #   the rest, the -v pairs and the message, to _log as written.
 #
 #   fancy-log prints the log line to stderr, never to stdout. stdout holds
 #   only the result of the calling script.
 #
 # ARGUMENTS
-#   level     One of error, warning, success, info, debug, or a short form:
-#             err, wrn, warn, suc, succ, inf, dbg
-#   message   Text to print, repeatable. Joined with a space
+#   type      One of error, warning, success, info, debug, in any case, or a
+#             short form: err, warn, wrn, suc, succ, inf, dbg. success has no
+#             level and always prints
+#   message   Text to print, repeatable. fancy-log joins them with a space
 #
 # OPTIONS
 #   -v, --var <key> <val>   Append a key=val pair after the message
@@ -32,8 +33,10 @@ set -eu
 #   -h, --help              Print this help
 #
 # ENVIRONMENT
-#   LOG_LEVEL       Last level to print, in the order under ARGUMENTS
-#                   (default: info). An unknown level ends fancy-log with 2
+#   LOG_LEVEL       Last level to print, in the order error < warning < info
+#                   < debug, in any case or as a short form: err, warn, wrn,
+#                   inf, dbg (default: info). An unknown level ends fancy-log
+#                   with 2
 #   LOG_NAMESPACE   Label printed before the message
 #   NO_LOG_TIME     Hides the time when set and non-empty
 #   NO_COLOR        Disables color when set and non-empty
@@ -44,9 +47,10 @@ set -eu
 #   LOG_LEVEL=debug fancy-log debug "Cache miss"
 #
 # EXIT CODES
-#   0   Printed, or dropped because <level> comes after LOG_LEVEL
-#   2   Invalid usage: no message, an unknown flag, or an unknown <level> or
+#   0   Printed the line, or hid it because the level of <type> comes after
 #       LOG_LEVEL
+#   2   Invalid usage: no <type>, no message, an unknown flag, an unknown
+#       <type>, or a LOG_LEVEL that is not a level
 #
 # SEE ALSO
 #   lib.sh
@@ -65,8 +69,8 @@ case "${1:-}" in
     ;;
 esac
 
-# _log knows the levels and their short forms, and exits 2 on any other
-LEVEL="$1"
+# _log guards the type: it exits 2 on an unknown type
+LINE_TYPE="$1"
 shift
 
 # Strip the flags this command owns, pass the rest to _log untouched.
@@ -92,4 +96,4 @@ done
 
 [ "$#" -eq 0 ] && _fail 2 "No message given"
 
-_log "$LEVEL" "$@"
+_log "$LINE_TYPE" "$@"

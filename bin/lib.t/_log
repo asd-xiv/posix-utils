@@ -53,3 +53,65 @@ actual() {
   _log error -- "--max needs a count" 2>&1
 }
 _expect equal actual.stdout 'ERR --max needs a count'
+
+_test 'given [LOG_LEVEL=success] should [exit 2 and name the unknown value]'
+actual() {
+  LOG_LEVEL=success
+  _log error "hi"
+}
+_expect equal actual.exit '2'
+_expect contain actual.stderr 'Unknown log level "success"'
+
+_test 'given [LOG_LEVEL=WARN] should [print a warning line and hide an info line]'
+actual() {
+  NO_LOG_TIME=1
+  unset LOG_NAMESPACE
+  LOG_LEVEL=WARN
+  _log warning "shown" 2>&1
+  _log info "hidden" 2>&1
+}
+_expect equal actual.stdout 'WRN shown'
+
+_test 'given [LOG_LEVEL=warning] should [print a success line]'
+actual() {
+  NO_LOG_TIME=1
+  unset LOG_NAMESPACE
+  LOG_LEVEL=warning
+  _ok "done" 2>&1
+}
+_expect equal actual.stdout 'SUC done'
+
+_test 'given [LOG_LEVEL=error] should [print a success line and hide a warning line]'
+actual() {
+  NO_LOG_TIME=1
+  unset LOG_NAMESPACE
+  LOG_LEVEL=error
+  _warn "stale" 2>&1
+  _ok "done" 2>&1
+}
+_expect equal actual.stdout 'SUC done'
+
+_test 'given [LOG_LEVEL unset] should [print a success line]'
+actual() {
+  NO_LOG_TIME=1
+  unset LOG_NAMESPACE
+  unset LOG_LEVEL
+  _ok "done" 2>&1
+}
+_expect equal actual.stdout 'SUC done'
+
+_test 'given [type INFO] should [print an info line]'
+actual() {
+  NO_LOG_TIME=1
+  unset LOG_NAMESPACE
+  LOG_LEVEL=info
+  _log INFO "hi" 2>&1
+}
+_expect equal actual.stdout 'INF hi'
+
+_test 'given [_log trace] should [exit 2 and name the unknown type]'
+actual() {
+  _log trace "hi"
+}
+_expect equal actual.exit '2'
+_expect contain actual.stderr 'Unknown log type "trace"'
