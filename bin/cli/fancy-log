@@ -6,7 +6,7 @@ set -eu
 #   fancy-log - Print a log line with its time, type and namespace, in color
 #
 # SYNOPSIS
-#   fancy-log <type> [--no-color] [-v <key> <val>]... <message>...
+#   fancy-log <type> [--no-color] [-v <key> <val>]... [--] <message>...
 #   fancy-log -h | --help
 #
 # DESCRIPTION
@@ -16,7 +16,8 @@ set -eu
 #
 #   <type> is a command word, so it comes before the flags. fancy-log reads
 #   --help in place of <type>, and --no-color right after <type>. It passes
-#   the rest, the -v pairs and the message, to _log as written.
+#   the rest, the -v pairs, -- and the message, to _log as written. -- ends
+#   the flags, so a message that starts with - prints as written.
 #
 #   fancy-log prints the log line to stderr, never to stdout. stdout holds
 #   only the result of the calling script.
@@ -84,7 +85,7 @@ while [ "$#" -gt 0 ]; do
     # _log's own flag, forward it with the message
     -v | --var) break ;;
     --)
-      shift
+      # Leave -- in place: _log ends its pairs there too
       break
       ;;
     -?*)

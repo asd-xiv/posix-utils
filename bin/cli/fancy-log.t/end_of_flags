@@ -1,0 +1,30 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+
+FANCY_LOG_FILE="$SCRIPT_DIR/../fancy-log"
+
+_describe "fancy-log :: --"
+
+_test 'given [-- before a message that starts with -v] should [print the message as written]'
+actual() {
+  unset LOG_NAMESPACE
+  NO_LOG_TIME=1 sh "$FANCY_LOG_FILE" error -- -v k v msg 2>&1
+}
+_expect equal actual.stdout 'ERR -v k v msg'
+
+_test 'given [-- before --no-color] should [print --no-color as the message]'
+actual() {
+  unset LOG_NAMESPACE
+  NO_LOG_TIME=1 sh "$FANCY_LOG_FILE" error -- --no-color 2>&1
+}
+_expect equal actual.stdout 'ERR --no-color'
+
+_test 'given [-v pairs, then --] should [print the pairs and the message after --]'
+actual() {
+  unset LOG_NAMESPACE
+  NO_LOG_TIME=1 sh "$FANCY_LOG_FILE" error -v k v -- -v msg 2>&1
+}
+_expect equal actual.stdout 'ERR -v msg k=v'
