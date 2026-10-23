@@ -1,0 +1,276 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   screenshot - Capture the screens, a window or a region to a PNG file
+#
+# SYNOPSIS
+#   screenshot [OPTIONS] <all|window|region>
+#
+# DESCRIPTION
+#   Captures the target to a PNG file, then prints the file path to stdout.
+#   Copies the image to the clipboard when wl-copy is installed. Then beeps
+#   and sends a notification, see --no-notify.
+#
+#   The target and the flags can come in any order.
+#
+#     all      Every output
+#     window   The window the user clicks, or the window of --pid. The
+#              window takes the focus first, which puts it on screen
+#     region   The rectangle the user draws
+#
+#   Hides the cursor while it captures and restores it on exit. grim leaves
+#   the cursor out, but Sway can draw it into the screen image, eg. with
+#   WLR_NO_HARDWARE_CURSORS=1.
+#
+# ARGUMENTS
+#   target   all, window or region
+#
+# OPTIONS
+#   -o, --output <file>   PNG file to write (default:
+#                         ~/Pictures/Screenshots/<target>_<date>.png)
+#   -p, --pid <pid>       With window: capture the window of that process,
+#                         no picker. Waits up to 5 seconds for the process to
+#                         map its window
+#       --padding <px>    With window or region: grow the capture by px on
+#                         each side, to show the desktop around it
+#                         (default: 0). Nothing clamps it to the screen
+#       --no-notify       Skip the beep and the notification, eg. for a
+#                         script that captures many files in a row
+#   -h, --help            Print this help
+#
+# ENVIRONMENT
+#   HIDE_CURSOR_RESTORE_MS   Sway hide_cursor timeout to set on exit, in ms
+#                            (default: 0, never hide, the Sway default)
+#
+# EXAMPLE
+#   bindsym Print exec screenshot all
+#   bindsym $mod+Print exec screenshot window
+#   alacritty -e htop & screenshot window --pid $! --no-notify -o htop.png
+#
+# EXIT CODES
+#   0   Captured
+#   2   Invalid usage
+#   3   Could not run, eg. no Sway session, no window for --pid, grim failed
+#   4   Nothing picked
+#
+# SEE ALSO
+#   grim, slurp, swaymsg, jq, wl-copy, doomst, beep_success, beep_cancel
+
+_SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$_SCRIPT_DIR/../lib.sh"
+
+# _log reads these
+export LOG_NAMESPACE="screenshot"
+export LOG_LEVEL="${LOG_LEVEL:-info}"
+
+HIDE_CURSOR_RESTORE_MS="${HIDE_CURSOR_RESTORE_MS:-0}"
+
+_TARGET=""            # all, window or region
+_OUTPUT_FILE=""       # -o/--output, a .png path
+_PID=""               # -p/--pid, a positive integer
+_PADDING="0"          # --padding, a non-negative integer
+_SHOULD_NOTIFY="true" # --no-notify sets ""
+
+# ╭───
+# │ Primitives
+# ╰───
+
+# _notify_cancel
+#
+# Beep the cancel sound, unless --no-notify. beep_cancel comes from the
+# dotfiles of the author, so a system without it plays nothing.
+_notify_cancel() {
+  [ -n "$_SHOULD_NOTIFY" ] || return 0
+
+  _run_if_found beep_cancel || _warn "beep_cancel failed"
+}
+
+# _notify_success <title> <file>
+#
+# Beep the success sound and send a notification, unless --no-notify. Either
+# one is skipped when its command is not installed.
+_notify_success() {
+  [ -n "$_SHOULD_NOTIFY" ] || return 0
+
+  _run_if_found beep_success || _warn "beep_success failed"
+  _run_if_found doomst --type success "$1" "$2" || _warn "doomst failed"
+}
+
+# ╭───
+# │ Bootstrap
+# ╰───
+
+if [ "$#" -eq 0 ]; then
+  _show_help "$0" >&2
+  exit 2
+fi
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -h | --help)
+      _show_help "$0"
+      exit 0
+      ;;
+    -o | --output)
+      [ "$#" -lt 2 ] && _fail 2 "--output needs a file"
+      _OUTPUT_FILE="$2"
+      shift 2
+      ;;
+    -p | --pid)
+      [ "$#" -lt 2 ] && _fail 2 "--pid needs a pid"
+      _is positive-integer "$2" || _fail 2 -v pid "$2" "Not a pid"
+      _PID="$2"
+      shift 2
+      ;;
+    --padding)
+      [ "$#" -lt 2 ] && _fail 2 "--padding needs a number of px"
+      _is non-negative-integer "$2" \
+        || _fail 2 -v padding "$2" "Not a number of px"
+      _PADDING="$2"
+      shift 2
+      ;;
+    --no-notify)
+      _SHOULD_NOTIFY=""
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -?*)
+      _fail 2 -v flag "$1" "Unknown flag"
+      ;;
+    *)
+      [ -n "$_TARGET" ] && _fail 2 -v argument "$1" "Only one target"
+      _TARGET="$1"
+      shift
+      ;;
+  esac
+done
+
+if [ "$#" -gt 0 ]; then
+  [ -n "$_TARGET" ] && _fail 2 -v argument "$1" "Only one target"
+  _TARGET="$1"
+  shift
+fi
+
+[ "$#" -eq 0 ] || _fail 2 -v argument "$1" "Only one target"
+
+case "$_TARGET" in
+  all | window | region) ;;
+  "") _fail 2 "No target given. Use all, window or region" ;;
+  *) _fail 2 -v target "$_TARGET" "Unknown target. Use all, window or region" ;;
+esac
+
+if [ -n "$_PID" ] && [ "$_TARGET" != "window" ]; then
+  _fail 2 -v target "$_TARGET" "--pid works only with window"
+fi
+
+if [ "$_PADDING" != "0" ] && [ "$_TARGET" = "all" ]; then
+  _fail 2 -v target "$_TARGET" "--padding works only with window or region"
+fi
+
+if [ -z "$_OUTPUT_FILE" ]; then
+  _OUTPUT_FILE="$HOME/Pictures/Screenshots/${_TARGET}_$(date +%Y-%B-%d-%A-%R:%S).png"
+fi
+
+case "$_OUTPUT_FILE" in
+  *.png) ;;
+  *) _fail 2 -v file "$_OUTPUT_FILE" "Unsupported extension. Use .png" ;;
+esac
+
+_is non-negative-integer "$HIDE_CURSOR_RESTORE_MS" \
+  || _fail 2 -v HIDE_CURSOR_RESTORE_MS "$HIDE_CURSOR_RESTORE_MS" "Not a number of ms"
+
+_require_cmd swaymsg grim
+[ "$_TARGET" = "window" ] && _require_cmd jq
+[ -z "$_PID" ] && [ "$_TARGET" != "all" ] && _require_cmd slurp
+
+[ -n "${SWAYSOCK:-}" ] || _fail 3 "No Sway session, SWAYSOCK is not set"
+
+# ╭───
+# │ Cleanup
+# ╰───
+
+_IS_CURSOR_HIDDEN="" # "true" once the cursor hides
+
+# shellcheck disable=SC2329 # called by trap
+_cleanup() {
+  if [ -n "$_IS_CURSOR_HIDDEN" ]; then
+    swaymsg --quiet "seat - hide_cursor $HIDE_CURSOR_RESTORE_MS" \
+      >/dev/null 2>&1 || true
+  fi
+}
+
+trap _cleanup EXIT                                    # normal exit
+trap '_cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl-C
+trap '_cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout
+trap '_cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
+
+# ╭───
+# │ Main
+# ╰───
+
+_GEOMETRY="" # empty for all, grim then captures every output
+
+case "$_TARGET" in
+  window)
+    if [ -n "$_PID" ]; then
+      _CON_ID=$(_wait_for_sway_window "$_PID" 5) \
+        || _fail 3 -v pid "$_PID" "No window has this pid"
+    else
+      _CON_ID=$(_pick_sway_window) || {
+        _warn "Nothing picked"
+        _notify_cancel
+        exit 4
+      }
+    fi
+
+    swaymsg --quiet "[con_id=$_CON_ID] focus" >/dev/null 2>&1 \
+      || _warn -v con_id "$_CON_ID" "Could not focus the window"
+    # Let Sway draw the window before the capture
+    sleep 0.1
+
+    _GEOMETRY=$(_get_sway_window_geometry "$_CON_ID") \
+      || _fail 3 -v con_id "$_CON_ID" "The window closed"
+    _GEOMETRY=$(_pad_geometry "$_GEOMETRY" "$_PADDING")
+    ;;
+  region)
+    _GEOMETRY=$(slurp) || {
+      _warn "Nothing picked"
+      _notify_cancel
+      exit 4
+    }
+    _GEOMETRY=$(_pad_geometry "$_GEOMETRY" "$_PADDING")
+    ;;
+esac
+
+mkdir -p -- "$(dirname -- "$_OUTPUT_FILE")" \
+  || _fail 3 -v file "$_OUTPUT_FILE" "Could not add the folder"
+
+# Sway hides the cursor once it stops moving for 100 ms
+_IS_CURSOR_HIDDEN="true"
+swaymsg --quiet "seat - hide_cursor 100" >/dev/null 2>&1 \
+  || _warn "Could not hide the cursor"
+sleep 0.2
+
+if [ -n "$_GEOMETRY" ]; then
+  set -- -g "$_GEOMETRY"
+fi
+grim "$@" -- "$_OUTPUT_FILE" \
+  || _fail 3 -v file "$_OUTPUT_FILE" "grim failed"
+
+# wl-copy forks a process that serves the clipboard until the next copy. It
+# keeps the fds it got, so a caller that reads stdout, eg. $(screenshot all),
+# would wait for that next copy
+if command -v wl-copy >/dev/null 2>&1; then
+  wl-copy <"$_OUTPUT_FILE" >/dev/null 2>&1 || _warn "Could not copy the image"
+fi
+
+printf '%s\n' "$_OUTPUT_FILE"
+
+_notify_success "screenshot $_TARGET" "$_OUTPUT_FILE"
+
+exit 0

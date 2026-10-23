@@ -46,3 +46,21 @@ _expect equal actual.stdout 'no'
 _test 'given [1.b] a character that is no digit and no letter, should [return 1]'
 actual() { _is folgezettel 1.b && echo yes || echo no; }
 _expect equal actual.stdout 'no'
+
+_describe "lib.sh :: _is non-negative-integer"
+
+_test 'given [0] should [return 0]'
+actual() { _is non-negative-integer 0 && echo yes || echo no; }
+_expect equal actual.stdout 'yes'
+
+_test 'given [15] should [return 0]'
+actual() { _is non-negative-integer 15 && echo yes || echo no; }
+_expect equal actual.stdout 'yes'
+
+_test 'given [010] a leading zero, should [return 1]'
+actual() { _is non-negative-integer 010 && echo yes || echo no; }
+_expect equal actual.stdout 'no'
+
+_test 'given [-1] should [return 1]'
+actual() { _is non-negative-integer -1 && echo yes || echo no; }
+_expect equal actual.stdout 'no'

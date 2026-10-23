@@ -12,7 +12,7 @@
 #
 # DESCRIPTION
 #   Domain-agnostic primitives: logging, predicates, guards, files, text,
-#   terminal and help. A script sources it, never executes it.
+#   terminal, Sway windows and help. A script sources it, never executes it.
 #
 #   A primitive prints its result to stdout. A predicate answers with its
 #   status and prints nothing. Everything else goes to stderr.
@@ -34,7 +34,7 @@
 #   TERM            Disables color when unset, empty or "dumb"
 #
 # SEE ALSO
-#   curl(1)
+#   curl(1), swaymsg(1), jq(1), slurp(1)
 
 # ╭───
 # │ Logging
@@ -203,19 +203,22 @@ _fail() {
 #
 # Tell if <value> has the shape of <type>.
 #
-#   positive-integer   0-9, no leading zero
-#   version            0-9 in groups, one dot between two groups, eg. 1.13.4
-#   slug               A-Za-z0-9_-, starts with a letter or a digit
-#   identifier         A-Za-z0-9_, cannot start with a digit
-#   folgezettel        a-z0-9, starts with 1-9, a run of digits never starts
-#                      with 0, eg. 1b3. 1b03 and 1b3 would name one place
+#   positive-integer       0-9, no leading zero
+#   non-negative-integer   0, or a positive-integer
+#   version                0-9 in groups, one dot between two groups, eg.
+#                          1.13.4
+#   slug                   A-Za-z0-9_-, starts with a letter or a digit
+#   identifier             A-Za-z0-9_, cannot start with a digit
+#   folgezettel            a-z0-9, starts with 1-9, a run of digits never
+#                          starts with 0, eg. 1b3. 1b03 and 1b3 would name
+#                          one place
 #
 # RETURNS
 #   0   <value> has the shape
 #   1   <value> does not have it, or is empty
 #
 # EXIT
-#   3   <type> is not one of the five and <value> is not empty, or the call
+#   3   <type> is not one of the six and <value> is not empty, or the call
 #       does not have two positionals
 _is() {
   [ "$#" -eq 2 ] || _fail 3 "_is needs <type> <value>"
@@ -230,6 +233,12 @@ _is() {
       # and a 20-digit value cannot abort the shell with "Illegal number".
       case "$2" in
         *[!0-9]* | 0*) return 1 ;;
+      esac
+      ;;
+    non-negative-integer)
+      # 0?* rejects a leading zero. Shell arithmetic reads 010 as octal 8
+      case "$2" in
+        *[!0-9]* | 0?*) return 1 ;;
       esac
       ;;
     version)
@@ -277,6 +286,19 @@ _require_cmd() {
     && _fail 3 -v missing "$lib_rc_missing" "Required commands not found"
 
   return 0
+}
+
+# _run_if_found <cmd> [arg...]
+#
+# Run <cmd> with its args when the shell finds it. Do nothing when it does
+# not, for a command the caller can live without.
+#
+# RETURNS
+#   0       The shell cannot find <cmd>, or <cmd> exits 0
+#   other   The status of <cmd>
+_run_if_found() {
+  command -v "$1" >/dev/null 2>&1 || return 0
+  "$@"
 }
 
 # _require_var <NAME>...
@@ -558,6 +580,104 @@ _wait_for_enter() {
   printf 'Press Enter to continue ' >&2
   # shellcheck disable=SC2034 # read needs a name, nobody reads it
   read -r lib_wfe_reply || true
+}
+
+# ╭───
+# │ Sway windows
+# ╰───
+
+# A window is a Sway view: a node of "swaymsg -t get_tree" with a pid. Its
+# con_id is the "id" of that node. Its geometry is "<x>,<y> <width>x<height>",
+# the shape grim, slurp and wf-recorder read.
+
+# _find_sway_window <pid>
+#
+# Print the con_id of the first window that <pid> owns. Print nothing when it
+# owns none. <pid> must be a positive integer, see _is.
+_find_sway_window() {
+  swaymsg -t get_tree \
+    | jq -r --argjson pid "$1" \
+      'first(.. | objects | select(.pid? == $pid) | .id) // empty'
+}
+
+# _wait_for_sway_window <pid> <seconds>
+#
+# Print the con_id of the first window that <pid> owns. A process maps its
+# window a moment after it starts, so wait up to <seconds> for it.
+#
+# RETURNS
+#   1   <pid> owns no window after <seconds>, or exits before it maps one
+_wait_for_sway_window() {
+  # sleep 0.1 is not POSIX. Sway runs on Linux, where coreutils and BusyBox
+  # read a fraction
+  lib_wfsw_tries=$(($2 * 10))
+  while [ "$lib_wfsw_tries" -gt 0 ]; do
+    lib_wfsw_id=$(_find_sway_window "$1")
+    if [ -n "$lib_wfsw_id" ]; then
+      printf '%s\n' "$lib_wfsw_id"
+      return 0
+    fi
+
+    kill -0 "$1" 2>/dev/null || return 1
+    sleep 0.1
+    lib_wfsw_tries=$((lib_wfsw_tries - 1))
+  done
+
+  return 1
+}
+
+# _pick_sway_window
+#
+# Let the user click a visible window with slurp, print its con_id.
+#
+# RETURNS
+#   1   The user pressed Esc, or no window is visible
+_pick_sway_window() {
+  lib_psw_windows=$(swaymsg -t get_tree \
+    | jq -r '.. | objects | select(.pid? and .visible?)
+      | "\(.id)\t\(.rect.x),\(.rect.y) \(.rect.width)x\(.rect.height)"')
+  [ -n "$lib_psw_windows" ] || return 1
+
+  lib_psw_geometry=$(printf '%s\n' "$lib_psw_windows" | cut -f 2 | slurp -r) \
+    || return 1
+
+  printf '%s\n' "$lib_psw_windows" \
+    | awk -F '\t' -v geometry="$lib_psw_geometry" \
+      '$2 == geometry { print $1; exit }'
+}
+
+# _pad_geometry <geometry> <px>
+#
+# Print <geometry> grown by <px> on each side, eg. "10,10 100x50" and 5 give
+# "5,5 110x60". <px> must be a non-negative-integer, see _is. Clamp nothing:
+# the result can reach past the edge of an output.
+_pad_geometry() {
+  lib_pg_x=${1%%,*}
+  lib_pg_y=${1#*,}
+  lib_pg_y=${lib_pg_y%% *}
+  lib_pg_size=${1##* }
+  lib_pg_width=${lib_pg_size%%x*}
+  lib_pg_height=${lib_pg_size#*x}
+
+  printf '%s,%s %sx%s\n' \
+    "$((lib_pg_x - $2))" "$((lib_pg_y - $2))" \
+    "$((lib_pg_width + 2 * $2))" "$((lib_pg_height + 2 * $2))"
+}
+
+# _get_sway_window_geometry <con_id>
+#
+# Print the geometry of the window <con_id>. <con_id> must be a positive
+# integer, see _is.
+#
+# RETURNS
+#   1   No window has <con_id>
+_get_sway_window_geometry() {
+  lib_gswg_geometry=$(swaymsg -t get_tree \
+    | jq -r --argjson id "$1" 'first(.. | objects | select(.id? == $id)
+      | .rect | "\(.x),\(.y) \(.width)x\(.height)") // empty')
+  [ -n "$lib_gswg_geometry" ] || return 1
+
+  printf '%s\n' "$lib_gswg_geometry"
 }
 
 # ╭───

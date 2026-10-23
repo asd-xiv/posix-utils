@@ -1,0 +1,73 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+
+SCREENSHOT="$SCRIPT_DIR/../screenshot"
+
+_describe "screenshot :: usage"
+
+_test 'given [--help] should [print the man page and exit 0]'
+actual() { "$SCREENSHOT" --help; }
+_expect equal actual.exit 0
+_expect start-with actual.stdout 'NAME'
+
+_test 'given [no positional and no flag] should [exit 2]'
+actual() { "$SCREENSHOT"; }
+_expect equal actual.exit 2
+
+_test 'given [an unknown flag] should [exit 2]'
+actual() { "$SCREENSHOT" --zz window; }
+_expect equal actual.exit 2
+
+_test 'given [a flag and no target] should [exit 2]'
+actual() { "$SCREENSHOT" --output a.png; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'No target given'
+
+_test 'given [an unknown target] should [exit 2]'
+actual() { "$SCREENSHOT" screen; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Unknown target'
+
+_test 'given [two targets] should [exit 2]'
+actual() { "$SCREENSHOT" window region; }
+_expect equal actual.exit 2
+
+_test 'given [an --output that is not .png] should [exit 2]'
+actual() { "$SCREENSHOT" region --output a.jpg; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Unsupported extension'
+
+_test 'given [--output with no file] should [exit 2]'
+actual() { "$SCREENSHOT" region --output; }
+_expect equal actual.exit 2
+
+_test 'given [a --pid that is not a number] should [exit 2]'
+actual() { "$SCREENSHOT" window --pid abc; }
+_expect equal actual.exit 2
+
+_test 'given [--pid with region] should [exit 2]'
+actual() { "$SCREENSHOT" region --pid 1; }
+_expect equal actual.exit 2
+_expect contain actual.stderr '--pid works only with window'
+
+_test 'given [a --padding that is not a number] should [exit 2]'
+actual() { "$SCREENSHOT" window --padding wide; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Not a number of px'
+
+_test 'given [a negative --padding] should [exit 2]'
+actual() { "$SCREENSHOT" window --padding -5; }
+_expect equal actual.exit 2
+
+_test 'given [--padding with all] should [exit 2]'
+actual() { "$SCREENSHOT" all --padding 10; }
+_expect equal actual.exit 2
+_expect contain actual.stderr '--padding works only with window or region'
+
+_test 'given [--no-notify and an unknown target] should [accept the flag, exit 2 on the target]'
+actual() { "$SCREENSHOT" --no-notify screen; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Unknown target'

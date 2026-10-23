@@ -1,0 +1,20 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../lib.sh"
+
+_describe "lib.sh :: _pad_geometry"
+
+_test 'given [10,10 100x50 and 5] should [grow it by 5 on each side]'
+actual() { _pad_geometry "10,10 100x50" 5; }
+_expect equal actual.stdout '5,5 110x60'
+
+_test 'given [0] should [print the geometry as it was]'
+actual() { _pad_geometry "10,20 100x50" 0; }
+_expect equal actual.stdout '10,20 100x50'
+
+_test 'given [a window at the edge of an output] should [print a negative x and y]'
+actual() { _pad_geometry "0,0 1920x1080" 10; }
+_expect equal actual.stdout '-10,-10 1940x1100'

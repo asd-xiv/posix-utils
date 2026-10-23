@@ -1,0 +1,65 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+
+SCREENRECORD="$SCRIPT_DIR/../screenrecord"
+
+_describe "screenrecord :: usage"
+
+_test 'given [--help] should [print the man page and exit 0]'
+actual() { "$SCREENRECORD" --help; }
+_expect equal actual.exit 0
+_expect start-with actual.stdout 'NAME'
+
+_test 'given [no positional and no flag] should [exit 2]'
+actual() { "$SCREENRECORD"; }
+_expect equal actual.exit 2
+
+_test 'given [an unknown flag] should [exit 2]'
+actual() { "$SCREENRECORD" --zz window; }
+_expect equal actual.exit 2
+
+_test 'given [a flag and no target] should [exit 2]'
+actual() { "$SCREENRECORD" --hide-cursor; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'No target given'
+
+_test 'given [all, a target of screenshot only] should [exit 2]'
+actual() { "$SCREENRECORD" all; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Unknown target'
+
+_test 'given [an --output that is not .mp4, .mkv, .webm or .gif] should [exit 2]'
+actual() { "$SCREENRECORD" region --output a.avi; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Unsupported extension'
+
+_test 'given [a --pid that is not a number] should [exit 2]'
+actual() { "$SCREENRECORD" window --pid 12a; }
+_expect equal actual.exit 2
+
+_test 'given [--pid with region] should [exit 2]'
+actual() { "$SCREENRECORD" region --pid 1; }
+_expect equal actual.exit 2
+_expect contain actual.stderr '--pid works only with window'
+
+_test 'given [a GIF_FRAMERATE that is not a number, and a .gif] should [exit 2]'
+actual() { GIF_FRAMERATE=fast "$SCREENRECORD" region --output a.gif; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'GIF_FRAMERATE'
+
+_test 'given [a --padding that is not a number] should [exit 2]'
+actual() { "$SCREENRECORD" region --padding 1.5; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Not a number of px'
+
+_test 'given [--padding with a leading zero] should [exit 2]'
+actual() { "$SCREENRECORD" region --padding 010; }
+_expect equal actual.exit 2
+
+_test 'given [--no-notify and an unknown target] should [accept the flag, exit 2 on the target]'
+actual() { "$SCREENRECORD" --no-notify all; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Unknown target'

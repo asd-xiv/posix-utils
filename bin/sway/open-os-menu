@@ -16,11 +16,12 @@ set -eu
 #
 #   The items, and how each one opens:
 #
-#     Zettels   zettel browse    In a new terminal window, opened with
-#                                PU_TERMINAL. Needs the cli group
-#     Symbols   yank-symbol      In its own rofi window
-#     Checks    recheck browse   In a new terminal window, opened with
-#                                PU_TERMINAL. Needs the cli group
+#     Zettels      zettel browse       In a new terminal window, opened with
+#                                      PU_TERMINAL. Needs the cli group
+#     Symbols      yank-symbol         In its own rofi window
+#     Checks       recheck browse      In a new terminal window, opened with
+#                                      PU_TERMINAL. Needs the cli group
+#     Screenshot   screenshot window   With its own window picker
 #
 #   An item that cannot open stays in the menu, with the reason in place of
 #   what it does. You cannot pick it. open-os-menu gives the reason when the
@@ -60,7 +61,7 @@ set -eu
 #           PU_TERMINAL command that ran it
 #
 # SEE ALSO
-#   rofi, zettel, yank-symbol, recheck
+#   rofi, zettel, yank-symbol, recheck, screenshot
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../lib.sh"
@@ -80,7 +81,8 @@ export LOG_LEVEL="${LOG_LEVEL:-info}"
 #             cannot open and exits 1. Empty when the item has none
 ITEMS='⚑|Zettels|cli/zettel browse|terminal|cli/zettel health|Zettelkasten: browse the box, read each zettel in its lineage|zettelkasten notes thoughts ideas box folgezettel
 Ω|Symbols|sway/yank-symbol|window||Copy a symbol the keyboard lacks, eg. ă € → ─ ✓|unicode character diacritic currency arrow box
-✓|Checks|cli/recheck browse|terminal|cli/recheck health|Browse the checks that cron runs: read each state, run one again|cron status monitor schedule'
+✓|Checks|cli/recheck browse|terminal|cli/recheck health|Browse the checks that cron runs: read each state, run one again|cron status monitor schedule
+▣|Screenshot|sway/screenshot window|window||Capture a window you click, save it and copy it|image picture print capture'
 
 INSTRUCTION="<b>$LOG_NAMESPACE</b> :: type to find an item, eg. symbol or cron"
 SHORTCUTS="[↑ ↓] move, [enter] open, [esc] close"
