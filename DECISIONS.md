@@ -13,6 +13,52 @@ date, then has up to five parts, in this order. Leave out a part that is empty.
 - **Acknowledgments**: a known gap the Decision accepts, with the reason or the
   thing that limits it, and no **Revisit when**
 
+## Lock with a folder in the runtime folder, one file per value
+
+**2026-10-27**
+
+**Context:**
+
+- `screenrecord` gets `start` and `stop`, one recording at a time
+  - `stop`, `capture-terminal` and a status bar read the pid, the state and the
+    output file of the recording in progress
+- `mkdir` creates a folder only when there is none, in one system call
+- `$XDG_RUNTIME_DIR` is the user's folder, mode 700, that a boot clears
+  - cron sets no `XDG_RUNTIME_DIR`. The login manager still makes
+    `/run/user/<user id>`
+
+**Decision:**
+
+- A lock is a folder made with `mkdir` in the runtime folder, eg.
+  `$XDG_RUNTIME_DIR/screenrecord.lock`
+  - It holds one file per value: `pid` first, then eg. `state` and `file`
+  - The run that made it removes it with `rm -r` in its cleanup trap
+- `_get_runtime_dir` in `lib.sh` prints `$XDG_RUNTIME_DIR`, else
+  `/run/user/<user id>`, else exits 3
+- A lock whose pid is gone, or whose pid runs another program, is stale
+  - Only an explicit command removes it, eg. `screenrecord stop`
+  - It checks the program with `ps -p <pid> -o args=` before it sends a signal
+- Supersedes two rejections of "Lock a `recheck` check with a marker in
+  `XDG_RUNTIME_DIR`": the folder as a lock, and `ps` on the pid of a marker
+
+**Rejected:**
+
+- A fallback to `/tmp/<name>-<user id>`: another user can create it first, and a
+  boot does not always clear `/tmp`
+- A `noclobber` file with `key=value` lines: every reader parses the separator,
+  and a value with a newline
+- `kill -0` alone on the pid of a lock: the pid can belong to another program by
+  then, and `stop` would signal it
+
+**Deferred:**
+
+- `ps -o args=` shows a command, not when its process started. Between the check
+  and the signal, the process can end and its pid can go to another
+  `screenrecord start`
+  - **Revisit when** a `stop` ends the wrong recording
+- Move `recheck` to the folder lock and `_get_runtime_dir`
+  - **Revisit when** the next change to `recheck`
+
 ## Open a new draft behind the zettel under the cursor, with Alt+Enter
 
 **2026-10-14**

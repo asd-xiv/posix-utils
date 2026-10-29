@@ -6,72 +6,31 @@ set -eu
 #   screenrecord - Record a window or a region to a video or GIF file
 #
 # SYNOPSIS
-#   screenrecord [OPTIONS] <window|region>
+#   screenrecord <command> [ARGS]
+#   screenrecord -h
 #
 # DESCRIPTION
-#   Records the target, then prints the file path to stdout. Then beeps and
-#   sends a notification, see --no-notify. The extension of --output picks
-#   the format:
+#   Records a window or a region of the screen to a video or GIF file. One
+#   recording runs at a time.
 #
-#     .mp4, .mkv   H.264 (libx264)
-#     .webm        VP9 (libvpx-vp9)
-#     .gif         H.264 first, then ffmpeg converts it with a palette
+#     start   Record in the background
+#     stop    End the recording, print the file
 #
-#   The target and the flags can come in any order.
-#
-#     window   The window the user clicks, or the window of --pid. The
-#              window takes the focus first, which puts it on screen
-#     region   The rectangle the user draws
-#
-#   Without --pid, the recording stops on Ctrl+C. With --pid, it stops when
-#   that process exits or its window closes. SIGINT, SIGTERM and SIGHUP stop
-#   it too, and the file is kept.
-#
-# ARGUMENTS
-#   target   window or region
+#   Each command prints its own help with --help.
 #
 # OPTIONS
-#   -o, --output <file>   File to write, .mp4, .mkv, .webm or .gif (default:
-#                         recording.mp4)
-#   -p, --pid <pid>       With window: record the window of that process, no
-#                         picker, and stop when that process exits. Waits up
-#                         to 5 seconds for the process to map its window
-#       --padding <px>    Grow the recorded area by px on each side, to show
-#                         the desktop around it (default: 0). Nothing clamps
-#                         it to the screen
-#       --hide-cursor     Hide the cursor while recording
-#       --no-notify       Skip the beep and the notification, eg. for a
-#                         script that records many files in a row
-#   -h, --help            Print this help
-#
-# ENVIRONMENT
-#   X264_CRF                 x264 quality, 0 to 51, lower is better
-#                            (default: 17)
-#   X264_PRESET              x264 speed preset (default: medium)
-#   GIF_FRAMERATE            GIF frames per second (default: 10)
-#   GIF_MAX_WIDTH            Wider GIFs scale down to it, in px (default: 800)
-#   GIF_MAX_COLORS           GIF palette size, 4 to 256 (default: 256)
-#   GIF_DITHER_MODE          ffmpeg paletteuse dither (default: sierra2_4a)
-#   HIDE_CURSOR_RESTORE_MS   With --hide-cursor: Sway hide_cursor timeout to
-#                            set on exit, in ms (default: 0, never hide, the
-#                            Sway default)
-#
-# EXAMPLE
-#   screenrecord region --output demo.webm
-#   alacritty -e htop & screenrecord window --pid $! --no-notify -o htop.gif
-#   timeout 10 screenrecord window --output demo.mp4
+#   -h, --help   Print this help
 #
 # EXIT CODES
-#   0   Recorded
-#   2   Invalid usage
-#   3   Could not run, eg. no Sway session, no window for --pid, the
-#       recording or the GIF conversion failed
-#   4   Nothing picked
+#   2   No command, or an unknown one
+#
+#   Every other code comes from the command.
 #
 # SEE ALSO
-#   wf-recorder, ffmpeg, slurp, swaymsg, jq, doomst, beep_success,
-#   beep_cancel
+#   screenshot, capture-terminal, wf-recorder
 
+# tools/install symlinks this script, so "$0" names the link. realpath follows
+# it to find lib.sh and screenrecord.d
 _SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$_SCRIPT_DIR/../lib.sh"
 
@@ -79,352 +38,36 @@ _SCRIPT_DIR=$(dirname "$(realpath "$0")")
 export LOG_NAMESPACE="screenrecord"
 export LOG_LEVEL="${LOG_LEVEL:-info}"
 
-X264_CRF="${X264_CRF:-17}"
-X264_PRESET="${X264_PRESET:-medium}"
-GIF_FRAMERATE="${GIF_FRAMERATE:-10}"
-GIF_MAX_WIDTH="${GIF_MAX_WIDTH:-800}"
-GIF_MAX_COLORS="${GIF_MAX_COLORS:-256}"
-GIF_DITHER_MODE="${GIF_DITHER_MODE:-sierra2_4a}"
-HIDE_CURSOR_RESTORE_MS="${HIDE_CURSOR_RESTORE_MS:-0}"
-
-_RECORD_FRAMERATE="30"
-
-_TARGET=""                    # window or region
-_OUTPUT_FILE="recording.mp4" # -o/--output
-_PID=""                       # -p/--pid, a positive integer
-_PADDING="0"                  # --padding, a non-negative integer
-_SHOULD_HIDE_CURSOR=""        # --hide-cursor, "true" or ""
-_SHOULD_NOTIFY="true"         # --no-notify sets ""
-
-# ╭───
-# │ Primitives
-# ╰───
-
-# _wait_for_exit <pid>
-#
-# Return once <pid> exits or its window closes. A parent that does not reap
-# its child keeps the pid alive, so the closed window counts too.
-_wait_for_exit() {
-  while kill -0 "$1" 2>/dev/null && [ -n "$(_find_sway_window "$1")" ]; do
-    sleep 0.2
-  done
-}
-
-# _notify_cancel
-#
-# Beep the cancel sound, unless --no-notify. beep_cancel comes from the
-# dotfiles of the author, so a system without it plays nothing.
-_notify_cancel() {
-  [ -n "$_SHOULD_NOTIFY" ] || return 0
-
-  _run_if_found beep_cancel || _warn "beep_cancel failed"
-}
-
-# _notify_success <title> <file>
-#
-# Beep the success sound and send a notification, unless --no-notify. Either
-# one is skipped when its command is not installed.
-_notify_success() {
-  [ -n "$_SHOULD_NOTIFY" ] || return 0
-
-  _run_if_found beep_success || _warn "beep_success failed"
-  _run_if_found doomst --type success "$1" "$2" || _warn "doomst failed"
-}
-
-# _convert_to_gif <video-file> <gif-file> <width>
-#
-# Write <video-file> as <gif-file>, with a palette made from its own colors.
-# Scale it down to GIF_MAX_WIDTH when <width> is wider. ffmpeg has no "--",
-# so "file:" keeps a <gif-file> that starts with "-" from reading as a flag.
-#
-# RETURNS
-#   1   ffmpeg failed
-_convert_to_gif() {
-  ctg_scale=""
-  if [ "$3" -gt "$GIF_MAX_WIDTH" ]; then
-    ctg_scale=",scale=$GIF_MAX_WIDTH:-1:flags=lanczos"
-  fi
-
-  ffmpeg -hide_banner -loglevel error -y -i "$1" \
-    -vf "fps=$GIF_FRAMERATE$ctg_scale,format=rgb24,split[s0][s1];[s0]palettegen=max_colors=$GIF_MAX_COLORS:stats_mode=full[p];[s1][p]paletteuse=dither=$GIF_DITHER_MODE" \
-    "file:$2" || return 1
-}
-
 # ╭───
 # │ Bootstrap
 # ╰───
 
-if [ "$#" -eq 0 ]; then
-  _show_help "$0" >&2
-  exit 2
-fi
-
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    -h | --help)
-      _show_help "$0"
-      exit 0
-      ;;
-    -o | --output)
-      [ "$#" -lt 2 ] && _fail 2 "--output needs a file"
-      _OUTPUT_FILE="$2"
-      shift 2
-      ;;
-    -p | --pid)
-      [ "$#" -lt 2 ] && _fail 2 "--pid needs a pid"
-      _is positive-integer "$2" || _fail 2 -v pid "$2" "Not a pid"
-      _PID="$2"
-      shift 2
-      ;;
-    --padding)
-      [ "$#" -lt 2 ] && _fail 2 "--padding needs a number of px"
-      _is non-negative-integer "$2" \
-        || _fail 2 -v padding "$2" "Not a number of px"
-      _PADDING="$2"
-      shift 2
-      ;;
-    --hide-cursor)
-      _SHOULD_HIDE_CURSOR="true"
-      shift
-      ;;
-    --no-notify)
-      _SHOULD_NOTIFY=""
-      shift
-      ;;
-    --)
-      shift
-      break
-      ;;
-    -?*)
-      _fail 2 -v flag "$1" "Unknown flag"
-      ;;
-    *)
-      [ -n "$_TARGET" ] && _fail 2 -v argument "$1" "Only one target"
-      _TARGET="$1"
-      shift
-      ;;
-  esac
-done
-
-if [ "$#" -gt 0 ]; then
-  [ -n "$_TARGET" ] && _fail 2 -v argument "$1" "Only one target"
-  _TARGET="$1"
-  shift
-fi
-
-[ "$#" -eq 0 ] || _fail 2 -v argument "$1" "Only one target"
-
-case "$_TARGET" in
-  window | region) ;;
-  "") _fail 2 "No target given. Use window or region" ;;
-  *) _fail 2 -v target "$_TARGET" "Unknown target. Use window or region" ;;
-esac
-
-if [ -n "$_PID" ] && [ "$_TARGET" != "window" ]; then
-  _fail 2 -v target "$_TARGET" "--pid works only with window"
-fi
-
-_IS_GIF=""
-case "$_OUTPUT_FILE" in
-  *.mp4 | *.mkv) _CODEC="libx264" ;;
-  *.webm) _CODEC="libvpx-vp9" ;;
-  *.gif)
-    _CODEC="libx264"
-    _IS_GIF="true"
+case "${1:-}" in
+  -h | --help)
+    _show_help "$0"
+    exit 0
     ;;
-  *)
-    _fail 2 -v file "$_OUTPUT_FILE" \
-      "Unsupported extension. Use .mp4, .mkv, .webm or .gif"
+  "")
+    _show_help "$0" >&2
+    exit 2
     ;;
+  -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
 esac
 
-case "$X264_CRF" in
-  *[!0-9]* | "") _fail 2 -v X264_CRF "$X264_CRF" "Not 0 to 51" ;;
-esac
-_is slug "$X264_PRESET" \
-  || _fail 2 -v X264_PRESET "$X264_PRESET" "Not a preset name"
-case "$HIDE_CURSOR_RESTORE_MS" in
-  *[!0-9]* | "")
-    _fail 2 -v HIDE_CURSOR_RESTORE_MS "$HIDE_CURSOR_RESTORE_MS" "Not a number of ms"
-    ;;
-esac
-
-if [ -n "$_IS_GIF" ]; then
-  _is positive-integer "$GIF_FRAMERATE" \
-    || _fail 2 -v GIF_FRAMERATE "$GIF_FRAMERATE" "Not a frame rate"
-  _is positive-integer "$GIF_MAX_WIDTH" \
-    || _fail 2 -v GIF_MAX_WIDTH "$GIF_MAX_WIDTH" "Not a width"
-  _is positive-integer "$GIF_MAX_COLORS" \
-    || _fail 2 -v GIF_MAX_COLORS "$GIF_MAX_COLORS" "Not a color count"
-  _is slug "$GIF_DITHER_MODE" \
-    || _fail 2 -v GIF_DITHER_MODE "$GIF_DITHER_MODE" "Not a dither mode"
-fi
-
-_require_cmd swaymsg wf-recorder
-[ "$_TARGET" = "window" ] && _require_cmd jq
-[ -z "$_PID" ] && _require_cmd slurp
-[ -n "$_IS_GIF" ] && _require_cmd ffmpeg
-
-[ -n "${SWAYSOCK:-}" ] || _fail 3 "No Sway session, SWAYSOCK is not set"
-
-# ╭───
-# │ Cleanup
-# ╰───
-
-_TEMP_DIR=""
-_IS_CURSOR_HIDDEN="" # "true" once the cursor hides
-_RECORDER_PID=""     # wf-recorder, while it runs
-_WATCHER_PID=""      # the _wait_for_exit subshell, with --pid
-
-# shellcheck disable=SC2329 # called by trap
-_cleanup() {
-  if [ -n "$_WATCHER_PID" ]; then
-    kill "$_WATCHER_PID" 2>/dev/null || true
-  fi
-
-  if [ -n "$_RECORDER_PID" ]; then
-    kill -INT "$_RECORDER_PID" 2>/dev/null || true
-  fi
-
-  if [ -n "$_IS_CURSOR_HIDDEN" ]; then
-    swaymsg --quiet "seat - hide_cursor $HIDE_CURSOR_RESTORE_MS" \
-      >/dev/null 2>&1 || true
-  fi
-
-  if [ -n "$_TEMP_DIR" ]; then
-    rm -rf -- "$_TEMP_DIR"
-  fi
-}
-
-# _trap_cleanup
-#
-# Run _cleanup on exit and on INT, TERM and HUP.
-_trap_cleanup() {
-  trap _cleanup EXIT                                    # normal exit
-  trap '_cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl-C
-  trap '_cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout
-  trap '_cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
-}
-
-# shellcheck disable=SC2329 # called by trap
-_stop_recorder() {
-  kill -INT "$_RECORDER_PID" 2>/dev/null || true
-}
-
-_trap_cleanup
-
-_TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/screenrecord.XXXXXX") \
-  || _fail 3 "Could not add a temporary directory"
+_COMMAND="$1"
+shift
 
 # ╭───
 # │ Main
 # ╰───
 
-case "$_TARGET" in
-  window)
-    if [ -n "$_PID" ]; then
-      _CON_ID=$(_wait_for_sway_window "$_PID" 5) \
-        || _fail 3 -v pid "$_PID" "No window has this pid"
-    else
-      _CON_ID=$(_pick_sway_window) || {
-        _warn "Nothing picked"
-        _notify_cancel
-        exit 4
-      }
-    fi
+# One file per command. A slug holds no "/" and no ".", so a command names
+# only a file in screenrecord.d, and never lock.sh
+_COMMAND_FILE="$_SCRIPT_DIR/screenrecord.d/$_COMMAND"
 
-    swaymsg --quiet "[con_id=$_CON_ID] focus" >/dev/null 2>&1 \
-      || _warn -v con_id "$_CON_ID" "Could not focus the window"
-    # Let Sway draw the window before the recording
-    sleep 0.1
-
-    _GEOMETRY=$(_get_sway_window_geometry "$_CON_ID") \
-      || _fail 3 -v con_id "$_CON_ID" "The window closed"
-    ;;
-  region)
-    _GEOMETRY=$(slurp) || {
-      _warn "Nothing picked"
-      _notify_cancel
-      exit 4
-    }
-    ;;
-esac
-
-_GEOMETRY=$(_pad_geometry "$_GEOMETRY" "$_PADDING")
-
-if [ -n "$_SHOULD_HIDE_CURSOR" ]; then
-  # Sway hides the cursor once it stops moving for 100 ms
-  _IS_CURSOR_HIDDEN="true"
-  swaymsg --quiet "seat - hide_cursor 100" >/dev/null 2>&1 \
-    || _warn "Could not hide the cursor"
-  sleep 0.2
+if ! _is slug "$_COMMAND" || [ ! -f "$_COMMAND_FILE" ] \
+  || [ ! -x "$_COMMAND_FILE" ]; then
+  _fail 2 -v command "$_COMMAND" "Unknown command. Use start or stop"
 fi
 
-_RECORD_FILE="$_OUTPUT_FILE"
-if [ -n "$_IS_GIF" ]; then
-  _RECORD_FILE="$_TEMP_DIR/recording.mp4"
-fi
-
-set -- --codec "$_CODEC"
-if [ "$_CODEC" = "libx264" ]; then
-  set -- "$@" --codec-param "crf=$X264_CRF" --codec-param "preset=$X264_PRESET"
-fi
-
-# A signal now stops the recording and keeps the file, instead of ending the
-# script before it writes the GIF
-trap _stop_recorder INT TERM HUP
-
-wf-recorder --overwrite --framerate "$_RECORD_FRAMERATE" "$@" \
-  --geometry "$_GEOMETRY" --file "$_RECORD_FILE" \
-  >"$_TEMP_DIR/wf-recorder.log" 2>&1 &
-_RECORDER_PID=$!
-
-if [ -n "$_PID" ]; then
-  # The subshell drops the traps, so its exit runs no _cleanup
-  (
-    _wait_for_exit "$_PID"
-    kill -INT "$_RECORDER_PID" 2>/dev/null || true
-  ) &
-  _WATCHER_PID=$!
-else
-  _info "Recording. Press Ctrl+C to stop."
-fi
-
-# A trapped signal ends wait early, with a status above 128. wf-recorder still
-# writes the end of the file, so wait for it again
-_RECORD_STATUS=0
-wait "$_RECORDER_PID" || _RECORD_STATUS=$?
-while kill -0 "$_RECORDER_PID" 2>/dev/null; do
-  _RECORD_STATUS=0
-  wait "$_RECORDER_PID" || _RECORD_STATUS=$?
-done
-_RECORDER_PID=""
-
-if [ -n "$_WATCHER_PID" ]; then
-  kill "$_WATCHER_PID" 2>/dev/null || true
-  wait "$_WATCHER_PID" 2>/dev/null || true
-  _WATCHER_PID=""
-fi
-
-_trap_cleanup
-
-if [ "$_RECORD_STATUS" -ne 0 ]; then
-  cat -- "$_TEMP_DIR/wf-recorder.log" >&2
-  _fail 3 -v status "$_RECORD_STATUS" -v file "$_OUTPUT_FILE" "Recording failed"
-fi
-
-if [ -n "$_IS_GIF" ]; then
-  _WIDTH=${_GEOMETRY##* }
-  _WIDTH=${_WIDTH%%x*}
-
-  _convert_to_gif "$_RECORD_FILE" "$_OUTPUT_FILE" "$_WIDTH" || {
-    rm -f -- "$_OUTPUT_FILE"
-    _fail 3 -v file "$_OUTPUT_FILE" "GIF conversion failed"
-  }
-fi
-
-printf '%s\n' "$_OUTPUT_FILE"
-
-_notify_success "screenrecord $_TARGET" "$_OUTPUT_FILE"
-
-exit 0
+exec "$_COMMAND_FILE" "$@"

@@ -1,0 +1,420 @@
+#!/bin/sh
+
+# NAME
+#   screenrecord start - Record a window or a region in the background
+#
+# SYNOPSIS
+#   screenrecord start <target> [OPTIONS]
+#
+# DESCRIPTION
+#   Records the target in the background and returns once the first frame
+#   is written. screenrecord stop ends the recording. The recording ends
+#   with a beep and a notification, see NO_NOTIFY.
+#
+#   One recording runs at a time. start takes a lock, the folder
+#   screenrecord.lock in the runtime folder: $XDG_RUNTIME_DIR, else
+#   /run/user/<uid>. Each file in it holds one value:
+#
+#     pid        start while the user picks, then the process that
+#                records. kill -TERM <pid> stops either, as stop does
+#     state      starting, recording once the first frame is written, then
+#                converting while ffmpeg writes a GIF
+#     file       The absolute path of the output file
+#     geometry   The area the user picked
+#
+#   The recording removes the lock when the file is written.
+#
+#   wf-recorder records one screen. A target across two screens loses the
+#   part outside the screen that holds its center.
+#
+# ARGUMENTS
+#   target   What to record:
+#              window   The window the user clicks
+#              region   The rectangle the user draws, or --geometry
+#
+# OPTIONS
+#   -o, --output <file>        File to write (default: <target>_<date>.mp4
+#                              in Screencasts of the XDG videos folder, or
+#                              of ~/Videos). Its extension picks the format:
+#                                .mp4, .mkv   H.264
+#                                .webm        VP9
+#                                .gif         H.264, then a GIF at 10 fps
+#                              H.264 needs an even width and height, so a
+#                              .mp4, .mkv or .gif can lose 1 px of each
+#   -g, --geometry <x,y wxh>   With region: record this area, no picker
+#       --hide-cursor          Hide the cursor while recording. At the end,
+#                              set the Sway hide_cursor timeout to 0, the
+#                              Sway default. A hide_cursor from the sway
+#                              config stays off until the next reload
+#   -h, --help                 Print this help
+#
+# ENVIRONMENT
+#   NO_NOTIFY   Skips the beep and the notification when non-empty,
+#               eg. for a script that records many files in a row
+#
+# EXAMPLE
+#   bindsym $mod+Shift+r exec screenrecord start region -o region.webm
+#   screenrecord start region --geometry "0,0 800x600" -o top-left.gif
+#
+# EXIT CODES
+#   0   The recording runs
+#   2   Invalid usage
+#   3   Could not run, eg. no Sway session, a recording runs or a stale lock
+#       exists, the target is outside the screens, the recording failed
+#   4   The user picked nothing
+#
+# SEE ALSO
+#   screenrecord, wf-recorder, ffmpeg, slurp, swaymsg, jq, xdg-user-dir,
+#   doomst, beep_success, beep_cancel
+
+# screenrecord runs this file, never call it directly.
+
+set -eu
+
+_SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$_SCRIPT_DIR/lock.sh"
+
+_OUTPUT_FILE=""        # -o/--output
+_GEOMETRY=""           # -g/--geometry, a geometry
+_SHOULD_HIDE_CURSOR="" # --hide-cursor, "true" or ""
+
+# ╭───
+# │ Primitives
+# ╰───
+
+# _find_output_geometry <geometry>
+#
+# Print the geometry of the screen that holds the center of <geometry>.
+# Print nothing when no screen holds it.
+_find_output_geometry() {
+  # shellcheck disable=SC2046 # _split_geometry prints four words
+  set -- $(_split_geometry "$1")
+
+  swaymsg -t get_outputs | jq -r \
+    --argjson x "$(($1 + $3 / 2))" --argjson y "$(($2 + $4 / 2))" '
+    first(.[] | select(.active) | .rect
+      | select(.x <= $x and $x < .x + .width and .y <= $y and $y < .y + .height)
+      | "\(.x),\(.y) \(.width)x\(.height)") // empty'
+}
+
+# _even_geometry <geometry>
+#
+# Print <geometry> with its width and height rounded down to even, eg.
+# "0,0 839x321" gives "0,0 838x320". H.264 needs an even size, and
+# wf-recorder hangs on an odd height.
+_even_geometry() {
+  # shellcheck disable=SC2046 # _split_geometry prints four words
+  set -- $(_split_geometry "$1")
+
+  printf '%s,%s %sx%s\n' "$1" "$2" "$(($3 - $3 % 2))" "$(($4 - $4 % 2))"
+}
+
+# _convert_to_gif <video-file> <gif-file>
+#
+# Write <video-file> as <gif-file>, at 10 fps, with a palette made from the
+# colors of <video-file>. ffmpeg has no "--", so "file:" stops ffmpeg from
+# reading a <gif-file> that starts with "-" as a flag.
+_convert_to_gif() {
+  ffmpeg -hide_banner -loglevel error -y -i "$1" \
+    -vf "fps=10,format=rgb24,split[s0][s1];[s0]palettegen=stats_mode=full[p];[s1][p]paletteuse=dither=sierra2_4a" \
+    "file:$2"
+}
+
+# _has_record_settled
+#
+# Tell if the recording runs, or has ended and removed the lock.
+# shellcheck disable=SC2329 # called by _wait_until
+_has_record_settled() {
+  [ ! -d "$_LOCK_DIR" ] || [ "$(_get_lock_value state)" = "recording" ]
+}
+
+# _stop_picker <pid>
+#
+# End the picker <pid> and its children, eg. slurp, so its overlay leaves
+# the screen.
+# shellcheck disable=SC2329 # called by _cleanup, a trap
+_stop_picker() {
+  ps -A -o pid= -o ppid= \
+    | awk -v ppid="$1" '$2 == ppid { print $1 }' \
+    | while read -r sp_pid; do
+      kill "$sp_pid" 2>/dev/null || true
+    done
+  kill "$1" 2>/dev/null || true
+}
+
+# ╭───
+# │ Recording, in the background
+# ╰───
+
+_TEMP_DIR=""     # the recording, before the GIF
+_RECORDER_PID="" # wf-recorder, while it runs
+_IS_STOPPING=""  # "true" once a signal asked to stop
+
+# shellcheck disable=SC2329 # called by trap
+_cleanup_record() {
+  if [ -n "$_RECORDER_PID" ]; then
+    kill -INT "$_RECORDER_PID" 2>/dev/null || true
+  fi
+
+  _restore_sway_cursor
+  rm -rf -- "${_TEMP_DIR:-}"
+
+  # stop removes a lock its owner left, so it can be gone
+  if [ -d "$_LOCK_DIR" ]; then
+    rm -r -- "${_LOCK_DIR:?}"
+  fi
+}
+
+# _stop_recorder
+#
+# Send INT to wf-recorder, which finishes the file and exits. Before
+# wf-recorder starts, set _IS_STOPPING, so _record stops it at start.
+# shellcheck disable=SC2329 # called by trap
+_stop_recorder() {
+  _IS_STOPPING="true"
+  if [ -n "$_RECORDER_PID" ]; then
+    kill -INT "$_RECORDER_PID" 2>/dev/null || true
+  fi
+}
+
+# _record <codec>
+#
+# Record _GEOMETRY to _OUTPUT_FILE with <codec>, convert a GIF, then notify.
+# Runs as the background process that owns the lock, and removes it on exit.
+_record() {
+  # A subshell drops the traps of its parent
+  trap _cleanup_record EXIT
+  trap _stop_recorder INT TERM
+  trap '' HUP # a closed terminal does not stop it
+
+  _TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/screenrecord.XXXXXX") \
+    || _fail 3 "Could not add a temporary folder"
+
+  r_file="$_OUTPUT_FILE"
+  if [ -n "$_IS_GIF" ]; then
+    r_file="$_TEMP_DIR/recording.mp4"
+  fi
+  rm -f -- "$r_file"
+
+  if [ -n "$_SHOULD_HIDE_CURSOR" ]; then
+    _hide_sway_cursor
+  fi
+
+  r_codec="$1"
+  set -- --codec "$r_codec"
+  if [ "$r_codec" = "libx264" ]; then
+    set -- "$@" --codec-param "crf=17" --codec-param "preset=medium"
+  fi
+
+  # Without --no-damage, wf-recorder waits for the screen to change before
+  # it reads a stop signal, which on a still screen can take minutes
+  wf-recorder --overwrite --no-damage --framerate 30 "$@" \
+    --geometry "$_GEOMETRY" --file "$r_file" \
+    >"$_TEMP_DIR/wf-recorder.log" 2>&1 </dev/null &
+  _RECORDER_PID=$!
+  if [ -n "$_IS_STOPPING" ]; then
+    _stop_recorder
+  fi
+
+  # The file holds the first frame once it is not empty
+  _wait_until 5 test -s "$r_file" || _warn "No frame after 5 s"
+  _set_lock_value state recording
+
+  # A trapped signal ends wait early, with a status above 128. wf-recorder
+  # still writes the end of the file, so wait for it again
+  r_status=0
+  wait "$_RECORDER_PID" || r_status=$?
+  while kill -0 "$_RECORDER_PID" 2>/dev/null; do
+    r_status=0
+    wait "$_RECORDER_PID" || r_status=$?
+  done
+  _RECORDER_PID=""
+
+  if [ "$r_status" -ne 0 ]; then
+    cat -- "$_TEMP_DIR/wf-recorder.log" >&2
+    _fail 3 -v status "$r_status" -v file "$_OUTPUT_FILE" "Recording failed"
+  fi
+
+  if [ -n "$_IS_GIF" ]; then
+    _set_lock_value state converting
+    _convert_to_gif "$r_file" "$_OUTPUT_FILE" || {
+      rm -f -- "$_OUTPUT_FILE"
+      _fail 3 -v file "$_OUTPUT_FILE" "GIF conversion failed"
+    }
+  fi
+
+  _notify_success "screenrecord $_TARGET" "$_OUTPUT_FILE"
+}
+
+# ╭───
+# │ Bootstrap
+# ╰───
+
+case "${1:-}" in
+  -h | --help)
+    _show_help "$0"
+    exit 0
+    ;;
+  window | region) _TARGET="$1" ;;
+  "") _fail 2 "No target given. Use window or region" ;;
+  *) _fail 2 -v target "$1" "Unknown target. Use window or region" ;;
+esac
+shift
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -h | --help)
+      _show_help "$0"
+      exit 0
+      ;;
+    -o | --output)
+      [ "$#" -lt 2 ] && _fail 2 "--output needs a file"
+      _OUTPUT_FILE="$2"
+      shift 2
+      ;;
+    -g | --geometry)
+      [ "$#" -lt 2 ] && _fail 2 "--geometry needs <x>,<y> <width>x<height>"
+      _is geometry "$2" || _fail 2 -v geometry "$2" "Not a geometry"
+      _GEOMETRY="$2"
+      shift 2
+      ;;
+    --hide-cursor)
+      _SHOULD_HIDE_CURSOR="true"
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
+    *) break ;;
+  esac
+done
+
+[ "$#" -eq 0 ] || _fail 2 -v argument "$1" "Unexpected argument"
+
+if [ -n "$_GEOMETRY" ] && [ "$_TARGET" != "region" ]; then
+  _fail 2 -v target "$_TARGET" "--geometry works only with region"
+fi
+
+if [ -z "$_OUTPUT_FILE" ]; then
+  _OUTPUT_FILE="$(_get_user_dir VIDEOS "$HOME/Videos")/Screencasts/${_TARGET}_$(date +%Y-%m-%dT%H:%M:%S%z).mp4"
+fi
+
+_IS_GIF=""
+case "$_OUTPUT_FILE" in
+  *.mp4 | *.mkv) _CODEC="libx264" ;;
+  *.webm) _CODEC="libvpx-vp9" ;;
+  *.gif)
+    _CODEC="libx264"
+    _IS_GIF="true"
+    ;;
+  *)
+    _fail 2 -v file "$_OUTPUT_FILE" \
+      "Unsupported extension. Use .mp4, .mkv, .webm or .gif"
+    ;;
+esac
+
+# stop prints the file from the lock, so make it absolute
+case "$_OUTPUT_FILE" in
+  /*) ;;
+  *) _OUTPUT_FILE="$PWD/$_OUTPUT_FILE" ;;
+esac
+
+_require_cmd swaymsg wf-recorder jq
+[ -n "$_GEOMETRY" ] || _require_cmd slurp
+[ -z "$_IS_GIF" ] || _require_cmd ffmpeg
+_require_sway
+
+# ╭───
+# │ Lock
+# ╰───
+
+if ! mkdir -- "$_LOCK_DIR" 2>/dev/null; then
+  _fail 3 -v pid "$(_get_lock_value pid)" \
+    "A recording runs, or a stale lock: screenrecord stop"
+fi
+
+# The lock has an owner from here on, also while the user picks
+_set_lock_value pid "$$"
+_set_lock_value state starting
+_set_lock_value file "$_OUTPUT_FILE"
+
+_HAS_LOCK="true" # "" once the recording owns the lock
+_PICK_PID=""     # the picker, while the user picks
+_RECORD_PID=""   # the recording, until start returns
+
+# shellcheck disable=SC2329 # called by trap
+_cleanup() {
+  if [ -n "$_PICK_PID" ]; then
+    _stop_picker "$_PICK_PID"
+  fi
+
+  # The recording owns the lock, so a stop or a failure goes to it
+  if [ -n "$_RECORD_PID" ]; then
+    kill -TERM "$_RECORD_PID" 2>/dev/null || true
+  fi
+
+  if [ -n "$_HAS_LOCK" ]; then
+    rm -r -- "${_LOCK_DIR:?}"
+  fi
+}
+
+trap _cleanup EXIT                                    # normal exit
+trap '_cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl-C
+trap '_cleanup; trap - EXIT TERM; kill -TERM $$' TERM # screenrecord stop
+trap '_cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
+
+# ╭───
+# │ Main
+# ╰───
+
+if [ -z "$_GEOMETRY" ]; then
+  # In the background, so a TERM from stop ends the wait and the picker
+  _pick_sway_geometry "$_TARGET" >"$_LOCK_DIR/geometry" &
+  _PICK_PID=$!
+
+  _PICK_STATUS=0
+  wait "$_PICK_PID" || _PICK_STATUS=$?
+  _PICK_PID=""
+
+  _GEOMETRY=$(_get_lock_value geometry)
+  if [ "$_PICK_STATUS" -ne 0 ] || [ -z "$_GEOMETRY" ]; then
+    _warn "Nothing picked"
+    _notify_cancel
+    exit 4
+  fi
+fi
+
+_SCREEN_GEOMETRY=$(_find_output_geometry "$_GEOMETRY")
+if [ -z "$_SCREEN_GEOMETRY" ] \
+  || ! _CLAMPED_GEOMETRY=$(_clamp_geometry "$_GEOMETRY" "$_SCREEN_GEOMETRY"); then
+  _fail 3 -v geometry "$_GEOMETRY" "The target is outside the screens"
+fi
+_GEOMETRY="$_CLAMPED_GEOMETRY"
+
+if [ "$_CODEC" = "libx264" ]; then
+  _GEOMETRY=$(_even_geometry "$_GEOMETRY")
+fi
+
+mkdir -p -- "$(dirname -- "$_OUTPUT_FILE")" \
+  || _fail 3 -v file "$_OUTPUT_FILE" "Could not add the folder"
+
+# stdout goes nowhere, so a caller that reads it, eg. $(screenrecord start),
+# does not wait for the recording to end
+_record "$_CODEC" </dev/null >/dev/null &
+_RECORD_PID=$!
+
+# The recording owns the lock from here on
+_set_lock_value pid "$_RECORD_PID"
+_HAS_LOCK=""
+
+_wait_until 10 _has_record_settled \
+  || _fail 3 "The recording did not start in 10 s"
+[ -d "$_LOCK_DIR" ] || _fail 3 -v file "$_OUTPUT_FILE" "The recording failed"
+
+_info -v pid "$_RECORD_PID" "Recording. Stop it with: screenrecord stop"
+
+# The exit leaves the recording running
+_RECORD_PID=""
+exit 0

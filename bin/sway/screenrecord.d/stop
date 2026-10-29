@@ -1,0 +1,80 @@
+#!/bin/sh
+
+# NAME
+#   screenrecord stop - End the recording, print its file
+#
+# SYNOPSIS
+#   screenrecord stop
+#
+# DESCRIPTION
+#   Ends the recording that screenrecord start runs, waits until its file
+#   is written, a GIF conversion included, then prints the file path.
+#
+#   With no lock, it says that nothing records. A lock with no pid, or whose
+#   pid is gone or runs another program, is stale: stop removes it and
+#   warns. It signals only a pid that runs screenrecord start.
+#
+# OPTIONS
+#   -h, --help   Print this help
+#
+# EXIT CODES
+#   0   The file is written, nothing records, or a stale lock is removed
+#   2   Invalid usage, eg. an argument
+#   3   The recording did not end in 600 s
+#
+# SEE ALSO
+#   screenrecord, screenrecord start
+
+# screenrecord runs this file, never call it directly.
+
+set -eu
+
+_SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$_SCRIPT_DIR/lock.sh"
+
+# ╭───
+# │ Main
+# ╰───
+
+case "${1:-}" in
+  -h | --help)
+    _show_help "$0"
+    exit 0
+    ;;
+esac
+
+[ "$#" -eq 0 ] || _fail 2 '"stop" takes no arguments'
+
+if [ ! -d "$_LOCK_DIR" ]; then
+  _info "Nothing records"
+  exit 0
+fi
+
+_PID=$(_get_lock_value pid)
+_FILE=$(_get_lock_value file)
+
+# start writes pid right after it makes the folder, so a lock with no pid is
+# stale too
+if ! _is_recorder "$_PID"; then
+  rm -r -- "${_LOCK_DIR:?}"
+  _warn -v pid "${_PID:-none}" "Removed a stale lock"
+  exit 0
+fi
+
+kill -TERM "$_PID" 2>/dev/null || true
+
+# The recording converts a GIF before it removes the lock
+_wait_until 600 _is_lock_free \
+  || _fail 3 -v pid "$_PID" "The recording did not end in 600 s"
+
+if [ -d "$_LOCK_DIR" ]; then
+  rm -r -- "${_LOCK_DIR:?}"
+  _warn -v pid "$_PID" "The recording ended and left its lock. Removed it"
+fi
+
+# A pick that stop cancels writes no file
+if [ -f "$_FILE" ]; then
+  printf '%s\n' "$_FILE"
+fi
+
+exit 0

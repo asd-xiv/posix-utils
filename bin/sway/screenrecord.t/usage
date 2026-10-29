@@ -13,53 +13,121 @@ actual() { "$SCREENRECORD" --help; }
 _expect equal actual.exit 0
 _expect start-with actual.stdout 'NAME'
 
+_test 'given [--help] should [list the commands, not their flags]'
+actual() { "$SCREENRECORD" --help; }
+_expect contain actual.stdout 'Each command prints its own help with --help'
+_expect ! contain actual.stdout '--geometry'
+
+_test 'given [stop --help] should [print the man page of stop and exit 0]'
+actual() { XDG_RUNTIME_DIR="$PWD" "$SCREENRECORD" stop --help; }
+_expect equal actual.exit 0
+_expect contain actual.stdout 'screenrecord stop - End the recording'
+
 _test 'given [no positional and no flag] should [exit 2]'
 actual() { "$SCREENRECORD"; }
 _expect equal actual.exit 2
 
-_test 'given [an unknown flag] should [exit 2]'
-actual() { "$SCREENRECORD" --zz window; }
+_test 'given [an unknown flag first] should [exit 2]'
+actual() { "$SCREENRECORD" --zz start; }
 _expect equal actual.exit 2
+_expect contain actual.stderr 'Unknown flag'
 
-_test 'given [a flag and no target] should [exit 2]'
-actual() { "$SCREENRECORD" --hide-cursor; }
+_test 'given [a target with no command] should [exit 2]'
+actual() { "$SCREENRECORD" window; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Unknown command'
+
+_test 'given [start with no target] should [exit 2]'
+actual() { "$SCREENRECORD" start; }
 _expect equal actual.exit 2
 _expect contain actual.stderr 'No target given'
 
-_test 'given [all, a target of screenshot only] should [exit 2]'
-actual() { "$SCREENRECORD" all; }
+_test 'given [start all, a target of screenshot only] should [exit 2]'
+actual() { "$SCREENRECORD" start all; }
 _expect equal actual.exit 2
 _expect contain actual.stderr 'Unknown target'
 
+_test 'given [start and two targets] should [exit 2]'
+actual() { "$SCREENRECORD" start window region; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Unexpected argument'
+
 _test 'given [an --output that is not .mp4, .mkv, .webm or .gif] should [exit 2]'
-actual() { "$SCREENRECORD" region --output a.avi; }
+actual() { "$SCREENRECORD" start region --output a.avi; }
 _expect equal actual.exit 2
 _expect contain actual.stderr 'Unsupported extension'
 
-_test 'given [a --pid that is not a number] should [exit 2]'
-actual() { "$SCREENRECORD" window --pid 12a; }
+_test 'given [a --geometry that is not a geometry] should [exit 2]'
+actual() { "$SCREENRECORD" start region --geometry '0,0 -5x10'; }
 _expect equal actual.exit 2
+_expect contain actual.stderr 'Not a geometry'
 
-_test 'given [--pid with region] should [exit 2]'
-actual() { "$SCREENRECORD" region --pid 1; }
+_test 'given [--geometry with window] should [exit 2]'
+actual() { "$SCREENRECORD" start window --geometry '0,0 10x10'; }
 _expect equal actual.exit 2
-_expect contain actual.stderr '--pid works only with window'
+_expect contain actual.stderr '--geometry works only with region'
 
-_test 'given [a GIF_FRAMERATE that is not a number, and a .gif] should [exit 2]'
-actual() { GIF_FRAMERATE=fast "$SCREENRECORD" region --output a.gif; }
+_test 'given [--padding, a dropped flag] should [exit 2]'
+actual() { "$SCREENRECORD" start region --padding 10; }
 _expect equal actual.exit 2
-_expect contain actual.stderr 'GIF_FRAMERATE'
+_expect contain actual.stderr 'Unknown flag'
 
-_test 'given [a --padding that is not a number] should [exit 2]'
-actual() { "$SCREENRECORD" region --padding 1.5; }
+_test 'given [an unknown command] should [exit 2]'
+actual() { "$SCREENRECORD" pause; }
 _expect equal actual.exit 2
-_expect contain actual.stderr 'Not a number of px'
+_expect contain actual.stderr 'Unknown command'
 
-_test 'given [--padding with a leading zero] should [exit 2]'
-actual() { "$SCREENRECORD" region --padding 010; }
+_test 'given [lock.sh, the shared file, as a command] should [exit 2]'
+actual() { "$SCREENRECORD" lock.sh; }
 _expect equal actual.exit 2
+_expect contain actual.stderr 'Unknown command'
 
-_test 'given [--no-notify and an unknown target] should [accept the flag, exit 2 on the target]'
-actual() { "$SCREENRECORD" --no-notify all; }
+_test 'given [start --help] should [print the man page of start and exit 0]'
+actual() { "$SCREENRECORD" start --help; }
+_expect equal actual.exit 0
+_expect contain actual.stdout 'screenrecord start - Record a window'
+_expect contain actual.stdout '--geometry'
+
+_test 'given [start region --help] should [print the man page of start and exit 0]'
+actual() { "$SCREENRECORD" start region --help; }
+_expect equal actual.exit 0
+_expect contain actual.stdout 'screenrecord start - Record a window'
+
+_test 'given [stop and an argument] should [exit 2]'
+actual() { XDG_RUNTIME_DIR="$PWD" "$SCREENRECORD" stop now; }
 _expect equal actual.exit 2
-_expect contain actual.stderr 'Unknown target'
+_expect contain actual.stderr 'takes no arguments'
+
+_test 'given [stop and a flag] should [exit 2]'
+actual() { XDG_RUNTIME_DIR="$PWD" "$SCREENRECORD" stop --output a.mp4; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'takes no arguments'
+
+_test 'given [stop and no lock] should [exit 0]'
+actual() { XDG_RUNTIME_DIR="$PWD" "$SCREENRECORD" stop; }
+_expect equal actual.exit 0
+_expect contain actual.stderr 'Nothing records'
+
+_test 'given [stop and a lock with no pid] should [remove the lock and exit 0]'
+actual() {
+  mkdir screenrecord.lock
+  XDG_RUNTIME_DIR="$PWD" "$SCREENRECORD" stop
+  [ ! -d screenrecord.lock ] && printf 'removed\n'
+}
+_expect equal actual.exit 0
+_expect equal actual.stdout 'removed'
+_expect contain actual.stderr 'Removed a stale lock'
+
+_test 'given [stop and a lock whose pid is gone] should [remove the lock and exit 0]'
+actual() {
+  sh -c ':' &
+  gone_pid=$!
+  wait "$gone_pid"
+  mkdir screenrecord.lock
+  printf '%s\n' "$gone_pid" >screenrecord.lock/pid
+  XDG_RUNTIME_DIR="$PWD" "$SCREENRECORD" stop
+  [ ! -d screenrecord.lock ] && printf 'removed\n'
+}
+_expect equal actual.exit 0
+_expect equal actual.stdout 'removed'
+_expect contain actual.stderr 'Removed a stale lock'
