@@ -9,11 +9,11 @@ _describe "recheck :: status"
 
 before_each() { build_sandbox; }
 
-_test 'given [two enabled checks, one with a marker] should [count one as running]'
+_test 'given [two enabled checks, one with a lock] should [count one as running]'
 prepare() {
   add_check a 0
   add_check b 0
-  add_marker a
+  add_lock a
 }
 actual() { "$RECHECK" status; }
 _expect equal actual.exit 0

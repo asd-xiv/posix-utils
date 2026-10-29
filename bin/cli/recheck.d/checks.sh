@@ -14,9 +14,14 @@ RECHECK_FILE=$(realpath "$SCRIPT_DIR/../recheck")
 
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/recheck"
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/recheck"
-# cron sets no XDG_RUNTIME_DIR. The default is the folder the login manager
-# makes for the user. A boot clears it
-RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/recheck"
+# The parent of the locks. cron sets no XDG_RUNTIME_DIR, so _get_runtime_dir
+# falls back to /run/user/<user id>, the folder the login manager makes for the
+# user. A boot clears it. Empty when the user has neither: then no check has a
+# lock, and run can take none
+RUNTIME_DIR=""
+if RUNTIME_PARENT_DIR=$(_get_runtime_dir 2>/dev/null); then
+  RUNTIME_DIR="$RUNTIME_PARENT_DIR/recheck"
+fi
 CHECKS_DIR="$CONFIG_DIR/checks"
 ENV_FILE="$CONFIG_DIR/env"
 # shellcheck disable=SC2034 # the command files read it
@@ -136,41 +141,42 @@ find_state() {
   printf '%s' "${state_line%%"$TAB"*}"
 }
 
-# The marker of a check is the file "<id>.running" in the runtime folder. "run"
-# creates it before the check starts and removes it when the check ends. It
-# holds the process id of the run command and the time the check started. "show"
-# prints the time. The process id is for a person who finds a marker that a run
-# command left. recheck trusts the marker: a check with a marker is running, and
-# "run" skips it. No command asks whether the process still runs. A run command
-# that ends without its traps, eg. by kill -9, leaves its marker. Then the check
-# runs again only after a person removes the marker, or a boot removes the
-# default runtime folder.
+# The lock of a check is the folder "<id>.lock" in the runtime folder. "run"
+# makes it with mkdir before the check starts and removes it when the check
+# ends. It holds one file per value: "pid", the process id of the run command,
+# then "started", the time the check started. "show" prints the time. The
+# process id is for a person who finds a lock that a run command left. recheck
+# trusts the lock: a check with a lock is running, and "run" skips it. No
+# command asks whether the process still runs. A run command that ends without
+# its traps, eg. by kill -9, leaves its lock. Then the check runs again only
+# after a person removes the lock, or a boot clears the runtime folder.
 
-# print_marker_file <id>
-# Print the path of the marker of a check, whether the check has one or not.
-print_marker_file() {
-  printf '%s' "$RUNTIME_DIR/$1.running"
+# print_lock_dir <id>
+# Print the path of the lock of a check, whether the check has one or not.
+# Return 1 when the user has no runtime folder.
+print_lock_dir() {
+  [ -n "$RUNTIME_DIR" ] || return 1
+  printf '%s' "$RUNTIME_DIR/$1.lock"
 }
 
 # find_run_start <id>
 # Print the time the run in progress started. Return 1 when the check has no
-# marker. A marker is empty for an instant after its creation. Then print an
-# empty time and return 0.
+# lock. A lock has no "started" for an instant after mkdir. Then print an empty
+# time and return 0.
 find_run_start() {
-  start_file=$(print_marker_file "$1")
-  [ -f "$start_file" ] || return 1
+  start_dir=$(print_lock_dir "$1") || return 1
+  [ -d "$start_dir" ] || return 1
 
-  # The time stays empty when the marker is empty, and when the run ended after
-  # the guard above and removed the marker
+  # The time stays empty before run writes it, and when the run ended after the
+  # guard above and removed the lock
   start_time=""
-  # shellcheck disable=SC2034 # read needs a name for the process id
-  { read -r start_pid start_time <"$start_file" || true; } 2>/dev/null
+  { read -r start_time <"$start_dir/started" || true; } 2>/dev/null
 
   printf '%s' "$start_time"
 }
 
 # is_running <id>
-# Return 0 when the check has a marker.
+# Return 0 when the check has a lock.
 is_running() {
   find_run_start "$1" >/dev/null
 }

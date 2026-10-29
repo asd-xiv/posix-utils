@@ -100,12 +100,14 @@ set -eu
 #   per run to ~/.local/state/recheck/runs.log: time, state, exit code,
 #   seconds the run took and id.
 #
-#   While a check runs, recheck keeps a marker: the file <id>.running in
-#   /run/user/<user id>/recheck. While a check has a marker, run skips it, and
-#   status, show and "ls --color" report it as running. A run command that ends
-#   by "kill -9" leaves the marker. It stays until you remove it, or until the
-#   next boot clears /run/user/<user id>. When run cannot create the marker of a
-#   check, it skips that check. It runs the other checks. Then it exits 3.
+#   While a check runs, recheck keeps its lock: the folder <id>.lock in
+#   /run/user/<user id>/recheck. It holds two files: pid, the process id of
+#   the run command, and started, the time the check started. While a check
+#   has a lock, run skips it, and status, show and "ls --color" report it as
+#   running. A run command that ends by "kill -9" leaves the lock. It stays
+#   until you remove it with "rm -r", or until the next boot clears
+#   /run/user/<user id>. When run cannot take the lock of a check, it skips
+#   that check. It runs the other checks. Then it exits 3.
 #
 # ARGUMENTS
 #   id   Check to act on. Repeatable for enable, disable and run
@@ -137,9 +139,9 @@ set -eu
 #                      browser writes "recheck edit <id>" after it
 #   XDG_CONFIG_HOME    Parent of the recheck config (default: ~/.config)
 #   XDG_STATE_HOME     Parent of the recheck state (default: ~/.local/state)
-#   XDG_RUNTIME_DIR    Parent of the folder "recheck" that holds the markers
+#   XDG_RUNTIME_DIR    Parent of the folder "recheck" that holds the locks
 #                      (default: /run/user/<user id>). run exits 3 when it
-#                      cannot create a marker
+#                      cannot take a lock
 #   LOG_LEVEL          Last level to print (default: info)
 #   NO_COLOR           Disables color when set and non-empty, in log lines
 #                      and in the lines sync prints
@@ -155,7 +157,7 @@ set -eu
 #   2   Invalid usage
 #   3   Could not run, eg. no crontab command or a check without a valid cron
 #       pattern. For browse, no fzf, an fzf older than 0.73.0 or no terminal.
-#       For run, it could not create the marker of at least one check
+#       For run, it could not take the lock of at least one check
 #
 # SEE ALSO
 #   crontab, recheck-bar, open-os-menu, nvim, fzf, awk

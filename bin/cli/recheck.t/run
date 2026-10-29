@@ -4,6 +4,7 @@
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../../tools/test-lib.sh"
 . "$SCRIPT_DIR/sandbox.sh"
+. "$SCRIPT_DIR/../../lib.sh" # for _wait_until
 
 _describe "recheck :: run"
 
@@ -64,25 +65,25 @@ actual() { "$RECHECK" run good; }
 _expect equal actual.exit 0
 _expect ! equal hook.log ''
 
-# recheck trusts a marker and never asks whether its process still runs. No run
-# command created the marker of add_marker, so the two tests below also cover
-# the marker a run command leaves when kill -9 ends it
-_test 'given [a check with a marker] should [not start it, say "Already running, skipping" and name the marker]'
+# recheck trusts a lock and never asks whether its process still runs. No run
+# command made the lock of add_lock, so the two tests below also cover the lock
+# a run command leaves when kill -9 ends it
+_test 'given [a check with a lock] should [not start it, say "Already running, skipping" and name the lock]'
 prepare() {
   add_traced_check a
-  add_marker a
+  add_lock a
 }
 actual() { "$RECHECK" run a; }
 _expect equal actual.exit 0
 _expect equal actual.stdout ''
 _expect equal check.log ''
-_expect contain actual.stderr 'Already running, skipping id=a marker='
-_expect end-with actual.stderr '/runtime/recheck/a.running'
+_expect contain actual.stderr 'Already running, skipping id=a lock='
+_expect end-with actual.stderr '/runtime/recheck/a.lock'
 
-_test 'given [a check with a marker and two run commands that start together] should [not start the check, keep the marker]'
+_test 'given [a check with a lock and two run commands that start together] should [not start the check, keep the lock]'
 prepare() {
   add_traced_check a
-  add_marker a
+  add_lock a
 }
 actual() {
   "$RECHECK" run a >first.stdout 2>first.stderr &
@@ -92,9 +93,10 @@ actual() {
 _expect equal check.log ''
 _expect contain first.stderr 'Already running, skipping'
 _expect contain second.stderr 'Already running, skipping'
-_expect equal runtime/recheck/a.running '4242 12:00:00'
+_expect equal runtime/recheck/a.lock/pid '4242'
+_expect equal runtime/recheck/a.lock/started '12:00:00'
 
-_test 'given [a slow check and two run commands that start together] should [start the check once]'
+_test 'given [a slow check and two run commands that start together] should [start the check once, leave no lock]'
 prepare() {
   add_traced_check a
   printf 'sleep 1\n' >>config/recheck/checks/a
@@ -103,23 +105,26 @@ actual() {
   "$RECHECK" run a >first.stdout 2>first.stderr &
   "$RECHECK" run a >second.stdout 2>second.stderr &
   wait
+  cat first.stdout second.stdout
+  ls runtime/recheck
 }
 _expect equal check.log 'start'
+_expect equal actual.stdout 'a	green'
 
-_test 'given [a check that lists the runtime folder] should [create the marker before the check starts]'
+_test 'given [a check that lists its lock] should [take the lock and write pid and started before the check starts]'
 prepare() {
   cat >config/recheck/checks/a <<'CHECK'
 #!/bin/sh
 # CRON: * * * * *
-ls "$XDG_RUNTIME_DIR/recheck"
+ls "$XDG_RUNTIME_DIR/recheck/a.lock"
 CHECK
   chmod +x config/recheck/checks/a
 }
 actual() { "$RECHECK" run a; }
 _expect equal actual.stdout 'a	green'
-_expect equal state/recheck/a/output 'a.running'
+_expect equal state/recheck/a/output "$(printf 'pid\nstarted')"
 
-_test 'given [a run that ended] should [leave no marker in the runtime folder]'
+_test 'given [a run that ended] should [leave no lock in the runtime folder]'
 prepare() { add_check a 0; }
 actual() {
   "$RECHECK" run a >/dev/null
@@ -127,6 +132,23 @@ actual() {
 }
 _expect equal actual.exit 0
 _expect equal actual.stdout ''
+
+# The shell runs a trap only after the check it waits for ends, so the check
+# sleeps 1 s, not longer
+_test 'given [a run command that gets TERM while its check runs] should [remove the lock and the half output]'
+prepare() {
+  add_traced_check a
+  printf 'sleep 1\n' >>config/recheck/checks/a
+}
+actual() {
+  "$RECHECK" run a &
+  run_pid=$!
+  _wait_until 5 test -s check.log
+  kill -TERM "$run_pid"
+  wait "$run_pid" || true
+  ls runtime/recheck state/recheck/a
+}
+_expect equal actual.stdout "$(printf 'runtime/recheck:\n\nstate/recheck/a:')"
 
 _test 'given [a runtime folder that run cannot create] should [exit 3 and not start the check]'
 prepare() {
@@ -137,18 +159,18 @@ actual() { XDG_RUNTIME_DIR="$PWD/file/runtime" "$RECHECK" run a; }
 _expect equal actual.exit 3
 _expect equal actual.stdout ''
 _expect equal check.log ''
-_expect contain actual.stderr 'Could not create the marker'
+_expect contain actual.stderr 'Could not take the lock'
 
-# With noclobber the shell cannot create a file where a link exists, even as
-# root. The link points at nothing, so [ -e ] is false and mark_run returns 2
-_test 'given [two checks, the first with a marker that run cannot create] should [run the second, exit 3]'
+# mkdir cannot make a folder where a link exists, even as root. The link points
+# at nothing, so [ -d ] is false and take_lock returns 2
+_test 'given [two checks, the first with a lock that run cannot take] should [run the second, exit 3]'
 prepare() {
   add_check a 0
   add_check b 0
   mkdir -p runtime/recheck
-  ln -s "$PWD/missing" runtime/recheck/a.running
+  ln -s "$PWD/missing" runtime/recheck/a.lock
 }
 actual() { "$RECHECK" run a b; }
 _expect equal actual.exit 3
 _expect equal actual.stdout 'b	green'
-_expect contain actual.stderr 'Could not create the marker'
+_expect contain actual.stderr 'Could not take the lock'

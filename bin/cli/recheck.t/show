@@ -1,0 +1,19 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/sandbox.sh"
+
+_describe "recheck :: show"
+
+before_each() { build_sandbox; }
+
+_test 'given [a check with a lock] should [print the start time of the lock as running_since]'
+prepare() {
+  add_check a 0
+  add_lock a
+}
+actual() { "$RECHECK" show a; }
+_expect equal actual.exit 0
+_expect contain actual.stdout 'running_since: 12:00:00'

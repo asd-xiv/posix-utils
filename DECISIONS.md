@@ -13,6 +13,46 @@ date, then has up to five parts, in this order. Leave out a part that is empty.
 - **Acknowledgments**: a known gap the Decision accepts, with the reason or the
   thing that limits it, and no **Revisit when**
 
+## Lock a `recheck` check with a folder, in `_get_runtime_dir`
+
+**2026-10-27**
+
+**Context:**
+
+- "Lock with a folder in the runtime folder, one file per value" deferred the
+  move of `recheck` to the folder lock
+- A `recheck` check had a `noclobber` marker `<id>.running`, holding the pid and
+  the start time on one line
+
+**Decision:**
+
+- The lock of a check is `$(_get_runtime_dir)/recheck/<id>.lock/`, holding
+  `pid` and `started`, each written once
+- `run` removes the lock with `rm -r` in its cleanup and at the end of the
+  check, only when it took the lock
+- When `run` cannot write `pid` or `started`, it removes the lock and counts the
+  check as one it could not lock
+- Kept from "Lock a `recheck` check with a marker in `XDG_RUNTIME_DIR`":
+  - Every command trusts the lock: no command takes a lock over or checks its
+    pid
+  - Without a runtime folder, `run` skips every check and exits 3
+
+**Rejected:**
+
+- A hand-written `${XDG_RUNTIME_DIR:-/run/user/<user id>}`: `_get_runtime_dir`
+  holds that rule for every command
+
+**Deferred:**
+
+- A command that removes a stale lock, after `ps -p <pid> -o args=` shows it
+  does not run `recheck.d/run`
+  - **Revisit when** a lock left by `kill -9` keeps a check skipped
+
+**Acknowledgments:**
+
+- `run` can still exit 3 for a check that just ran: another run removes the lock
+  between a failed `mkdir` and the `[ -d ]` that follows
+
 ## Lock with a folder in the runtime folder, one file per value
 
 **2026-10-27**

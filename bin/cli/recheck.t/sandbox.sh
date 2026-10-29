@@ -85,12 +85,13 @@ add_state() {
   printf '2023-11-14T22:13:20+0000\t%s\t0\t1s\n' "$2" >"state/recheck/$1/last"
 }
 
-# add_marker <id>
-# Write the marker of a check, as a run in progress would, without running it.
+# add_lock <id>
+# Make the lock of a check, as a run in progress would, without running it.
 # The process id and the time are the same for every check.
-add_marker() {
-  mkdir -p runtime/recheck
-  printf '4242 12:00:00\n' >"runtime/recheck/$1.running"
+add_lock() {
+  mkdir -p "runtime/recheck/$1.lock"
+  printf '4242\n' >"runtime/recheck/$1.lock/pid"
+  printf '12:00:00\n' >"runtime/recheck/$1.lock/started"
 }
 
 # add_hook
