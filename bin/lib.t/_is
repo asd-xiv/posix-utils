@@ -64,3 +64,29 @@ _expect equal actual.stdout 'no'
 _test 'given [-1] should [return 1]'
 actual() { _is non-negative-integer -1 && echo yes || echo no; }
 _expect equal actual.stdout 'no'
+
+_describe "lib.sh :: _is geometry"
+
+_test 'given [10,20 300x400] should [return 0]'
+actual() { _is geometry '10,20 300x400' && echo yes || echo no; }
+_expect equal actual.stdout 'yes'
+
+_test 'given [a negative x and y] should [return 0]'
+actual() { _is geometry '-10,-5 300x400' && echo yes || echo no; }
+_expect equal actual.stdout 'yes'
+
+_test 'given [a width of 0] should [return 1]'
+actual() { _is geometry '0,0 0x400' && echo yes || echo no; }
+_expect equal actual.stdout 'no'
+
+_test 'given [no size] should [return 1]'
+actual() { _is geometry '10,20' && echo yes || echo no; }
+_expect equal actual.stdout 'no'
+
+_test 'given [a second space] should [return 1]'
+actual() { _is geometry '1,2 3x4 5' && echo yes || echo no; }
+_expect equal actual.stdout 'no'
+
+_test 'given [two dashes] should [return 1]'
+actual() { _is geometry '--1,2 3x4' && echo yes || echo no; }
+_expect equal actual.stdout 'no'

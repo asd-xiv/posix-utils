@@ -1,0 +1,29 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../lib.sh"
+
+_describe "lib.sh :: _clamp_geometry"
+
+_test 'given [a geometry inside the bounds] should [print it as it was]'
+actual() { _clamp_geometry "10,20 100x50" "0,0 1920x1080"; }
+_expect equal actual.stdout '10,20 100x50'
+
+_test 'given [a padded window at the top left corner] should [cut the padding off]'
+actual() { _clamp_geometry "-10,-10 120x60" "0,0 1920x1080"; }
+_expect equal actual.stdout '0,0 110x50'
+
+_test 'given [a geometry past the top and the bottom] should [cut it at both edges]'
+actual() { _clamp_geometry "540,-10 839x1100" "0,0 1920x1080"; }
+_expect equal actual.stdout '540,0 839x1080'
+
+_test 'given [bounds of a second output] should [clamp to that output]'
+actual() { _clamp_geometry "1900,100 100x100" "1920,0 1280x1024"; }
+_expect equal actual.stdout '1920,100 80x100'
+
+_test 'given [a geometry outside the bounds] should [return 1 and print nothing]'
+actual() { _clamp_geometry "2000,0 100x100" "0,0 1920x1080"; }
+_expect equal actual.exit 1
+_expect equal actual.stdout ''

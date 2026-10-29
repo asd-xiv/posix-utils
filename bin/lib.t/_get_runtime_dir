@@ -1,0 +1,25 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../lib.sh"
+
+_describe "lib.sh :: _get_runtime_dir"
+
+_test 'given [XDG_RUNTIME_DIR] should [print it]'
+actual() { XDG_RUNTIME_DIR=/some/dir _get_runtime_dir; }
+_expect equal actual.stdout '/some/dir'
+
+_test 'given [no XDG_RUNTIME_DIR] should [print /run/user/<uid>, or exit 3 when that folder is missing]'
+actual() {
+  unset XDG_RUNTIME_DIR
+  rc=0
+  dir=$(_get_runtime_dir 2>/dev/null) || rc=$?
+  if [ -d "/run/user/$(id -u)" ]; then
+    [ "$rc" -eq 0 ] && [ "$dir" = "/run/user/$(id -u)" ] && echo ok
+  else
+    [ "$rc" -eq 3 ] && echo ok
+  fi
+}
+_expect equal actual.stdout 'ok'

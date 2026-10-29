@@ -11,8 +11,9 @@
 #   export LOG_LEVEL="${LOG_LEVEL:-info}"
 #
 # DESCRIPTION
-#   Domain-agnostic primitives: logging, predicates, guards, files, text,
-#   terminal, Sway windows and help. A script sources it, never executes it.
+#   Domain-agnostic primitives: logging, predicates, guards, waits, files,
+#   text, terminal, Sway, notifications and help. A script sources it, never
+#   executes it.
 #
 #   A primitive prints its result to stdout. A predicate answers with its
 #   status and prints nothing. Everything else goes to stderr.
@@ -31,10 +32,12 @@
 #   LOG_NAMESPACE   Label printed before the message
 #   NO_LOG_TIME     Hides the time when set and non-empty
 #   NO_COLOR        Disables color when set and non-empty
+#   NO_NOTIFY       Skips the sounds and notifications when set and
+#                   non-empty
 #   TERM            Disables color when unset, empty or "dumb"
 #
 # SEE ALSO
-#   curl(1), swaymsg(1), jq(1), slurp(1)
+#   curl(1), swaymsg(1), jq(1), slurp(1), doomst, beep_success, beep_cancel
 
 # ╭───
 # │ Logging
@@ -212,13 +215,16 @@ _fail() {
 #   folgezettel            a-z0-9, starts with 1-9, a run of digits never
 #                          starts with 0, eg. 1b3. 1b03 and 1b3 would name
 #                          one place
+#   geometry               "<x>,<y> <width>x<height>", the shape grim, slurp
+#                          and wf-recorder read, eg. "-10,0 800x600". x and
+#                          y are integers, width and height positive
 #
 # RETURNS
 #   0   <value> has the shape
 #   1   <value> does not have it, or is empty
 #
 # EXIT
-#   3   <type> is not one of the six and <value> is not empty, or the call
+#   3   <type> is not a type above and <value> is not empty, or the call
 #       does not have two positionals
 _is() {
   [ "$#" -eq 2 ] || _fail 3 "_is needs <type> <value>"
@@ -261,6 +267,19 @@ _is() {
         *[!0-9a-z]* | [!1-9]* | *[a-z]0*) return 1 ;;
       esac
       ;;
+    geometry)
+      case "$2" in
+        *[!0-9,x\ -]* | *,*,* | *" "*" "* | *x*x*) return 1 ;;
+        *,*" "*x*) ;;
+        *) return 1 ;;
+      esac
+
+      # shellcheck disable=SC2046 # _split_geometry prints four words
+      set -- $(_split_geometry "$2")
+      _is non-negative-integer "${1#-}" && _is non-negative-integer "${2#-}" \
+        && _is positive-integer "$3" && _is positive-integer "$4" \
+        || return 1
+      ;;
     *)
       _fail 3 -v type "$1" "Unknown type"
       ;;
@@ -291,7 +310,7 @@ _require_cmd() {
 # _run_if_found <cmd> [arg...]
 #
 # Run <cmd> with its args when the shell finds it. Do nothing when it does
-# not, for a command the caller can live without.
+# not. Use it for an optional command.
 #
 # RETURNS
 #   0       The shell cannot find <cmd>, or <cmd> exits 0
@@ -326,8 +345,65 @@ _require_var() {
 }
 
 # ╭───
+# │ Waits
+# ╰───
+
+# _wait_until <seconds> <cmd> [arg...]
+#
+# Run <cmd> every 0.05 s until it exits 0, for up to <seconds>. <seconds>
+# must be a positive integer. sleep 0.05 is not POSIX. coreutils and
+# BusyBox read a fraction.
+#
+# RETURNS
+#   1   <cmd> did not exit 0 in <seconds>
+_wait_until() {
+  lib_wu_tries=$(($1 * 20))
+  shift
+
+  until "$@"; do
+    [ "$lib_wu_tries" -gt 0 ] || return 1
+    lib_wu_tries=$((lib_wu_tries - 1))
+    sleep 0.05
+  done
+}
+
+# ╭───
 # │ Files
 # ╰───
+
+# _get_user_dir <NAME> <fallback-dir>
+#
+# Print the XDG user folder <NAME>, eg. PICTURES. Print <fallback-dir> when
+# xdg-user-dir is not installed.
+_get_user_dir() {
+  if command -v xdg-user-dir >/dev/null 2>&1; then
+    xdg-user-dir "$1"
+  else
+    printf '%s\n' "$2"
+  fi
+}
+
+# _get_runtime_dir
+#
+# Print the runtime folder of the current user: XDG_RUNTIME_DIR, else
+# /run/user/<uid>. The system clears it at boot, so nothing in it outlasts a
+# reboot.
+#
+# EXIT
+#   3   XDG_RUNTIME_DIR is unset or empty, and /run/user/<uid> is not a
+#       folder
+_get_runtime_dir() {
+  if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+    printf '%s\n' "$XDG_RUNTIME_DIR"
+    return 0
+  fi
+
+  lib_grd_dir="/run/user/$(id -u)"
+  [ -d "$lib_grd_dir" ] \
+    || _fail 3 -v dir "$lib_grd_dir" "No runtime folder, XDG_RUNTIME_DIR is not set"
+
+  printf '%s\n' "$lib_grd_dir"
+}
 
 # _download_file <url> <output-file>
 #
@@ -583,8 +659,99 @@ _wait_for_enter() {
 }
 
 # ╭───
-# │ Sway windows
+# │ Sway
 # ╰───
+
+# _split_geometry <geometry>
+#
+# Print the four numbers of <geometry>, eg. "10,20 30x40" gives
+# "10 20 30 40".
+_split_geometry() {
+  lib_sg_y=${1#*,}
+  lib_sg_size=${1##* }
+
+  printf '%s %s %s %s\n' \
+    "${1%%,*}" "${lib_sg_y%% *}" "${lib_sg_size%%x*}" "${lib_sg_size#*x}"
+}
+
+# _clamp_geometry <geometry> <bounds>
+#
+# Print the part of <geometry> inside the geometry <bounds>, eg.
+# "-10,-10 120x60" in "0,0 1920x1080" gives "0,0 110x50".
+#
+# RETURNS
+#   1   No part of <geometry> is inside <bounds>. Prints nothing
+_clamp_geometry() {
+  # shellcheck disable=SC2046 # _split_geometry prints four words
+  set -- $(_split_geometry "$1") $(_split_geometry "$2")
+
+  lib_cg_left=$1 lib_cg_top=$2
+  lib_cg_right=$(($1 + $3)) lib_cg_bottom=$(($2 + $4))
+  [ "$lib_cg_left" -ge "$5" ] || lib_cg_left=$5
+  [ "$lib_cg_top" -ge "$6" ] || lib_cg_top=$6
+  [ "$lib_cg_right" -le $(($5 + $7)) ] || lib_cg_right=$(($5 + $7))
+  [ "$lib_cg_bottom" -le $(($6 + $8)) ] || lib_cg_bottom=$(($6 + $8))
+
+  if [ "$lib_cg_right" -le "$lib_cg_left" ] \
+    || [ "$lib_cg_bottom" -le "$lib_cg_top" ]; then
+    return 1
+  fi
+
+  printf '%s,%s %sx%s\n' "$lib_cg_left" "$lib_cg_top" \
+    "$((lib_cg_right - lib_cg_left))" "$((lib_cg_bottom - lib_cg_top))"
+}
+
+# _require_sway
+#
+# End the script unless it runs in a Sway session.
+#
+# EXIT
+#   3   SWAYSOCK is unset or empty
+_require_sway() {
+  [ -n "${SWAYSOCK:-}" ] || _fail 3 "No Sway session, SWAYSOCK is not set"
+}
+
+# _pick_sway_geometry <window|region>
+#
+# Let the user pick with slurp and print the geometry: a visible window they
+# click, or a rectangle they draw.
+#
+# RETURNS
+#   1   The user pressed Esc, or no window is visible
+_pick_sway_geometry() {
+  case "$1" in
+    window)
+      swaymsg -t get_tree | jq -r '.. | objects | select(.pid? and .visible?)
+        | "\(.rect.x),\(.rect.y) \(.rect.width)x\(.rect.height)"' \
+        | slurp -r
+      ;;
+    *) slurp ;;
+  esac
+}
+
+_IS_SWAY_CURSOR_HIDDEN="" # "true" once _hide_sway_cursor hid the cursor
+
+# _hide_sway_cursor
+#
+# Hide the cursor until _restore_sway_cursor. Sway hides it once it stops
+# moving for 100 ms, so wait 0.2 s.
+_hide_sway_cursor() {
+  _IS_SWAY_CURSOR_HIDDEN="true"
+  swaymsg --quiet "seat - hide_cursor 100" >/dev/null 2>&1 \
+    || _warn "Could not hide the cursor"
+  sleep 0.2
+}
+
+# _restore_sway_cursor
+#
+# Set the Sway hide_cursor timeout back to 0, the Sway default: never hide.
+# A hide_cursor from the sway config stays off until the next reload.
+_restore_sway_cursor() {
+  if [ -n "$_IS_SWAY_CURSOR_HIDDEN" ]; then
+    swaymsg --quiet "seat - hide_cursor 0" >/dev/null 2>&1 || true
+    _IS_SWAY_CURSOR_HIDDEN=""
+  fi
+}
 
 # A window is a Sway view: a node of "swaymsg -t get_tree" with a pid. Its
 # con_id is the "id" of that node. Its geometry is "<x>,<y> <width>x<height>",
@@ -678,6 +845,31 @@ _get_sway_window_geometry() {
   [ -n "$lib_gswg_geometry" ] || return 1
 
   printf '%s\n' "$lib_gswg_geometry"
+}
+
+# ╭───
+# │ Notifications
+# ╰───
+
+# _notify_cancel
+#
+# Play the cancel sound, unless NO_NOTIFY is non-empty. beep_cancel comes
+# from the dotfiles of the author, so a system without it plays nothing.
+_notify_cancel() {
+  [ -z "${NO_NOTIFY:-}" ] || return 0
+
+  _run_if_found beep_cancel || _warn "beep_cancel failed"
+}
+
+# _notify_success <title> <message>
+#
+# Play the success sound and send a notification, unless NO_NOTIFY is
+# non-empty. Skip either one when its command is missing.
+_notify_success() {
+  [ -z "${NO_NOTIFY:-}" ] || return 0
+
+  _run_if_found beep_success || _warn "beep_success failed"
+  _run_if_found doomst --type success "$1" "$2" || _warn "doomst failed"
 }
 
 # ╭───

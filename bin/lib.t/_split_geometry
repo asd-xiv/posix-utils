@@ -1,0 +1,16 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../lib.sh"
+
+_describe "lib.sh :: _split_geometry"
+
+_test 'given [10,20 300x400] should [print the four numbers]'
+actual() { _split_geometry '10,20 300x400'; }
+_expect equal actual.stdout '10 20 300 400'
+
+_test 'given [a negative x and y] should [keep the signs]'
+actual() { _split_geometry '-10,-5 30x40'; }
+_expect equal actual.stdout '-10 -5 30 40'

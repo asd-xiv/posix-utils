@@ -1,0 +1,23 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../lib.sh"
+
+_describe "lib.sh :: _wait_until"
+
+_test 'given [a command that exits 0] should [return 0]'
+actual() { : >ready; _wait_until 1 test -f ready && echo yes || echo no; }
+_expect equal actual.stdout 'yes'
+
+_test 'given [a file added after 0.2 s] should [return 0 once it exists]'
+actual() {
+  (sleep 0.2; : >ready) &
+  _wait_until 1 test -f ready && echo yes || echo no
+}
+_expect equal actual.stdout 'yes'
+
+_test 'given [a command that never exits 0] should [return 1 after <seconds>]'
+actual() { _wait_until 1 test -f never && echo yes || echo no; }
+_expect equal actual.stdout 'no'
