@@ -54,32 +54,50 @@ Apply these everywhere:
 - Write POSIX: no bashisms, no GNU-only flags
 - Put `--` before the positionals you pass, eg. `rm -f -- "$file"`. A command
   reads a value that starts with `-` as a flag
-- Check each item inside a glob loop, eg. `[ -f "$file" ] || continue`. A
-  pattern that matches nothing stays literal. `for file in docs/*.md` then runs
-  the body once, on the pattern itself
-- Name by case and scope
-  - `_lower_snake` for a private function and `_UPPER_SNAKE` for a private
-    top-level variable, in a script or a lib file. Private means not part of the
-    public contract, not meant for the user
-  - `UPPER_SNAKE` for any public global variable: an environment variable the
-    script reads, eg. `NO_COLOR`, or exports for a child, eg. a config path
-  - Name the variables of a function `lower_snake`, prefixed with the function
-    acronym, eg. `sf_status` in `_search_file`
-    - The prefix must be unique across the script and every file it sources
-  - Never shadow a builtin, a shell variable or a standard environment variable:
-    `type`, `test`, `read`, `IFS`, `PATH`, `TMPDIR`
+- Check each item inside a glob loop, eg. `[ -f "$file" ] || continue`
+  - A pattern that matches nothing stays literal, `for file in docs/*.md` then
+    runs the body once, on the pattern itself
+- Keep state that must outlast a reboot in
+  `${XDG_STATE_HOME:-$HOME/.local/state}`
+
+**Naming and scope**:
+
+- `_lower_snake` for a private function and `_UPPER_SNAKE` for a private
+  top-level variable, in a script or a lib file. Private means not part of the
+  public contract, not meant for the user
+- `UPPER_SNAKE` for any public global variable: an environment variable the
+  script reads, eg. `NO_COLOR`, or exports for a child, eg. a config path
+- Name the variables of a function `lower_snake`, prefixed with the function
+  acronym, eg. `sf_status` in `_search_file`
+- The prefix must be unique across the script and every file it sources
+- Never shadow a builtin, a shell variable or a standard environment variable:
+  `type`, `test`, `read`, `IFS`, `PATH`, `TMPDIR`
 - Name a path variable for what it holds, `_dir` or `_file`, unless its noun
   already does, eg. `link_script`. Keep `_path` for a search list, as in `PATH`
-- Exit with the code that names what happened
-  - `0` success. The work is done, or the answer is yes
-  - `1` no. A real answer, not a failure. Only a script that asks a yes/no
-    question exits with it
-  - `2` invalid usage. The caller can fix it by retyping (eg. a typo in a flag)
-  - `3` could not run. The call was right, the work still failed (eg. a missing
-    dependency)
-  - `4`-`125` are free for the script's own outcomes
-  - Never exit with a code the shell owns: `126` (found, not executable), `127`
-    (not found) or `128`+n (killed by signal n, eg. `130` for `Ctrl-C`)
+
+**Locks**:
+
+- Take a lock with `mkdir` in `$(_get_runtime_dir)`. `mkdir` is atomic
+  - A boot clears that directory, so no lock outlasts a reboot
+- Write each value to its own file in the lock, `pid` first, eg.
+  `<runtime-dir>/<cmd-name>.lock/pid`
+- Remove the lock with `rm -r -- "${_LOCK_DIR:?}"` in the cleanup trap, only
+  when this run took it
+- A lock is stale when its pid is gone or runs another program
+  - Only an explicit command removes it, eg. `screenrecord stop`
+  - Check the program with `ps -p <pid> -o args=` before you signal the pid
+
+**Exit codes**:
+
+- `0` success. The work is done, or the answer is yes
+- `1` no. A real answer, not a failure. Only a script that asks a yes/no
+  question exits with it
+- `2` invalid usage. The caller can fix it by retyping (eg. a typo in a flag)
+- `3` could not run. The call was right, the work still failed (eg. a missing
+  dependency)
+- `4`-`125` are free for the script's own outcomes
+- Never exit with a code the shell owns: `126` (found, not executable), `127`
+  (not found) or `128`+n (killed by signal n, eg. `130` for `Ctrl-C`)
 
 ## Specimen: `find-in-files`
 
