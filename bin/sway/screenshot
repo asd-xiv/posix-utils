@@ -6,57 +6,49 @@ set -eu
 #   screenshot - Capture the screens, a window or a region to a PNG file
 #
 # SYNOPSIS
-#   screenshot [OPTIONS] <all|window|region>
+#   screenshot <target> [OPTIONS]
 #
 # DESCRIPTION
 #   Captures the target to a PNG file, then prints the file path to stdout.
 #   Copies the image to the clipboard when wl-copy is installed. Then beeps
-#   and sends a notification, see --no-notify.
+#   and sends a notification, see NO_NOTIFY.
 #
-#   The target and the flags can come in any order.
-#
-#     all      Every output
-#     window   The window the user clicks, or the window of --pid. The
-#              window takes the focus first, which puts it on screen
-#     region   The rectangle the user draws
-#
-#   Hides the cursor while it captures and restores it on exit. grim leaves
-#   the cursor out, but Sway can draw it into the screen image, eg. with
-#   WLR_NO_HARDWARE_CURSORS=1.
+#   Hides the cursor while it captures. grim leaves the cursor out, but Sway
+#   can draw it into the screen image, eg. with WLR_NO_HARDWARE_CURSORS=1.
+#   On exit, sets the Sway hide_cursor timeout to 0, the Sway default. A
+#   hide_cursor from the sway config stays off until the next reload.
 #
 # ARGUMENTS
-#   target   all, window or region
+#   target   What to capture:
+#              all      Every screen
+#              window   The window the user clicks
+#              region   The rectangle the user draws, or --geometry
 #
 # OPTIONS
-#   -o, --output <file>   PNG file to write (default:
-#                         ~/Pictures/Screenshots/<target>_<date>.png)
-#   -p, --pid <pid>       With window: capture the window of that process,
-#                         no picker. Waits up to 5 seconds for the process to
-#                         map its window
-#       --padding <px>    With window or region: grow the capture by px on
-#                         each side, to show the desktop around it
-#                         (default: 0). Nothing clamps it to the screen
-#       --no-notify       Skip the beep and the notification, eg. for a
-#                         script that captures many files in a row
-#   -h, --help            Print this help
+#   -o, --output <file>         PNG file to write (default: <target>_<date>.png
+#                               in Screenshots of the XDG pictures folder,
+#                               or of ~/Pictures)
+#   -g, --geometry <x,y wxh>    With region: capture this area, no picker
+#   -h, --help                  Print this help
 #
 # ENVIRONMENT
-#   HIDE_CURSOR_RESTORE_MS   Sway hide_cursor timeout to set on exit, in ms
-#                            (default: 0, never hide, the Sway default)
+#   NO_NOTIFY   Skips the beep and the notification when non-empty,
+#               eg. for a script that captures many files in a row
 #
 # EXAMPLE
 #   bindsym Print exec screenshot all
 #   bindsym $mod+Print exec screenshot window
-#   alacritty -e htop & screenshot window --pid $! --no-notify -o htop.png
+#   NO_NOTIFY=1 screenshot region --geometry "0,0 800x600" -o top-left.png
 #
 # EXIT CODES
 #   0   Captured
 #   2   Invalid usage
-#   3   Could not run, eg. no Sway session, no window for --pid, grim failed
-#   4   Nothing picked
+#   3   Could not run, eg. no Sway session, grim failed
+#   4   The user picked nothing
 #
 # SEE ALSO
-#   grim, slurp, swaymsg, jq, wl-copy, doomst, beep_success, beep_cancel
+#   grim, slurp, swaymsg, jq, wl-copy, xdg-user-dir, doomst, beep_success,
+#   beep_cancel
 
 _SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$_SCRIPT_DIR/../lib.sh"
@@ -65,47 +57,27 @@ _SCRIPT_DIR=$(dirname "$(realpath "$0")")
 export LOG_NAMESPACE="screenshot"
 export LOG_LEVEL="${LOG_LEVEL:-info}"
 
-HIDE_CURSOR_RESTORE_MS="${HIDE_CURSOR_RESTORE_MS:-0}"
-
-_TARGET=""            # all, window or region
-_OUTPUT_FILE=""       # -o/--output, a .png path
-_PID=""               # -p/--pid, a positive integer
-_PADDING="0"          # --padding, a non-negative integer
-_SHOULD_NOTIFY="true" # --no-notify sets ""
-
-# ╭───
-# │ Primitives
-# ╰───
-
-# _notify_cancel
-#
-# Beep the cancel sound, unless --no-notify. beep_cancel comes from the
-# dotfiles of the author, so a system without it plays nothing.
-_notify_cancel() {
-  [ -n "$_SHOULD_NOTIFY" ] || return 0
-
-  _run_if_found beep_cancel || _warn "beep_cancel failed"
-}
-
-# _notify_success <title> <file>
-#
-# Beep the success sound and send a notification, unless --no-notify. Either
-# one is skipped when its command is not installed.
-_notify_success() {
-  [ -n "$_SHOULD_NOTIFY" ] || return 0
-
-  _run_if_found beep_success || _warn "beep_success failed"
-  _run_if_found doomst --type success "$1" "$2" || _warn "doomst failed"
-}
+_OUTPUT_FILE="" # -o/--output, a .png path
+_GEOMETRY=""    # -g/--geometry, a geometry
 
 # ╭───
 # │ Bootstrap
 # ╰───
 
-if [ "$#" -eq 0 ]; then
-  _show_help "$0" >&2
-  exit 2
-fi
+case "${1:-}" in
+  -h | --help)
+    _show_help "$0"
+    exit 0
+    ;;
+  all | window | region) _TARGET="$1" ;;
+  "")
+    _show_help "$0" >&2
+    exit 2
+    ;;
+  -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
+  *) _fail 2 -v target "$1" "Unknown target. Use all, window or region" ;;
+esac
+shift
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -118,62 +90,29 @@ while [ "$#" -gt 0 ]; do
       _OUTPUT_FILE="$2"
       shift 2
       ;;
-    -p | --pid)
-      [ "$#" -lt 2 ] && _fail 2 "--pid needs a pid"
-      _is positive-integer "$2" || _fail 2 -v pid "$2" "Not a pid"
-      _PID="$2"
+    -g | --geometry)
+      [ "$#" -lt 2 ] && _fail 2 "--geometry needs <x>,<y> <width>x<height>"
+      _is geometry "$2" || _fail 2 -v geometry "$2" "Not a geometry"
+      _GEOMETRY="$2"
       shift 2
-      ;;
-    --padding)
-      [ "$#" -lt 2 ] && _fail 2 "--padding needs a number of px"
-      _is non-negative-integer "$2" \
-        || _fail 2 -v padding "$2" "Not a number of px"
-      _PADDING="$2"
-      shift 2
-      ;;
-    --no-notify)
-      _SHOULD_NOTIFY=""
-      shift
       ;;
     --)
       shift
       break
       ;;
-    -?*)
-      _fail 2 -v flag "$1" "Unknown flag"
-      ;;
-    *)
-      [ -n "$_TARGET" ] && _fail 2 -v argument "$1" "Only one target"
-      _TARGET="$1"
-      shift
-      ;;
+    -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
+    *) break ;;
   esac
 done
 
-if [ "$#" -gt 0 ]; then
-  [ -n "$_TARGET" ] && _fail 2 -v argument "$1" "Only one target"
-  _TARGET="$1"
-  shift
-fi
-
 [ "$#" -eq 0 ] || _fail 2 -v argument "$1" "Only one target"
 
-case "$_TARGET" in
-  all | window | region) ;;
-  "") _fail 2 "No target given. Use all, window or region" ;;
-  *) _fail 2 -v target "$_TARGET" "Unknown target. Use all, window or region" ;;
-esac
-
-if [ -n "$_PID" ] && [ "$_TARGET" != "window" ]; then
-  _fail 2 -v target "$_TARGET" "--pid works only with window"
-fi
-
-if [ "$_PADDING" != "0" ] && [ "$_TARGET" = "all" ]; then
-  _fail 2 -v target "$_TARGET" "--padding works only with window or region"
+if [ -n "$_GEOMETRY" ] && [ "$_TARGET" != "region" ]; then
+  _fail 2 -v target "$_TARGET" "--geometry works only with region"
 fi
 
 if [ -z "$_OUTPUT_FILE" ]; then
-  _OUTPUT_FILE="$HOME/Pictures/Screenshots/${_TARGET}_$(date +%Y-%B-%d-%A-%R:%S).png"
+  _OUTPUT_FILE="$(_get_user_dir PICTURES "$HOME/Pictures")/Screenshots/${_TARGET}_$(date +%Y-%m-%dT%H:%M:%S%z).png"
 fi
 
 case "$_OUTPUT_FILE" in
@@ -181,80 +120,38 @@ case "$_OUTPUT_FILE" in
   *) _fail 2 -v file "$_OUTPUT_FILE" "Unsupported extension. Use .png" ;;
 esac
 
-_is non-negative-integer "$HIDE_CURSOR_RESTORE_MS" \
-  || _fail 2 -v HIDE_CURSOR_RESTORE_MS "$HIDE_CURSOR_RESTORE_MS" "Not a number of ms"
-
 _require_cmd swaymsg grim
-[ "$_TARGET" = "window" ] && _require_cmd jq
-[ -z "$_PID" ] && [ "$_TARGET" != "all" ] && _require_cmd slurp
-
-[ -n "${SWAYSOCK:-}" ] || _fail 3 "No Sway session, SWAYSOCK is not set"
+if [ "$_TARGET" != "all" ] && [ -z "$_GEOMETRY" ]; then
+  _require_cmd jq slurp
+fi
+_require_sway
 
 # ╭───
 # │ Cleanup
 # ╰───
 
-_IS_CURSOR_HIDDEN="" # "true" once the cursor hides
-
-# shellcheck disable=SC2329 # called by trap
-_cleanup() {
-  if [ -n "$_IS_CURSOR_HIDDEN" ]; then
-    swaymsg --quiet "seat - hide_cursor $HIDE_CURSOR_RESTORE_MS" \
-      >/dev/null 2>&1 || true
-  fi
-}
-
-trap _cleanup EXIT                                    # normal exit
-trap '_cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl-C
-trap '_cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout
-trap '_cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
+trap _restore_sway_cursor EXIT                                    # normal exit
+trap '_restore_sway_cursor; trap - EXIT INT; kill -INT $$' INT    # Ctrl-C
+trap '_restore_sway_cursor; trap - EXIT TERM; kill -TERM $$' TERM # kill
+trap '_restore_sway_cursor; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
 
 # ╭───
 # │ Main
 # ╰───
 
-_GEOMETRY="" # empty for all, grim then captures every output
-
-case "$_TARGET" in
-  window)
-    if [ -n "$_PID" ]; then
-      _CON_ID=$(_wait_for_sway_window "$_PID" 5) \
-        || _fail 3 -v pid "$_PID" "No window has this pid"
-    else
-      _CON_ID=$(_pick_sway_window) || {
-        _warn "Nothing picked"
-        _notify_cancel
-        exit 4
-      }
-    fi
-
-    swaymsg --quiet "[con_id=$_CON_ID] focus" >/dev/null 2>&1 \
-      || _warn -v con_id "$_CON_ID" "Could not focus the window"
-    # Let Sway draw the window before the capture
-    sleep 0.1
-
-    _GEOMETRY=$(_get_sway_window_geometry "$_CON_ID") \
-      || _fail 3 -v con_id "$_CON_ID" "The window closed"
-    _GEOMETRY=$(_pad_geometry "$_GEOMETRY" "$_PADDING")
-    ;;
-  region)
-    _GEOMETRY=$(slurp) || {
-      _warn "Nothing picked"
-      _notify_cancel
-      exit 4
-    }
-    _GEOMETRY=$(_pad_geometry "$_GEOMETRY" "$_PADDING")
-    ;;
-esac
+# With no geometry, grim captures every screen
+if [ "$_TARGET" != "all" ] && [ -z "$_GEOMETRY" ]; then
+  _GEOMETRY=$(_pick_sway_geometry "$_TARGET") || {
+    _warn "Nothing picked"
+    _notify_cancel
+    exit 4
+  }
+fi
 
 mkdir -p -- "$(dirname -- "$_OUTPUT_FILE")" \
   || _fail 3 -v file "$_OUTPUT_FILE" "Could not add the folder"
 
-# Sway hides the cursor once it stops moving for 100 ms
-_IS_CURSOR_HIDDEN="true"
-swaymsg --quiet "seat - hide_cursor 100" >/dev/null 2>&1 \
-  || _warn "Could not hide the cursor"
-sleep 0.2
+_hide_sway_cursor
 
 if [ -n "$_GEOMETRY" ]; then
   set -- -g "$_GEOMETRY"
