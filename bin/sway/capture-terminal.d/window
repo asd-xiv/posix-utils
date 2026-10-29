@@ -1,0 +1,109 @@
+#!/bin/sh
+
+# window <scene> <signal-dir> <lines> <columns> <has-cursor-row>
+#
+# The program of a capture-terminal window. Runs <scene> in its own folder,
+# in a terminal of <lines> by <columns> cells. With <has-cursor-row> "true",
+# it shows the cursor after the scene ends. window and capture-terminal
+# signal each other with files in <signal-dir>:
+#
+#   go       capture-terminal wrote it, the window floats
+#   size     window wrote it, "<lines> <columns>" from stty size, when the
+#            terminal did not take <lines> by <columns>
+#   status   window wrote it in the dry run, the status of the scene
+#   rows     window wrote it in the dry run, the rows the scene printed
+#   done     window wrote it, the scene ended
+#
+# With CAPTURE_TERMINAL_DRY_RUN set, it counts the rows from the cursor
+# position after the scene, then exits, which closes the window. Else it
+# stays open after the scene ends, until capture-terminal closes it.
+#
+# It waits for go, so a recording starts before the first line. It hides the
+# cursor and turns off echo from the start. It clears the screen after go,
+# so nothing typed before go shows.
+
+set -u
+
+. "$(dirname "$(realpath "$0")")/../../lib.sh"
+
+# _has_size <lines> <columns>
+#
+# Tell if the terminal is <lines> by <columns> cells.
+# shellcheck disable=SC2329 # called by _wait_until
+_has_size() {
+  [ "$(stty size)" = "$1 $2" ]
+}
+
+# _get_cursor_row
+#
+# Ask the terminal for the cursor position and print its row, from 1. The
+# terminal answers "ESC[<row>;<column>R" as input. The query and the answer
+# go through /dev/tty, since a command substitution owns stdout.
+#
+# RETURNS
+#   1   No answer in 1 s
+_get_cursor_row() {
+  gcr_tty=$(stty -g)
+  # min 0 time 10: a read returns the bytes it has, or none after 1 s
+  stty -echo -icanon min 0 time 10
+  printf '\033[6n' >/dev/tty
+
+  gcr_reply=""
+  while :; do
+    gcr_char=$(dd bs=1 count=1 </dev/tty 2>/dev/null)
+    [ -n "$gcr_char" ] || break
+    gcr_reply="$gcr_reply$gcr_char"
+    [ "$gcr_char" != "R" ] || break
+  done
+  stty "$gcr_tty"
+
+  gcr_row=${gcr_reply##*[}
+  gcr_row=${gcr_row%%;*}
+  _is positive-integer "$gcr_row" || return 1
+
+  printf '%s\n' "$gcr_row"
+}
+
+cd -- "$(dirname -- "$1")" || exit 3
+stty -echo 2>/dev/null
+# A recording shows the window before go
+printf '\033[?25l'
+
+_wait_until 60 test -f "$2/go" || exit 3
+
+# Sway tiles the window first, then floats it at the size Alacritty asked for
+if ! _wait_until 5 _has_size "$3" "$4"; then
+  stty size >"$2/size.tmp" && mv -- "$2/size.tmp" "$2/size"
+  exit 3
+fi
+clear
+
+if [ -n "${CAPTURE_TERMINAL_DRY_RUN:-}" ]; then
+  _STATUS=0
+  sh "$1" || _STATUS=$?
+  printf '%s\n' "$_STATUS" >"$2/status"
+
+  # The last newline moves the cursor down one row, so the rows are one less
+  # than the cursor row
+  _ROWS=$(_get_cursor_row) || exit 3
+  _ROWS=$((_ROWS - 1))
+  [ "$_ROWS" -ge 1 ] || _ROWS=1
+  printf '%s\n' "$_ROWS" >"$2/rows.tmp" && mv -- "$2/rows.tmp" "$2/rows"
+  exit 0
+fi
+
+# No set -e: the scene status does not count here. capture-terminal read it
+# from the dry run
+sh "$1"
+
+# Before done, so a screenshot has the cursor in it
+if [ -n "$5" ]; then
+  # As a shell that waits at its prompt
+  printf '\033[?25h'
+else
+  # A scene can show the cursor again, eg. neofetch does on exit
+  printf '\033[?25l'
+fi
+
+: >"$2/done"
+exec sleep 3600

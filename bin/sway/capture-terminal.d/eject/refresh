@@ -1,0 +1,52 @@
+#!/bin/sh
+
+# NAME
+#   refresh - Capture each use case of README.md
+#
+# DESCRIPTION
+#   Runs docs/media/<use-case>/code.ts with the scene.sh of the use case, else
+#   with the default scene.sh.
+#
+#   Writes scene.png or scene.gif in the folder of the use case.
+#
+# EXAMPLE
+#   Add one "<use-case> <png|gif>" line to _USE_CASES for each
+#   ```ts capture=<use-case> code block or <!-- capture: <use-case> --> marker
+#   in README.md:
+#
+#     _USE_CASES='01.quick-start png
+#     02.progress gif'
+#
+# EXIT CODES
+#   0   Captured each use case
+#   3   One or more captures failed. stderr names them
+
+set -eu
+
+_SCRIPT_DIR=$(dirname "$(realpath "$0")")
+_MEDIA_DIR=$(realpath "$_SCRIPT_DIR/../media")
+_FAILED=""
+_DEFAULT_SCENE_FILE="$_SCRIPT_DIR/scene.sh"
+
+_USE_CASES=''
+
+while read -r _USE_CASE _KIND; do
+  [ -z "$_USE_CASE" ] && continue
+
+  _CASE_DIR="$_MEDIA_DIR/$_USE_CASE"
+  _SCENE_FILE="$_DEFAULT_SCENE_FILE"
+  if [ -f "$_CASE_DIR/scene.sh" ]; then
+    _SCENE_FILE="$_CASE_DIR/scene.sh"
+  fi
+
+  CAPTURE_TERMINAL_CODE_FILE="$_CASE_DIR/code.ts" \
+    capture-terminal --no-border --padding 10 "$_SCENE_FILE" "$_CASE_DIR/scene.$_KIND" \
+    </dev/null || _FAILED="$_FAILED $_USE_CASE"
+done <<EOF
+$_USE_CASES
+EOF
+
+if [ -n "$_FAILED" ]; then
+  printf 'refresh: failed:%s\n' "$_FAILED" >&2
+  exit 3
+fi

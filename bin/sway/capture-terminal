@@ -1,0 +1,457 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   capture-terminal - Capture a shell script as it runs in a terminal
+#
+# SYNOPSIS
+#   capture-terminal [OPTIONS] <scene> <output-file> [-- <alacritty-flag>...]
+#   capture-terminal eject <dir>
+#
+# DESCRIPTION
+#   Runs the scene in a floating Alacritty window on a Sway workspace and
+#   captures the window. Prints the absolute path of <output-file>.
+#
+#   A scene is a shell script that prints and runs what the capture shows,
+#   eg. a "$ <command>" line, then the command. eject copies a lib.sh for
+#   scenes, a default scene.sh and a refresh script that captures every use
+#   case. It runs as "sh <scene>" in its own folder, twice, each
+#   time in a window --columns wide. A dry run in a window two rows taller
+#   than --max-rows counts the rows. Then a window that holds those rows and
+#   the cursor row below them captures the scene. With more rows than
+#   --max-rows, the capture shows the last ones.
+#
+#   Flags after -- go to Alacritty, eg. -o font.size=10. Alacritty turns the
+#   cells into px with the font and window.padding of your config.
+#   capture-terminal sets window.dimensions last, so yours has no effect.
+#
+# ARGUMENTS
+#   scene         Shell script to run
+#   output-file   .png: a screenshot after the scene ends. Else a recording
+#                 from screenrecord, eg. .gif, which can be 1 px narrower
+#   dir           With eject: where to copy the three files. A file there
+#                 that exists stays as it is
+#
+# OPTIONS
+#   -c, --columns <n>        Window width in columns (default: 80)
+#   -r, --max-rows <n>       Rows of output the capture shows, the cursor row
+#                            not counted (default: 32)
+#   --cursor-row             After the scene ends, show the cursor on the
+#                            row below the output, as a shell at its prompt
+#                            (default)
+#   --no-cursor-row          Crop the row below the output. Needs --no-border
+#   --border                 Keep the Sway border of the window (default)
+#   --no-border              Show the window with no border
+#   -p, --padding <px>       Desktop around the window, inside the workspace
+#                            (default: 0)
+#   -f, --final-wait <s>     With a recording: seconds the last frame lasts
+#                            after the scene ends, eg. 0 or 1.5 (default: 1.5)
+#   -w, --workspace <name>   Empty Sway workspace, A-Za-z0-9_- (default: 7)
+#   -h, --help               Print this help
+#
+# ENVIRONMENT
+#   capture-terminal sets this for the scene:
+#   CAPTURE_TERMINAL_DRY_RUN   1 in the run that counts the rows
+#
+# EXAMPLE
+#   capture-terminal eject docs/.capture-terminal
+#   capture-terminal docs/media/start/scene.sh docs/media/start/shot.png \
+#     -- -o font.size=10
+#
+# EXIT CODES
+#   0   Captured, or ejected
+#   2   Invalid usage
+#   3   Could not run, eg. a missing command, the scene exits non-zero or
+#       runs past 60 s, or the window does not fit the workspace
+#
+# SEE ALSO
+#   screenshot, screenrecord, alacritty, swaymsg, jq
+
+_SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$_SCRIPT_DIR/../lib.sh"
+
+# _log reads these
+export LOG_NAMESPACE="capture-terminal"
+export LOG_LEVEL="${LOG_LEVEL:-info}"
+
+_COLUMNS="80"           # -c/--columns, a positive integer
+_MAX_ROWS="32"          # -r/--max-rows, a positive integer
+_HAS_CURSOR_ROW="true"  # --cursor-row/--no-cursor-row, "true" or ""
+_HAS_BORDER="true"      # --border/--no-border, "true" or ""
+_PADDING="0"            # -p/--padding, a non-negative integer
+_WORKSPACE="7"          # -w/--workspace, a slug
+_FINAL_WAIT="1.5"       # -f/--final-wait, a non-negative number of seconds
+
+# ╭───
+# │ Primitives
+# ╰───
+
+# _get_window_id <pid>
+#
+# Print the con_id of the first window that <pid> owns.
+#
+# RETURNS
+#   1   <pid> owns no window
+# shellcheck disable=SC2329 # called by _wait_until
+_get_window_id() {
+  gwi_id=$(swaymsg -t get_tree | jq -r --argjson pid "$1" \
+    'first(.. | objects | select(.pid? == $pid) | .id) // empty')
+  [ -n "$gwi_id" ] || return 1
+
+  printf '%s\n' "$gwi_id"
+}
+
+# _get_window_rect <con_id>
+#
+# Print the geometry of the window <con_id>, border included, eg.
+# "550,172 819x736".
+#
+# RETURNS
+#   1   No window has <con_id>
+_get_window_rect() {
+  gwr_rect=$(swaymsg -t get_tree | jq -r --argjson id "$1" '
+    first(.. | objects | select(.id? == $id)
+    | "\(.rect.x),\(.rect.y) \(.rect.width)x\(.rect.height)")
+    // empty')
+  [ -n "$gwr_rect" ] || return 1
+
+  printf '%s\n' "$gwr_rect"
+}
+
+# _get_content_height <con_id>
+#
+# Print the height of the window <con_id> in px, border not included.
+#
+# RETURNS
+#   1   No window has <con_id>
+_get_content_height() {
+  gch_height=$(swaymsg -t get_tree | jq -r --argjson id "$1" \
+    'first(.. | objects | select(.id? == $id) | .window_rect.height) // empty')
+  [ -n "$gch_height" ] || return 1
+
+  printf '%s\n' "$gch_height"
+}
+
+# _open_window <lines> [alacritty-flag...]
+#
+# Open an Alacritty window of _COLUMNS by <lines> cells that runs the scene,
+# float it and center it on the workspace. Set _TERMINAL_PID and _CON_ID.
+#
+# EXIT
+#   3   The window did not open
+_open_window() {
+  ow_lines="$1"
+  shift
+
+  # Alacritty applies the last -o for a key, so the size comes after the
+  # flags of the caller
+  alacritty "$@" -o "window.dimensions.columns=$_COLUMNS" \
+    -o "window.dimensions.lines=$ow_lines" \
+    -e "$_SCRIPT_DIR/capture-terminal.d/window" "$_SCENE_FILE" "$_TEMP_DIR" \
+    "$ow_lines" "$_COLUMNS" "$_HAS_CURSOR_ROW" &
+  _TERMINAL_PID=$!
+
+  _CON_ID=$(_wait_until 5 _get_window_id "$_TERMINAL_PID") \
+    || _fail 3 "The window did not open"
+  swaymsg --quiet "[con_id=$_CON_ID] floating enable, move position center" \
+    >/dev/null
+}
+
+# _wait_window <signal-file>
+#
+# Wait up to 60 s for the window to write <signal-file>.
+#
+# EXIT
+#   3   The window did not take its size, closed, or the scene ran past 60 s
+_wait_window() {
+  ww_tries=1200
+  until [ -f "$1" ]; do
+    if [ -f "$_TEMP_DIR/size" ]; then
+      read -r ww_lines ww_columns <"$_TEMP_DIR/size"
+      _fail 3 -v lines "$ww_lines" -v columns "$ww_columns" \
+        "The window did not take its size, eg. it does not fit the workspace"
+    fi
+    kill -0 "$_TERMINAL_PID" 2>/dev/null || _fail 3 "The window closed"
+    [ "$ww_tries" -gt 0 ] || _fail 3 "The scene ran past 60 s"
+    ww_tries=$((ww_tries - 1))
+    sleep 0.05
+  done
+}
+
+# ╭───
+# │ Bootstrap
+# ╰───
+
+case "${1:-}" in
+  -h | --help)
+    _show_help "$0"
+    exit 0
+    ;;
+  "")
+    _show_help "$0" >&2
+    exit 2
+    ;;
+  eject)
+    [ "$#" -ge 2 ] || _fail 2 "eject needs a folder"
+    [ "$#" -eq 2 ] || _fail 2 -v argument "$3" "eject takes one folder"
+
+    mkdir -p -- "$2" || _fail 3 -v dir "$2" "Could not add the folder"
+
+    for _EJECT_FILE in lib.sh scene.sh refresh; do
+      if [ -e "$2/$_EJECT_FILE" ] || [ -L "$2/$_EJECT_FILE" ]; then
+        _warn -v file "$2/$_EJECT_FILE" "File exists, skipping"
+        continue
+      fi
+      cp -p -- "$_SCRIPT_DIR/capture-terminal.d/eject/$_EJECT_FILE" "$2/" \
+        || _fail 3 -v file "$2/$_EJECT_FILE" "Could not copy"
+      printf '%s\n' "$(realpath -- "$2/$_EJECT_FILE")"
+    done
+
+    exit 0
+    ;;
+esac
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -h | --help)
+      _show_help "$0"
+      exit 0
+      ;;
+    -c | --columns)
+      [ "$#" -lt 2 ] && _fail 2 "--columns needs a number of columns"
+      _is positive-integer "$2" \
+        || _fail 2 -v columns "$2" "Not a number of columns"
+      _COLUMNS="$2"
+      shift 2
+      ;;
+    -r | --max-rows)
+      [ "$#" -lt 2 ] && _fail 2 "--max-rows needs a number of rows"
+      _is positive-integer "$2" \
+        || _fail 2 -v max_rows "$2" "Not a number of rows"
+      _MAX_ROWS="$2"
+      shift 2
+      ;;
+    --cursor-row)
+      _HAS_CURSOR_ROW="true"
+      shift
+      ;;
+    --no-cursor-row)
+      _HAS_CURSOR_ROW=""
+      shift
+      ;;
+    --border)
+      _HAS_BORDER="true"
+      shift
+      ;;
+    --no-border)
+      _HAS_BORDER=""
+      shift
+      ;;
+    -p | --padding)
+      [ "$#" -lt 2 ] && _fail 2 "--padding needs a number of px"
+      _is non-negative-integer "$2" \
+        || _fail 2 -v padding "$2" "Not a number of px"
+      _PADDING="$2"
+      shift 2
+      ;;
+    -w | --workspace)
+      [ "$#" -lt 2 ] && _fail 2 "--workspace needs a name"
+      _is slug "$2" || _fail 2 -v workspace "$2" "Not a workspace name"
+      _WORKSPACE="$2"
+      shift 2
+      ;;
+    -f | --final-wait)
+      [ "$#" -lt 2 ] && _fail 2 "--final-wait needs a number of seconds"
+      # sleep reads a fraction, eg. 1.5, on coreutils and BusyBox
+      case "$2" in
+        "" | *[!0-9.]* | .* | *. | *.*.*)
+          _fail 2 -v final_wait "$2" "Not a number of seconds"
+          ;;
+      esac
+      _FINAL_WAIT="$2"
+      shift 2
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -?*)
+      _fail 2 -v flag "$1" "Unknown flag"
+      ;;
+    *) break ;;
+  esac
+done
+
+# The row below the output holds the bottom border too
+if [ -z "$_HAS_CURSOR_ROW" ] && [ -n "$_HAS_BORDER" ]; then
+  _fail 2 "--no-cursor-row cuts the bottom border off, add --no-border"
+fi
+
+[ "$#" -ge 2 ] || _fail 2 "Needs a scene and an output file"
+
+_SCENE_ARG="$1"
+_OUTPUT_ARG="$2"
+shift 2
+
+# The positionals left are the Alacritty flags, after a --
+if [ "$#" -gt 0 ]; then
+  [ "$1" = "--" ] \
+    || _fail 2 -v argument "$1" "Put -- before the Alacritty flags"
+  shift
+fi
+
+[ -f "$_SCENE_ARG" ] || _fail 2 -v scene "$_SCENE_ARG" "Scene not found"
+
+# screenrecord checks the other extensions
+case "$_OUTPUT_ARG" in
+  *.png) _CAPTURE_CMD="screenshot" ;;
+  *) _CAPTURE_CMD="screenrecord" ;;
+esac
+
+_require_cmd alacritty swaymsg jq
+_require_sway
+
+_SCENE_FILE=$(realpath -- "$_SCENE_ARG")
+_SCENE_DIR=$(dirname -- "$_SCENE_FILE")
+
+# ╭───
+# │ Cleanup
+# ╰───
+
+_TERMINAL_PID=""   # alacritty, while it runs
+_IS_RECORDING=""   # "true" while screenrecord records
+_USER_WORKSPACE="" # the workspace to switch back to
+
+# shellcheck disable=SC2329 # called by trap
+_cleanup() {
+  if [ -n "$_IS_RECORDING" ]; then
+    NO_NOTIFY=1 "$_SCRIPT_DIR/screenrecord" stop >/dev/null 2>&1 || true
+  fi
+
+  if [ -n "$_TERMINAL_PID" ]; then
+    kill "$_TERMINAL_PID" 2>/dev/null || true
+  fi
+
+  if [ -n "$_USER_WORKSPACE" ]; then
+    swaymsg --quiet "workspace \"$_USER_WORKSPACE\"" >/dev/null 2>&1 || true
+  fi
+
+  rm -rf -- "${_TEMP_DIR:-}"
+}
+
+trap _cleanup EXIT                                    # normal exit
+trap '_cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl-C
+trap '_cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout
+trap '_cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
+
+_TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/capture-terminal.XXXXXX") \
+  || _fail 3 "Could not add a temporary folder"
+
+# ╭───
+# │ Main
+# ╰───
+
+# Drop a value from the caller. Only the run that counts the rows sets it
+unset CAPTURE_TERMINAL_DRY_RUN
+
+_USER_WORKSPACE=$(swaymsg -t get_workspaces \
+  | jq -r 'first(.[] | select(.focused) | .name) // empty')
+swaymsg --quiet "workspace $_WORKSPACE" >/dev/null \
+  || _fail 3 -v workspace "$_WORKSPACE" "Could not switch to the workspace"
+
+# The workspace is the output less its bars and gaps. A bar draws over a
+# floating window, so the capture stays inside the workspace
+read -r _WORKSPACE_X _WORKSPACE_Y _WORKSPACE_WIDTH _WORKSPACE_HEIGHT <<EOF
+$(swaymsg -t get_workspaces \
+  | jq -r 'first(.[] | select(.focused) | .rect
+    | "\(.x) \(.y) \(.width) \(.height)") // empty')
+EOF
+[ -n "${_WORKSPACE_HEIGHT:-}" ] || _fail 3 "No focused workspace"
+_WORKSPACE_GEOMETRY="$_WORKSPACE_X,$_WORKSPACE_Y ${_WORKSPACE_WIDTH}x$_WORKSPACE_HEIGHT"
+
+# The dry run counts the rows in a window two rows taller than --max-rows.
+# A scene with more rows leaves the cursor on the last row, so the count
+# tells it. Alacritty wraps the lines, wide characters included
+_DRY_LINES=$((_MAX_ROWS + 2))
+export CAPTURE_TERMINAL_DRY_RUN=1
+_open_window "$_DRY_LINES" "$@"
+_DRY_HEIGHT=$(_get_content_height "$_CON_ID") || _fail 3 "The window closed"
+: >"$_TEMP_DIR/go"
+_wait_window "$_TEMP_DIR/rows"
+wait "$_TERMINAL_PID" || true
+_TERMINAL_PID=""
+unset CAPTURE_TERMINAL_DRY_RUN
+
+_SCENE_STATUS=$(cat -- "$_TEMP_DIR/status")
+[ "$_SCENE_STATUS" -eq 0 ] \
+  || _fail 3 -v scene "$_SCENE_FILE" -v status "$_SCENE_STATUS" \
+    "The scene failed in the dry run"
+
+_ROWS=$(cat -- "$_TEMP_DIR/rows")
+if [ "$_ROWS" -gt "$_MAX_ROWS" ]; then
+  _info -v max_rows "$_MAX_ROWS" \
+    "More rows than --max-rows, the capture shows the last ones"
+  _ROWS="$_MAX_ROWS"
+fi
+rm -f -- "$_TEMP_DIR/go" "$_TEMP_DIR/rows" "$_TEMP_DIR/status"
+
+# The last newline moves the cursor down one row. The window must hold that
+# row too, or the first line scrolls out
+_LINES=$((_ROWS + 1))
+_open_window "$_LINES" "$@"
+if [ -z "$_HAS_BORDER" ]; then
+  swaymsg --quiet "[con_id=$_CON_ID] border none, move position center" \
+    >/dev/null
+fi
+
+# Both windows come from one Alacritty config, so their heights differ by
+# whole rows. The padding of Alacritty cancels out. _DRY_LINES is always more
+# than _LINES
+_CROP_HEIGHT=0
+if [ -z "$_HAS_CURSOR_ROW" ]; then
+  _HEIGHT=$(_get_content_height "$_CON_ID") || _fail 3 "The window closed"
+  _CROP_HEIGHT=$(((_DRY_HEIGHT - _HEIGHT) / (_DRY_LINES - _LINES)))
+fi
+
+# The window less the cropped row, and --padding on each side, inside the
+# workspace
+_RECT=$(_get_window_rect "$_CON_ID") || _fail 3 "The window closed"
+# shellcheck disable=SC2046 # _split_geometry prints four words
+set -- $(_split_geometry "$_RECT")
+_CAPTURE_GEOMETRY=$(_clamp_geometry \
+  "$(($1 - _PADDING)),$(($2 - _PADDING)) $(($3 + 2 * _PADDING))x$(($4 - _CROP_HEIGHT + 2 * _PADDING))" \
+  "$_WORKSPACE_GEOMETRY") || _fail 3 "The window is outside the workspace"
+
+# screenrecord start returns once the first frame is written, and stop once
+# the file is
+if [ "$_CAPTURE_CMD" = "screenrecord" ]; then
+  _RECORD_STATUS=0
+  NO_NOTIFY=1 LOG_LEVEL=warning "$_SCRIPT_DIR/screenrecord" start region \
+    --geometry "$_CAPTURE_GEOMETRY" --hide-cursor --output "$_OUTPUT_ARG" \
+    >/dev/null || _RECORD_STATUS=$?
+  [ "$_RECORD_STATUS" -ne 2 ] || _fail 2 "screenrecord refused the call"
+  [ "$_RECORD_STATUS" -eq 0 ] \
+    || _fail 3 -v status "$_RECORD_STATUS" "The recording did not start"
+  _IS_RECORDING="true"
+fi
+
+: >"$_TEMP_DIR/go"
+_wait_window "$_TEMP_DIR/done"
+
+if [ "$_CAPTURE_CMD" = "screenrecord" ]; then
+  sleep "$_FINAL_WAIT"
+  _IS_RECORDING=""
+  NO_NOTIFY=1 LOG_LEVEL=warning "$_SCRIPT_DIR/screenrecord" stop >/dev/null \
+    || _fail 3 -v file "$_OUTPUT_ARG" "The recording failed"
+else
+  # No wait for the terminal to draw the last lines: screenshot hides the
+  # cursor first, which takes 0.2 s
+  NO_NOTIFY=1 LOG_LEVEL=warning "$_SCRIPT_DIR/screenshot" region \
+    --geometry "$_CAPTURE_GEOMETRY" --output "$_OUTPUT_ARG" >/dev/null \
+    || _fail 3 -v file "$_OUTPUT_ARG" "The screenshot failed"
+fi
+
+printf '%s\n' "$(realpath -- "$_OUTPUT_ARG")"
+
+exit 0

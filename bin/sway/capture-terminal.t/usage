@@ -1,0 +1,214 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls actual and prepare
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+
+CAPTURE_TERMINAL="$SCRIPT_DIR/../capture-terminal"
+
+_describe "capture-terminal :: usage"
+
+before_each() { printf 'printf "$ echo hello\\n"\necho hello\n' >scene.sh; }
+
+_test 'given [--help] should [print the man page and exit 0]'
+actual() { "$CAPTURE_TERMINAL" --help; }
+_expect equal actual.exit 0
+_expect start-with actual.stdout 'NAME'
+
+_test 'given [no positional and no flag] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL"; }
+_expect equal actual.exit 2
+
+_test 'given [a scene and no output file] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" scene.sh; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Needs a scene and an output file'
+
+_test 'given [an unknown flag] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" --zz scene.sh a.png; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Unknown flag'
+
+_test 'given [-o, the --output of screenshot and screenrecord] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" -o 0.9 scene.sh a.png; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Unknown flag'
+
+_test 'given [--width, a dropped flag] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" --width 839 scene.sh a.png; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Unknown flag'
+
+_test 'given [--max-height, a dropped flag] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" --max-height 756 scene.sh a.png; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Unknown flag'
+
+_test 'given [a --columns that is not a number] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" --columns wide scene.sh a.png; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Not a number of columns'
+
+_test 'given [a --columns of 0] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" -c 0 scene.sh a.png; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Not a number of columns'
+
+_test 'given [--columns with no value] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" --columns; }
+_expect equal actual.exit 2
+_expect contain actual.stderr '--columns needs a number of columns'
+
+_test 'given [a --max-rows that is not a number] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" --max-rows tall scene.sh a.png; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Not a number of rows'
+
+_test 'given [a --max-rows of 0] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" -r 0 scene.sh a.png; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Not a number of rows'
+
+_test 'given [--max-rows with no value] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" --max-rows; }
+_expect equal actual.exit 2
+_expect contain actual.stderr '--max-rows needs a number of rows'
+
+_test 'given [a --padding that is not an integer] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" --padding 1.5 scene.sh a.png; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Not a number of px'
+
+_test 'given [--help] should [document a --padding default of 0]'
+actual() { "$CAPTURE_TERMINAL" --help; }
+_expect equal actual.exit 0
+_expect contain actual.stdout '(default: 0)'
+
+_test 'given [--no-cursor-row with the border] should [exit 2 and ask for --no-border]'
+actual() { "$CAPTURE_TERMINAL" --no-cursor-row scene.sh a.png; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'add --no-border'
+
+_test 'given [--no-cursor-row and --no-border] should [read the positionals]'
+actual() { "$CAPTURE_TERMINAL" --no-cursor-row --no-border missing.sh a.png; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Scene not found'
+
+_test 'given [--no-cursor-row, then --cursor-row] should [keep the last one]'
+actual() { "$CAPTURE_TERMINAL" --no-cursor-row --cursor-row missing.sh a.png; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Scene not found'
+
+_test 'given [--no-border, then --border] should [read the positionals]'
+actual() { "$CAPTURE_TERMINAL" --no-border --border missing.sh a.png; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Scene not found'
+
+_test 'given [--no-border, then --no-cursor-row, then --border] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" --no-border --no-cursor-row --border scene.sh a.png; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'add --no-border'
+
+_test 'given [--final-wait 0, 2 and 1.5] should [read the positionals]'
+actual() {
+  for fw_value in 0 2 1.5; do
+    "$CAPTURE_TERMINAL" --final-wait "$fw_value" missing.sh a.gif 2>&1 \
+      | grep -q 'Scene not found' || return 1
+  done
+}
+_expect equal actual.exit 0
+
+_test 'given [a --final-wait of -1] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" --final-wait -1 scene.sh a.gif; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Not a number of seconds'
+
+_test 'given [a --final-wait of abc] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" -f abc scene.sh a.gif; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Not a number of seconds'
+
+_test 'given [a --final-wait of 1.] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" -f 1. scene.sh a.gif; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Not a number of seconds'
+
+_test 'given [a --final-wait of .5] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" -f .5 scene.sh a.gif; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Not a number of seconds'
+
+_test 'given [--final-wait with no value] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" --final-wait; }
+_expect equal actual.exit 2
+_expect contain actual.stderr '--final-wait needs a number of seconds'
+
+_test 'given [--help] should [document a --final-wait default of 1.5]'
+actual() { "$CAPTURE_TERMINAL" --help; }
+_expect equal actual.exit 0
+_expect contain actual.stdout '(default: 1.5)'
+
+_test 'given [--opacity, a dropped flag] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" --opacity 0.9 scene.sh a.png; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Unknown flag'
+
+_test 'given [Alacritty flags after --] should [read the positionals before them]'
+actual() { "$CAPTURE_TERMINAL" missing.sh a.png -- -o font.size=10; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Scene not found'
+
+_test 'given [Alacritty flags with no --] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" scene.sh a.png -o font.size=10; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Put -- before the Alacritty flags'
+
+_test 'given [a --workspace with a space] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" --workspace '7; exec x' scene.sh a.png; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Not a workspace name'
+
+_test 'given [a scene that is not a file] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" missing.sh a.png; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Scene not found'
+
+_test 'given [a folder as the scene] should [exit 2]'
+actual() { mkdir scene && "$CAPTURE_TERMINAL" scene a.png; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Scene not found'
+
+_test 'given [eject and a new folder] should [copy the three files and print their paths]'
+actual() {
+  "$CAPTURE_TERMINAL" eject new/dir
+  for f in lib.sh scene.sh refresh; do
+    cmp -- "$SCRIPT_DIR/../capture-terminal.d/eject/$f" "new/dir/$f" || return 1
+  done
+  [ -x new/dir/refresh ]
+}
+_expect equal actual.exit 0
+_expect end-with actual.stdout '/new/dir/refresh'
+
+_test 'given [eject and a folder with a lib.sh] should [keep it and copy the others]'
+actual() {
+  mkdir -p kept && printf 'mine\n' >kept/lib.sh
+  "$CAPTURE_TERMINAL" eject kept && cat kept/lib.sh && [ -f kept/refresh ]
+}
+_expect equal actual.exit 0
+_expect contain actual.stderr 'File exists, skipping'
+_expect contain actual.stdout 'mine'
+
+_test 'given [eject with no folder] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" eject; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'eject needs a folder'
+
+_test 'given [eject and two folders] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" eject one two; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'eject takes one folder'
+
+_test 'given [--eject, a dropped flag] should [exit 2]'
+actual() { "$CAPTURE_TERMINAL" --eject new.sh; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Unknown flag'
