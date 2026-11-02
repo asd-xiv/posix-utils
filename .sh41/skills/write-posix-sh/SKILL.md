@@ -1,36 +1,55 @@
 ---
 name: write-posix-sh
 description: |
-  Write POSIX shell scripts and the primitives in `posix-utils/bin/lib.sh`.
-  Use whenever the work is a shell script: writing, updating, reviewing, or
-  porting one from bash or zsh, whatever the path or extension.
-  Not for Node CLI entry points, which are TypeScript wrappers around commander.
+  Writes and reviews POSIX shell scripts and the primitives in
+  `posix-utils/bin/lib.sh`. Use when the work is a shell script in `bin/`,
+  `tools/` or a `*.sh` file, with or without an extension, or when porting one
+  from bash or zsh. Not for a Node CLI.
+metadata:
+  version: "0.1"
 ---
 
-<!-- POSIX.1-2024 main additions are pipefail and realpath -->
+<!-- sh41: POSIX.1-2024 main additions are pipefail and realpath -->
 
-Write composable, portable POSIX.1-2024 shell scripts that do one thing well.
+A POSIX.1-2024 shell script to do one thing well, and to compose with others. It
+is not a bash script or a Node CLI.
 
-<!--
+<!-- sh41:
 Sources used for various decisions in this skill:
 
 - Utility Conventions: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap12.html
 - XDG Base Directory Specification: https://specifications.freedesktop.org/basedir/latest/
 -->
 
+## Input
+
+If part of `posix-utils`:
+
+1. Script's `bin/*` home
+   - Without it, ask the User
+
+Otherwise:
+
+1. Instead of `bin/lib.sh`, write each primitive locally
+2. Instead of `tools/verify`, run `shellcheck -s sh` and `sh -n` on the script
+
 ## Files
+
+If part of `posix-utils`:
 
 ```text
 <posix-utils-root>/
-`-- bin/            <- Group by the running environment
-  |-- lib.sh        <- Primitives every script sources
-  |-- cli/          <- Terminal and CI, no display server
-  `-- sway/         <- Sway session, needs Wayland and a notifier
+└── bin/                 # grouped by the running environment
+    ├── lib.sh           # primitives every script sources
+    ├── cli/             # terminal and CI, no display server
+    └── sway/            # Sway session, needs Wayland and a notifier
 
-<domain-pkg-root>/bin/   <- Scripts that only this package needs
+<domain-pkg-root>/bin/   # scripts that only this package needs
 ```
 
-<!--
+Otherwise, ask the User where to place it.
+
+<!-- sh41:
 When editing this skill, use these terms consistently.
 
 | Term       | Example                                 | Means                                    | Not                       |
@@ -49,7 +68,11 @@ When editing this skill, use these terms consistently.
 
 ## Conventions
 
-Apply these everywhere:
+<!-- sh41:
+Shell forms of the 03.coding rules 4 (the verb by what it returns),
+10 (elevate on a second use) and 11 (naming conventions).
+Kept so the skill works alone
+-->
 
 - Write POSIX: no bashisms, no GNU-only flags
 - Put `--` before the positionals you pass, eg. `rm -f -- "$file"`. A command
@@ -81,10 +104,10 @@ Apply these everywhere:
   - A boot clears that directory, so no lock outlasts a reboot
 - Write each value to its own file in the lock, `pid` first, eg.
   `<runtime-dir>/<cmd-name>.lock/pid`
-- Remove the lock with `rm -r -- "${_LOCK_DIR:?}"` in the cleanup trap, only
+- Delete the lock with `rm -r -- "${_LOCK_DIR:?}"` in the cleanup trap, only
   when this run took it
 - A lock is stale when its pid is gone or runs another program
-  - Only an explicit command removes it, eg. `screenrecord stop`
+  - Only an explicit command deletes it, eg. `screenrecord stop`
   - Check the program with `ps -p <pid> -o args=` before you signal the pid
 
 **Exit codes**:
@@ -99,12 +122,10 @@ Apply these everywhere:
 - Never exit with a code the shell owns: `126` (found, not executable), `127`
   (not found) or `128`+n (killed by signal n, eg. `130` for `Ctrl-C`)
 
-## Specimen: `find-in-files`
+## Literate style example
 
-<!-- Literate style: the prose explains the code that follows it -->
-
-Sections 1–9 build one script, `find-in-files`, top to bottom. The script shows
-the rules at work. It is not a template.
+Each section below gives its rules, then shows them on `find-in-files`, a script
+that prints the lines that match a pattern.
 
 ### 1. Shebang and shell options
 
@@ -128,9 +149,11 @@ the rules at work. It is not a template.
     `head` stops reading, and `set -e` ends the script
   - POSIX added it in June 2024. BusyBox `ash` added it in 1.16 (Jan 2010),
     `dash` in 0.5.13 (Sep 2025)
+    <!-- sh41: without this line, agents spend turns checking pipefail support -->
 
 ```sh
 #!/bin/sh
+# shellcheck disable=SC3040 # POSIX.1-2024 has pipefail
 
 set -eu
 ```
@@ -141,8 +164,6 @@ set -eu
   - `find-*` exits and `_find_*` returns 0 when it finds nothing, `get-*` and
     `_get_*` non-zero
 - Write the man page once, as comments. `_show_help "$0"` prints it back
-  - Headings, in order: `NAME`, `SYNOPSIS`, `DESCRIPTION`, `ARGUMENTS`,
-    `OPTIONS`, `ENVIRONMENT`, `EXAMPLE`, `EXIT CODES`, `SEE ALSO`
   - Document every code the script exits with under `EXIT CODES`
 
 ```sh
@@ -187,7 +208,7 @@ set -eu
 - Read `bin/lib.sh` before you write a script and reuse what fits
 - Write a new primitive in the script
 - When a second script needs it, elevate it to `lib.sh`
-  - Drop the domain from its name, eg. `_ping_service_x` -> `_http_ping <url>`
+  - Remove the domain from its name, eg. `_ping_service_x` -> `_http_ping <url>`
   - Start its variable prefix with `lib_`, eg. `lib_hp_status`, to avoid
     collisions with the variables of a script that sources it
 - `bin/cli/fancy-log` is the command form of `_log`, for a shell that does not
@@ -224,9 +245,7 @@ _MAX_COUNT=""   # -m/--max, a positive integer
   never update the caller's `"$@"`
 - Tell a command's statuses apart before you act on one, so the script never
   treats "no match" as "broken"
-- Above a function, write its signature and what it does, then `RETURNS` with
-  each status and `EXIT` with each exit code, as in a man page. Leave out a 0
-  that only says the work is done
+- Above a function, leave out a 0 that only says the work is done
 
 ```sh
 # ╭───
@@ -269,10 +288,8 @@ _search_file() {
 
 ### 6. Flags and positionals
 
-- Flags first, then the positionals
-  - The exception is a command word, eg. `ls` in `recheck ls --color` or `info`
-    in `fancy-log info --no-color`. It comes before its flags
-- Always handle `--`, always catch `-?*`. The `?` lets a lone `-` through
+- A command word comes before its flags, eg. `ls` in `recheck ls --color`
+- In `-?*`, the `?` lets a lone `-` through
 - Guard before every `shift 2`. `dash` aborts with
   `shift: can't shift that many`
 - Name the shape a value must have and reject the rest. A list of bad shapes
@@ -333,8 +350,8 @@ _require_cmd grep
 - Register the trap before the first thing it must clean
 - End a signal trap by resending the signal. A trap stops the signal from ending
   the script. Without the resend, the script runs on past its own cleanup
-  - In each signal trap, call `_cleanup`, then clear the EXIT trap. POSIX leaves
-    open whether EXIT runs when a signal kills the script
+  - Clear the EXIT trap in each signal trap. POSIX leaves open whether EXIT runs
+    when a signal kills the script
 
 ```sh
 # ╭───
@@ -362,9 +379,6 @@ _TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/find-in-files.XXXXXX") \
   - Use `printf`, not `echo`. Pass data through `%s`
   - Never `printf '%b'` on data. It reads the escapes inside, eg. `C:\new`
     prints a newline
-- Read stdin when the caller gives no file
-  - Read only when `[ ! -t 0 ]`
-- Ignore stdin when the caller gives a file, as `grep` and `wc` do
 - Warn and skip an item you cannot use, finish the rest, then fail
 
 ```sh
@@ -420,12 +434,10 @@ exit 0
 
 ## Verify
 
-Run `npm run lint`, or directly `./tools/verify ./bin ./tools`, before you
-finish. It checks every script with:
+- [ ] `npm run lint` passes, or `./tools/verify ./bin ./tools`
+- [ ] `--help` exits 0, and an unknown flag exits 2
+  - Skip a private command, under a `*.d` directory, and a test file, under a
+    `*.t` directory
+- [ ] A command has `+x`, a `*.sh` library does not
 
-- `shellcheck -s sh`
-- `/bin/sh -n`
-- `--help` exits 0, an unknown flag exits 2
-  - it skips both for a private command, under a `*.d` directory, and for a test
-    file, under a `*.t` directory
-- a command has `+x`, a `*.sh` library does not
+Re-read the draft against these until all checks pass.
