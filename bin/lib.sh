@@ -711,6 +711,17 @@ _require_sway() {
   [ -n "${SWAYSOCK:-}" ] || _fail 3 "No Sway session, SWAYSOCK is not set"
 }
 
+# _require_display
+#
+# End the script unless WAYLAND_DISPLAY or DISPLAY is set. Without a
+# display, rofi exits 1, the same status as on Esc.
+#
+# EXIT
+#   3   WAYLAND_DISPLAY and DISPLAY are unset or empty
+_require_display() {
+  [ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ] || _fail 3 "No Wayland or X display"
+}
+
 # _pick_sway_geometry <window|region>
 #
 # Let the user pick with slurp and print the geometry: a visible window they

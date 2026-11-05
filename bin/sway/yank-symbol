@@ -85,8 +85,7 @@ esac
 
 _require_cmd rofi wl-copy awk
 
-# Without a display rofi exits 1, the same code as Esc
-[ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ] || _fail 3 "No Wayland or X display"
+_require_display
 
 # ╭───
 # │ Main
