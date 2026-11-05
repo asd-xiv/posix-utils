@@ -59,7 +59,7 @@ export LOG_NAMESPACE="verify"
 #
 # Tell if <file> is under a directory whose name ends in .d or .t. Only its
 # public command runs a *.d file, so it has no man page and no --help. A *.t
-# file is a test file, running it runs its tests.
+# file is a test file. Running it runs its tests.
 #
 # RETURNS
 #   0   A directory above <file> ends in .d or .t
@@ -104,12 +104,13 @@ done
 FILES=$(find "$@" -type f)
 RC=0
 
-# Use heredoc, not a pipe (subshell) so RC is still visible inside the loop.
-# 'read' splits on newlines only, files with with spaces wont trip.
+# Read FILES from a heredoc, not a pipe. A pipe runs the loop in a subshell,
+# so RC would not outlive it. read splits on newlines only, so a path with
+# spaces stays whole.
 while IFS= read -r FILE; do
   [ -z "$FILE" ] && continue
 
-  # skip any file without shebang
+  # Skip a file without a sh shebang
   head -1 "$FILE" 2>/dev/null | grep -qEv '^#!.*[/ ](sh|bash|dash|ash)$' \
     && continue
 
@@ -149,7 +150,7 @@ while IFS= read -r FILE; do
 
         if [ "$FLAG_RC" -ne 2 ]; then
           _error -v script "$FILE" -v got "$FLAG_RC" \
-            "Unknown flag did not exit 2"
+            "An unknown flag did not exit 2"
           FILE_RC=1
         fi
       fi

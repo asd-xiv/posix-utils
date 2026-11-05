@@ -54,10 +54,11 @@ mark,check,star ✓ ✗ ★ ☆'
 
 INSTRUCTION="<b>$LOG_NAMESPACE</b> :: type a group name, eg. ascii or romanian"
 SHORTCUTS="[enter] copy, [shift + enter] pick multiple"
-# gruvbox bright green
+# Gruvbox bright green
 PICKED_MARK='<span foreground="#b8bb26" weight="bold">✓</span>'
 
-# rofi lays this over the theme of the user, which keeps its colors and font.
+# rofi lays this over the theme of the user. The theme keeps its colors and
+# font.
 #   mainbox          the instruction above the input, the shortcuts last
 #   textbox-footer   a text box this script adds, for the shortcuts. Its look
 #                    comes from a "textbox-footer" section in the theme
@@ -80,7 +81,7 @@ case "${1:-}" in
     ;;
   "" | --) ;;
   -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
-  *) _fail 2 -v argument "$1" "yank-symbol takes only --help" ;;
+  *) _fail 2 -v positional "$1" "yank-symbol takes only --help" ;;
 esac
 
 _require_cmd rofi wl-copy awk

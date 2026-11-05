@@ -143,7 +143,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-[ "$#" -eq 0 ] || _fail 2 -v argument "$1" "open-os-menu takes only --help"
+[ "$#" -eq 0 ] || _fail 2 -v positional "$1" "open-os-menu takes only --help"
 
 _require_cmd rofi sed wc tr
 
