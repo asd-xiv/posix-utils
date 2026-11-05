@@ -3,36 +3,38 @@
 set -eu
 
 # NAME
-#   verify - Lint, parse and smoke test the shell scripts in a directory
+#   verify - Lint, parse and smoke test shell scripts
 #
 # SYNOPSIS
-#   verify [-h] <dir>...
+#   verify [-h] <path>...
 #
 # DESCRIPTION
-#   Runs shellcheck on every shell script under each dir and parses it under
-#   /bin/sh. A command, a file without an extension, must also be executable
-#   and pass a smoke test under /bin/sh. A sourced library, a *.sh file, must
-#   not be executable.
+#   Runs shellcheck on each shell script, or on every one under a directory,
+#   and parses it under /bin/sh. A command, a file without an extension,
+#   must also be executable and pass a smoke test under /bin/sh:
 #
 #     --help            must exit 0
 #     an unknown flag   must exit 2
 #
-#   A private command, a command under a *.d directory, skips the smoke test.
-#   Only its public command runs it, so it has no man page.
+#   A sourced library, a *.sh file, must not be executable.
 #
-#   A test file, a command under a *.t directory, skips it too. Running it
-#   runs its tests.
+#   A private command, a command under a *.d directory, skips the smoke test.
+#   Only its public command runs a private command, so it has no man page.
+#
+#   A test file, a command under a *.t directory, also skips the smoke test.
+#   Any run of a test file runs its tests.
 #
 #   CI and a developer run the same checks through this one script.
 #
 # ARGUMENTS
-#   dir   Directory to search for shell scripts, repeatable
+#   path   Shell script, or directory to search for shell scripts, repeatable
 #
 # OPTIONS
 #   -h, --help    Print this help
 #
 # EXAMPLE
 #   verify ./bin ./tools
+#   verify ./bin/sway/window-title ./bin/sway/pick-color
 #
 # EXIT CODES
 #   0   Every script passed
@@ -89,10 +91,10 @@ esac
 
 _require_cmd shellcheck
 
-[ "$#" -eq 0 ] && _fail 2 "No directory given"
+[ "$#" -eq 0 ] && _fail 2 "No path given"
 
-for DIR in "$@"; do
-  [ -d "$DIR" ] || _fail 2 -v dir "$DIR" "Not a directory"
+for TARGET in "$@"; do
+  [ -e "$TARGET" ] || _fail 2 -v path "$TARGET" "No such file or directory"
 done
 
 # ╭───
