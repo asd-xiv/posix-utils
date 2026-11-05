@@ -1,0 +1,129 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   pick-color - Pick a color from stdin in rofi
+#
+# SYNOPSIS
+#   ... | pick-color [OPTIONS]
+#
+# DESCRIPTION
+#   Reads colors on stdin, one "<name> #rrggbb" per line. Shows them in rofi as
+#   swatches, in two columns filled row by row. Prints the one the user picks
+#   as "#rrggbb", in lower case.
+#
+# OPTIONS
+#   --none       Add a "none" row last. Picking it prints "none"
+#   -h, --help   Print this help
+#
+# EXAMPLE
+#   find-terminal-colors | pick-color
+#   printf 'red #ff0000\nblue #0000ff\n' | pick-color
+#
+# EXIT CODES
+#   0   Picked a color, or none
+#   2   Invalid usage, eg. no colors on stdin, or a line that is not
+#       "<name> #rrggbb"
+#   3   Could not run, eg. no rofi or no display
+#   4   Nothing picked
+#
+# SEE ALSO
+#   rofi, find-terminal-colors
+
+_SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$_SCRIPT_DIR/../lib.sh"
+
+# _log reads these
+export LOG_NAMESPACE="pick-color"
+export LOG_LEVEL="${LOG_LEVEL:-info}"
+
+_HAS_NONE="" # --none, "true" or ""
+
+# ╭───
+# │ Primitives
+# ╰───
+
+# _find_bad_line <text>
+#
+# Print the number of the first line of <text> that is not
+# "<name> #rrggbb". Print nothing when every line is.
+_find_bad_line() {
+  printf '%s\n' "$1" | awk '
+    !/^[^ \t]+[ \t]+#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]$/ {
+      print NR
+      exit
+    }'
+}
+
+# ╭───
+# │ Bootstrap
+# ╰───
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -h | --help)
+      _show_help "$0"
+      exit 0
+      ;;
+    --none)
+      _HAS_NONE="true"
+      shift
+      ;;
+    -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
+    *) _fail 2 -v positional "$1" "Takes no positional" ;;
+  esac
+done
+
+[ ! -t 0 ] || _fail 2 "No colors on stdin"
+
+_COLORS=$(cat)
+[ -n "$_COLORS" ] || _fail 2 "No colors on stdin"
+
+_BAD_LINE=$(_find_bad_line "$_COLORS")
+[ -z "$_BAD_LINE" ] \
+  || _fail 2 -v line "$_BAD_LINE" 'Not "<name> #rrggbb"'
+
+_require_cmd rofi
+
+_require_display
+
+# ╭───
+# │ Main
+# ╰───
+
+# The rows rofi shows. The "none" row comes after the checks, so a "none" line
+# on stdin fails them
+_ROWS="$_COLORS"
+[ -z "$_HAS_NONE" ] || _ROWS="$_ROWS
+none"
+
+_ROW_COUNT=$(printf '%s\n' "$_ROWS" | wc -l | tr -d ' ')
+
+# Two columns, filled row by row, eg. a color next to its bright one
+_MENU_THEME="listview { columns: 2; flow: horizontal; lines: $(((_ROW_COUNT + 1) / 2)); }"
+
+# -format i prints the 0-based number of the picked row
+_ROFI_STATUS=0
+_PICKED_INDEX=$(
+  printf '%s\n' "$_ROWS" \
+    | awk 'NF == 1 { print "            none"; next }
+      { printf "<span background=\"%s\">        </span>  %s  <span alpha=\"65%%\">%s</span>\n", $2, $1, $2 }' \
+    | rofi -dmenu -i -no-custom -markup-rows -format i -p "color" \
+      -theme-str "$_MENU_THEME"
+) || _ROFI_STATUS=$?
+
+# rofi exits 1 on Esc
+case "$_ROFI_STATUS" in
+  0) ;;
+  1)
+    _warn "Nothing picked"
+    exit 4
+    ;;
+  *) _fail 3 -v status "$_ROFI_STATUS" "rofi failed" ;;
+esac
+
+printf '%s\n' "$_ROWS" | awk -v row="$((_PICKED_INDEX + 1))" \
+  'NR == row { print (NF == 1 ? "none" : tolower($2)) }'
+
+exit 0

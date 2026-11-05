@@ -1,0 +1,46 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+
+PICK_COLOR="$SCRIPT_DIR/../pick-color"
+
+_describe "pick-color :: usage"
+
+_test 'given [--help] should [print the man page and exit 0]'
+actual() { "$PICK_COLOR" --help; }
+_expect equal actual.exit 0
+_expect start-with actual.stdout 'NAME'
+
+_test 'given [an unknown flag] should [exit 2]'
+actual() { "$PICK_COLOR" --zz </dev/null; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Unknown flag'
+
+_test 'given [empty stdin] should [exit 2]'
+actual() { "$PICK_COLOR" </dev/null; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'No colors on stdin'
+
+_test 'given [a line with no name] should [exit 2 and name the line]'
+actual() { printf 'red #ff0000\n#00ff00\n' | "$PICK_COLOR"; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'line=2'
+
+_test 'given [a short hex] should [exit 2]'
+actual() { printf 'red #f00\n' | "$PICK_COLOR"; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'line=1'
+
+_test 'given [valid colors and no display] should [exit 3]'
+actual() {
+  printf 'red #ff0000\n' | WAYLAND_DISPLAY="" DISPLAY="" "$PICK_COLOR"
+}
+_expect equal actual.exit 3
+_expect contain actual.stderr 'No Wayland or X display'
+
+_test 'given [--none and a "none" line on stdin] should [exit 2 and name the line]'
+actual() { printf 'red #ff0000\nnone\n' | "$PICK_COLOR" --none; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'line=2'
