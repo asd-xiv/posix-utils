@@ -12,7 +12,8 @@ set -eu
 #   Shows a menu in rofi, one item per command you open by hand. An
 #   item shows an icon, its name, its command and what it does. Type to find
 #   an item by any of them, or by a word about it, eg. "unicode" or "cron".
-#   Enter opens the item under the cursor. Esc closes the menu.
+#   Enter opens the item under the cursor. Esc closes the menu. The menu
+#   opens with the cursor on the item picked last.
 #
 #   The items, and how each one opens:
 #
@@ -50,6 +51,11 @@ set -eu
 #                 --command". Every command of posix-utils that opens a
 #                 terminal window reads it. open-os-menu writes the command of
 #                 the item after it
+#
+# FILES
+#   $XDG_STATE_HOME/open-os-menu/selected-row
+#       The number of the item picked last, counted from 1
+#       (default XDG_STATE_HOME: ~/.local/state)
 #
 # EXAMPLE
 #   bindsym $mod+grave exec open-os-menu
@@ -149,6 +155,11 @@ _require_display
 
 ITEM_COUNT=$(printf '%s\n' "$ITEMS" | wc -l | tr -d ' ')
 
+SELECTED_ROW_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/open-os-menu/selected-row"
+SELECTED_ROW=$(cat -- "$SELECTED_ROW_FILE" 2>/dev/null || true)
+# A missing or broken file opens the menu on the first item
+_is positive-integer "$SELECTED_ROW" || SELECTED_ROW=1
+
 # rofi lays this over the theme of the user. The theme keeps its colors and
 # font.
 #   mainbox          the instruction above the input, the shortcuts last
@@ -163,8 +174,9 @@ listview { columns: 1; lines: $ITEM_COUNT; scrollbar: false; }"
 ROFI_STATUS=0
 PICKED_NUMBER=$(
   print_rows \
-    | rofi -dmenu -i -no-custom -markup-rows -eh 2 -format d -p "" \
-      -mesg "$INSTRUCTION" -theme-str "$MENU_THEME"
+    | rofi -dmenu -sync -i -no-custom -markup-rows -eh 2 -format d -p "" \
+      -mesg "$INSTRUCTION" -theme-str "$MENU_THEME" \
+      -selected-row "$((SELECTED_ROW - 1))"
 ) || ROFI_STATUS=$?
 
 # rofi exits 1 on Esc
@@ -176,6 +188,12 @@ case "$ROFI_STATUS" in
     ;;
   *) _fail 3 -v status "$ROFI_STATUS" "rofi failed" ;;
 esac
+
+# Not worth stopping the pick for, so a failed write only warns
+if ! { mkdir -p -- "${SELECTED_ROW_FILE%/*}" \
+  && printf '%s\n' "$PICKED_NUMBER" >"$SELECTED_ROW_FILE"; }; then
+  _warn -v file "$SELECTED_ROW_FILE" "Could not save the picked item"
+fi
 
 # With -no-custom and -format d, rofi prints only the number of a row
 # that print_rows printed
