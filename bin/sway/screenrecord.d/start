@@ -330,6 +330,9 @@ _require_sway
 # │ Lock
 # ╰───
 
+# One file per value: pid, state, file, geometry
+_LOCK_DIR="$(_get_runtime_dir)/screenrecord.lock"
+
 if ! mkdir -- "$_LOCK_DIR" 2>/dev/null; then
   _fail 3 -v pid "$(_get_lock_value pid)" \
     "A recording runs, or a stale lock: screenrecord stop"

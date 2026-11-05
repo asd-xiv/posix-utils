@@ -45,6 +45,9 @@ esac
 
 [ "$#" -eq 0 ] || _fail 2 '"stop" takes no arguments'
 
+# One file per value: pid, state, file, geometry
+_LOCK_DIR="$(_get_runtime_dir)/screenrecord.lock"
+
 if [ ! -d "$_LOCK_DIR" ]; then
   _info "Nothing records"
   exit 0

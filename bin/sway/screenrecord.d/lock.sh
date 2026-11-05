@@ -9,9 +9,6 @@
 export LOG_NAMESPACE="screenrecord"
 export LOG_LEVEL="${LOG_LEVEL:-info}"
 
-# One file per value: pid, state, file, geometry
-_LOCK_DIR="$(_get_runtime_dir)/screenrecord.lock"
-
 # ╭───
 # │ Primitives
 # ╰───
