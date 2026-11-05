@@ -1,0 +1,125 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   window-title - Show or hide the title bar of the focused window, or color
+#   its title
+#
+# SYNOPSIS
+#   window-title <command>
+#   window-title -h
+#
+# DESCRIPTION
+#   Runs the command on the focused window.
+#
+#     toggle   Show the title bar, or hide it if it shows. Hiding keeps the
+#              border width
+#     color    Pick a terminal color with pick-color for the background of
+#              the title. Sets the text to the black or bright-white of
+#              find-terminal-colors, whichever has the higher contrast, and
+#              shows the title bar. Pick none to set the title format back to
+#              "%title", the Sway default. Needs the cli group, for
+#              find-terminal-colors
+#
+# OPTIONS
+#   -h, --help   Print this help
+#
+# EXAMPLE
+#   bindsym $mod+t exec window-title toggle
+#
+# EXIT CODES
+#   0   Done
+#   2   Invalid usage
+#   3   Could not run, eg. no Sway session or swaymsg failed
+#   4   Nothing picked
+#
+# SEE ALSO
+#   swaymsg, jq, find-terminal-colors, pick-color
+
+# tools/install symlinks this script, so "$0" names the link. realpath follows
+# it to find lib.sh and window-title.d
+_SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$_SCRIPT_DIR/../lib.sh"
+. "$_SCRIPT_DIR/window-title.d/window-title.sh"
+
+# _log reads these
+export LOG_NAMESPACE="window-title"
+export LOG_LEVEL="${LOG_LEVEL:-info}"
+
+_FIND_TERMINAL_COLORS="$_SCRIPT_DIR/../cli/find-terminal-colors"
+_PICK_COLOR="$_SCRIPT_DIR/pick-color"
+
+# ╭───
+# │ Bootstrap
+# ╰───
+
+case "${1:-}" in
+  -h | --help)
+    _show_help "$0"
+    exit 0
+    ;;
+  toggle | color) _COMMAND="$1" ;;
+  "")
+    _show_help "$0" >&2
+    exit 2
+    ;;
+  -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
+  *) _fail 2 -v command "$1" "Unknown command. Use toggle or color" ;;
+esac
+shift
+
+[ "$#" -eq 0 ] || _fail 2 -v positional "$1" "\"$_COMMAND\" takes no positional"
+
+_require_sway
+_require_cmd swaymsg jq
+
+# ╭───
+# │ Main
+# ╰───
+
+case "$_COMMAND" in
+  toggle)
+    _BORDER=$(swaymsg -t get_tree \
+      | jq -r '.. | objects | select(.focused? == true) | .border') \
+      || _fail 3 "Could not read the Sway tree"
+
+    if [ "$_BORDER" = "normal" ]; then
+      _SWAY_COMMAND="border pixel"
+    else
+      _SWAY_COMMAND="border normal"
+    fi
+    ;;
+  color)
+    _PALETTE=$("$_FIND_TERMINAL_COLORS") || exit 3
+
+    _PICK_STATUS=0
+    _BACKGROUND=$(printf '%s\n' "$_PALETTE" | "$_PICK_COLOR" --none) \
+      || _PICK_STATUS=$?
+
+    case "$_PICK_STATUS" in
+      0) ;;
+      4)
+        _notify_cancel
+        exit 4
+        ;;
+      *) exit 3 ;;
+    esac
+
+    if [ "$_BACKGROUND" = "none" ]; then
+      _SWAY_COMMAND='title_format "%title"'
+    else
+      _DARK=$(printf '%s\n' "$_PALETTE" | awk '$1 == "black" { print $2 }')
+      _LIGHT=$(printf '%s\n' "$_PALETTE" | awk '$1 == "bright-white" { print $2 }')
+      _FOREGROUND=$(_get_contrast_color "$_BACKGROUND" \
+        "${_DARK:-#000000}" "${_LIGHT:-#ffffff}")
+
+      _FORMAT="<span background='$_BACKGROUND' foreground='$_FOREGROUND'> %title </span>"
+      _SWAY_COMMAND="border normal, title_format \"$_FORMAT\""
+    fi
+    ;;
+esac
+
+swaymsg --quiet "$_SWAY_COMMAND" || _fail 3 "swaymsg failed"
+
+exit 0

@@ -1,0 +1,39 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+
+WINDOW_TITLE="$SCRIPT_DIR/../window-title"
+
+_describe "window-title :: usage"
+
+_test 'given [--help] should [print the man page and exit 0]'
+actual() { "$WINDOW_TITLE" --help; }
+_expect equal actual.exit 0
+_expect start-with actual.stdout 'NAME'
+_expect contain actual.stdout 'toggle   Show the title bar'
+
+_test 'given [no command] should [exit 2]'
+actual() { "$WINDOW_TITLE"; }
+_expect equal actual.exit 2
+
+_test 'given [an unknown flag] should [exit 2]'
+actual() { "$WINDOW_TITLE" --zz; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Unknown flag'
+
+_test 'given [an unknown command] should [exit 2]'
+actual() { "$WINDOW_TITLE" paint; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Unknown command'
+
+_test 'given [a positional after the command] should [exit 2]'
+actual() { "$WINDOW_TITLE" toggle 42; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'takes no positional'
+
+_test 'given [no Sway session] should [exit 3]'
+actual() { SWAYSOCK="" "$WINDOW_TITLE" toggle; }
+_expect equal actual.exit 3
+_expect contain actual.stderr 'No Sway session'

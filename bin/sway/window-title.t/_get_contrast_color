@@ -1,0 +1,37 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../../lib.sh"
+. "$SCRIPT_DIR/../window-title.d/window-title.sh"
+
+_describe "window-title :: _get_contrast_color"
+
+_test 'given [a white background] should [print the dark candidate]'
+actual() { _get_contrast_color '#ffffff' '#282828' '#ebdbb2'; }
+_expect equal actual.stdout '#282828'
+
+_test 'given [a black background] should [print the light candidate]'
+actual() { _get_contrast_color '#000000' '#282828' '#ebdbb2'; }
+_expect equal actual.stdout '#ebdbb2'
+
+_test 'given [a bright yellow background] should [print the dark candidate]'
+actual() { _get_contrast_color '#fabd2f' '#282828' '#ebdbb2'; }
+_expect equal actual.stdout '#282828'
+
+_test 'given [a dark red background] should [print the light candidate]'
+actual() { _get_contrast_color '#9d0006' '#282828' '#ebdbb2'; }
+_expect equal actual.stdout '#ebdbb2'
+
+_test 'given [upper-case hex] should [print the dark candidate]'
+actual() { _get_contrast_color '#FFFFFF' '#EBDBB2' '#282828'; }
+_expect equal actual.stdout '#282828'
+
+_test 'given [two equal candidates] should [print the first]'
+actual() { _get_contrast_color '#000000' '#FFFFFF' '#ffffff'; }
+_expect equal actual.stdout '#FFFFFF'
+
+_test 'given [no candidate] should [exit 3]'
+actual() { (_get_contrast_color '#ffffff'); }
+_expect equal actual.exit 3
