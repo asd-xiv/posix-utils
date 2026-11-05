@@ -1,0 +1,43 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+
+FIND_TERMINAL_COLORS="$SCRIPT_DIR/../find-terminal-colors"
+
+_describe "find-terminal-colors :: list"
+
+_test 'given [no colors file] should [print the 16 built-in colors]'
+actual() { XDG_CONFIG_HOME="$PWD/none" "$FIND_TERMINAL_COLORS"; }
+_expect equal actual.exit 0
+_expect start-with actual.stdout 'black #282828
+bright-black #928374'
+_expect end-with actual.stdout 'white #a89984
+bright-white #ebdbb2'
+
+_test 'given [a colors file] should [print it as it is]'
+actual() {
+  mkdir -p config/color-scheme/nord
+  printf 'red #bf616a\n' > config/color-scheme/nord/colors
+  ln -s nord config/color-scheme/current
+  XDG_CONFIG_HOME="$PWD/config" "$FIND_TERMINAL_COLORS"
+}
+_expect equal actual.stdout 'red #bf616a'
+
+_test 'given [--dump-config and a colors file] should [print the built-in colors]'
+actual() {
+  mkdir -p config/color-scheme/current
+  printf 'red #bf616a\n' > config/color-scheme/current/colors
+  XDG_CONFIG_HOME="$PWD/config" "$FIND_TERMINAL_COLORS" --dump-config
+}
+_expect start-with actual.stdout 'black #282828'
+
+_test 'given [--help] should [print the man page and exit 0]'
+actual() { "$FIND_TERMINAL_COLORS" --help; }
+_expect equal actual.exit 0
+_expect start-with actual.stdout 'NAME'
+
+_test 'given [an unknown flag] should [exit 2]'
+actual() { "$FIND_TERMINAL_COLORS" --zz; }
+_expect equal actual.exit 2

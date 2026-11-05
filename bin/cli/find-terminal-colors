@@ -1,0 +1,91 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   find-terminal-colors - Print the terminal colors
+#
+# SYNOPSIS
+#   find-terminal-colors [OPTIONS]
+#
+# DESCRIPTION
+#   Prints the colors file, color-scheme/current/colors in XDG_CONFIG_HOME.
+#   Without it, prints the built-in colors, Gruvbox dark. color-scheme/current
+#   links to the folder of the scheme in use, eg. gruvbox. Each line is
+#   "<name> #rrggbb". Prints the file as it is. A reader, eg. pick-color,
+#   checks each line.
+#
+# OPTIONS
+#   --dump-config   Print the built-in colors, to start a colors file
+#   -h, --help      Print this help
+#
+# ENVIRONMENT
+#   XDG_CONFIG_HOME   Folder that holds color-scheme (default: ~/.config)
+#
+# EXAMPLE
+#   find-terminal-colors --dump-config > ~/.config/color-scheme/gruvbox/colors
+#   find-terminal-colors | pick-color
+#
+# EXIT CODES
+#   0   Printed
+#   2   Invalid usage
+#
+# SEE ALSO
+#   pick-color, window-title
+
+_SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$_SCRIPT_DIR/../lib.sh"
+
+# _log reads these
+export LOG_NAMESPACE="find-terminal-colors"
+export LOG_LEVEL="${LOG_LEVEL:-info}"
+
+# Gruvbox dark, each color next to its bright one
+_DEFAULT_COLORS='black #282828
+bright-black #928374
+red #cc241d
+bright-red #fb4934
+green #98971a
+bright-green #b8bb26
+yellow #d79921
+bright-yellow #fabd2f
+blue #458588
+bright-blue #83a598
+magenta #b16286
+bright-magenta #d3869b
+cyan #689d6a
+bright-cyan #8ec07c
+white #a89984
+bright-white #ebdbb2'
+
+# ╭───
+# │ Bootstrap
+# ╰───
+
+case "${1:-}" in
+  -h | --help)
+    _show_help "$0"
+    exit 0
+    ;;
+  --dump-config)
+    printf '%s\n' "$_DEFAULT_COLORS"
+    exit 0
+    ;;
+  "") ;;
+  -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
+  *) _fail 2 -v positional "$1" "Takes no positional" ;;
+esac
+
+# ╭───
+# │ Main
+# ╰───
+
+_COLORS_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/color-scheme/current/colors"
+
+if [ -f "$_COLORS_FILE" ]; then
+  cat -- "$_COLORS_FILE"
+else
+  printf '%s\n' "$_DEFAULT_COLORS"
+fi
+
+exit 0
