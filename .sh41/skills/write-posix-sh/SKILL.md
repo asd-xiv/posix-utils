@@ -6,7 +6,7 @@ description: |
   `tools/` or a `*.sh` file, with or without an extension, or when porting one
   from bash or zsh. Not for a Node CLI.
 metadata:
-  version: "0.1"
+  version: "0.1.0"
 ---
 
 <!-- sh41: POSIX.1-2024 main additions are pipefail and realpath -->
