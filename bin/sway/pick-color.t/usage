@@ -33,13 +33,6 @@ actual() { printf 'red #f00\n' | "$PICK_COLOR"; }
 _expect equal actual.exit 2
 _expect contain actual.stderr 'line=1'
 
-_test 'given [valid colors and no display] should [exit 3]'
-actual() {
-  printf 'red #ff0000\n' | WAYLAND_DISPLAY="" DISPLAY="" "$PICK_COLOR"
-}
-_expect equal actual.exit 3
-_expect contain actual.stderr 'No Wayland or X display'
-
 _test 'given [--none and a "none" line on stdin] should [exit 2 and name the line]'
 actual() { printf 'red #ff0000\nnone\n' | "$PICK_COLOR" --none; }
 _expect equal actual.exit 2

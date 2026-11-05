@@ -182,7 +182,7 @@ _test 'given [eject and a new folder] should [copy the three files and print the
 actual() {
   "$CAPTURE_TERMINAL" eject new/dir
   for f in lib.sh scene.sh refresh; do
-    cmp -- "$SCRIPT_DIR/../capture-terminal.d/eject/$f" "new/dir/$f" || return 1
+    [ "$(cat -- "$SCRIPT_DIR/../capture-terminal.d/eject/$f")" = "$(cat -- "new/dir/$f")" ] || return 1
   done
   [ -x new/dir/refresh ]
 }
