@@ -1,0 +1,57 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+# lib.sh finds bin/lib.sh from the folder of the command files
+_SCRIPT_DIR="$SCRIPT_DIR/../t212.d"
+# shellcheck source=../t212.d/lib.sh
+. "$_SCRIPT_DIR/lib.sh"
+
+_describe "t212.d/lib.sh :: _find_next_path :: valid"
+
+_test 'given [a page with a next path] should [print it]'
+prepare() {
+  printf '{"items":[1],"nextPagePath":"/api/v0/equity/history/orders?cursor=2"}' >page
+}
+actual() { _find_next_path page; }
+_expect equal actual.exit 0
+_expect equal actual.stdout '/api/v0/equity/history/orders?cursor=2'
+
+_test 'given [the last page] should [print nothing]'
+prepare() { printf '{"items":[1],"nextPagePath":null}' >page; }
+actual() { _find_next_path page; }
+_expect equal actual.exit 0
+_expect equal actual.stdout ''
+
+_describe "t212.d/lib.sh :: _find_next_path :: edge"
+
+_test 'given [an empty items array and no nextPagePath] should [print nothing]'
+prepare() { printf '{"items":[]}' >page; }
+actual() { _find_next_path page; }
+_expect equal actual.exit 0
+_expect equal actual.stdout ''
+
+_describe "t212.d/lib.sh :: _find_next_path :: invalid"
+
+_test 'given [no items] should [exit 4]'
+prepare() { printf '{"nextPagePath":"/api/v0/x"}' >page; }
+actual() { _find_next_path page; }
+_expect equal actual.exit 4
+_expect contain actual.stderr 'The API answered with no items'
+
+_test 'given [items that are not an array] should [exit 4]'
+prepare() { printf '{"items":{"a":1},"nextPagePath":null}' >page; }
+actual() { _find_next_path page; }
+_expect equal actual.exit 4
+
+_test 'given [no JSON] should [exit 4]'
+prepare() { printf '<html>' >page; }
+actual() { _find_next_path page; }
+_expect equal actual.exit 4
+
+_test 'given [a next path outside the API] should [exit 4]'
+prepare() { printf '{"items":[],"nextPagePath":"@evil.example/x"}' >page; }
+actual() { _find_next_path page; }
+_expect equal actual.exit 4
+_expect contain actual.stderr 'Unexpected next page path'

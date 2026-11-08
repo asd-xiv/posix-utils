@@ -1,0 +1,78 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/sandbox.sh"
+
+command -v sqlite3 >/dev/null 2>&1 || _skip_all "sqlite3 is not installed"
+
+_describe "t212.d/sql :: sql :: valid"
+
+before_each() {
+  build_sandbox
+  add_answer 1 200 "$_PAGE_1"
+  add_answer 2 200 "$_PAGE_2"
+}
+
+_test 'given [a synced database and no API key] should [print the rows as one JSON array]'
+actual() {
+  "$T212" sync transactions >/dev/null
+  T212_API_KEY_DEMO="" "$T212" sql "SELECT reference, amount FROM transactions WHERE type = 'DEPOSIT' ORDER BY reference"
+}
+_expect equal actual.exit 0
+_expect equal actual.stdout '[{"reference":"a","amount":5},{"reference":"b","amount":10}]'
+
+_describe "t212.d/sql :: sql :: edge"
+
+before_each() {
+  build_sandbox
+  add_answer 1 200 "$_PAGE_1"
+  add_answer 2 200 "$_PAGE_2"
+}
+
+_test 'given [a query that matches no row] should [print an empty array]'
+actual() {
+  "$T212" sync transactions >/dev/null
+  "$T212" sql "SELECT * FROM transactions WHERE amount > 100"
+}
+_expect equal actual.exit 0
+_expect equal actual.stdout '[]'
+
+_describe "t212.d/sql :: sql :: invalid"
+
+before_each() {
+  build_sandbox
+  add_answer 1 200 "$_PAGE_1"
+  add_answer 2 200 "$_PAGE_2"
+}
+
+_test 'given [no database] should [exit 3]'
+actual() { "$T212" sql 'SELECT 1'; }
+_expect equal actual.exit 3
+_expect contain actual.stderr 'run t212 sync first'
+
+_test 'given [a DELETE] should [exit 2 and keep the rows]'
+actual() {
+  "$T212" sync transactions >/dev/null
+  "$T212" sql 'DELETE FROM transactions' || printf 'exit %s\n' "$?"
+  db 'SELECT count(*) FROM transactions'
+}
+_expect equal actual.stdout 'exit 2
+3'
+
+_test 'given [a dot-command] should [exit 2 and not run it]'
+actual() {
+  "$T212" sync transactions >/dev/null
+  "$T212" sql '.shell touch pwned' || printf 'exit %s\n' "$?"
+  [ ! -e pwned ] && printf 'no file\n'
+}
+_expect equal actual.stdout 'exit 2
+no file'
+
+_test 'given [readfile()] should [exit 2]'
+actual() {
+  "$T212" sync transactions >/dev/null
+  "$T212" sql "SELECT readfile('calls.log')"
+}
+_expect equal actual.exit 2

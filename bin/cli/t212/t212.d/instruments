@@ -1,0 +1,36 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   t212 instruments - Print every instrument the account can trade
+#
+# SYNOPSIS
+#   t212 [--live] instruments
+#
+# DESCRIPTION
+#   Caches the answer for 10 minutes. The API updates the instruments at that
+#   rate, and allows one call per 50 s.
+#
+# FILES
+#   ~/.cache/t212/<demo|live>/instruments.json   The cached answer
+#   ~/.cache/t212/<demo|live>/instruments.time   When t212 cached it, as a Unix time
+#
+# ENVIRONMENT
+#   XDG_CACHE_HOME   Parent of the cache (default: ~/.cache)
+#
+# EXAMPLE
+#   t212 instruments | jq length
+
+# t212 runs this file by its path, and exports LOG_NAMESPACE, LOG_LEVEL and
+# _T212_ACCOUNT
+_SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$_SCRIPT_DIR/lib.sh"
+
+_parse_args "$0" 0 "$@"
+_use_account
+_create_temp_dir
+
+_get_cached /api/v0/equity/metadata/instruments
+
+exit 0

@@ -1,0 +1,30 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+# lib.sh finds bin/lib.sh from the folder of the command files
+_SCRIPT_DIR="$SCRIPT_DIR/../t212.d"
+# shellcheck source=../t212.d/lib.sh
+. "$_SCRIPT_DIR/lib.sh"
+
+_describe "t212.d/lib.sh :: _get_account :: valid"
+
+_test 'given [demo and live] should [print each]'
+actual() {
+  _T212_ACCOUNT=demo _get_account
+  _T212_ACCOUNT=live _get_account
+}
+_expect equal actual.stdout 'demo
+live'
+
+_describe "t212.d/lib.sh :: _get_account :: invalid"
+
+_test 'given [no _T212_ACCOUNT] should [exit 3, the command ran without t212]'
+actual() { unset _T212_ACCOUNT && _get_account; }
+_expect equal actual.exit 3
+_expect contain actual.stderr 'Run this command through t212'
+
+_test 'given [another account] should [exit 3]'
+actual() { _T212_ACCOUNT=prod _get_account; }
+_expect equal actual.exit 3

@@ -1,0 +1,36 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+# lib.sh finds bin/lib.sh from the folder of the command files
+_SCRIPT_DIR="$SCRIPT_DIR/../t212.d"
+# shellcheck source=../t212.d/lib.sh
+. "$_SCRIPT_DIR/lib.sh"
+
+_describe "t212.d/lib.sh :: _guard_id :: valid"
+
+_test 'given [42] should [return 0]'
+actual() { _guard_id 42; }
+_expect equal actual.exit 0
+
+_describe "t212.d/lib.sh :: _guard_id :: edge"
+
+_test 'given [an empty value] should [return 0]'
+actual() { _guard_id ''; }
+_expect equal actual.exit 0
+
+_describe "t212.d/lib.sh :: _guard_id :: invalid"
+
+_test 'given [0] should [exit 2]'
+actual() { _guard_id 0; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Not an id'
+
+_test 'given [a leading zero] should [exit 2]'
+actual() { _guard_id 042; }
+_expect equal actual.exit 2
+
+_test 'given [a word] should [exit 2]'
+actual() { _guard_id abc; }
+_expect equal actual.exit 2

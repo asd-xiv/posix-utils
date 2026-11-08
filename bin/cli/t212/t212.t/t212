@@ -1,0 +1,54 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/sandbox.sh"
+
+_describe "t212 :: t212 :: valid"
+
+before_each() { build_sandbox; }
+
+_test 'given [summary] should [call the demo host with the demo key, print the body on one line]'
+prepare() { add_answer 1 200 '{ "totalValue": 10 }'; }
+actual() { "$T212" summary && cat calls.log; }
+_expect equal actual.exit 0
+_expect equal actual.stdout '{"totalValue":10}
+https://demo.trading212.com/api/v0/equity/account/summary	header = "Authorization: demokey"'
+
+_test 'given [--live] should [call the live host with the live key]'
+actual() { "$T212" --live positions AAPL_US_EQ && cat calls.log; }
+_expect equal actual.exit 0
+_expect end-with actual.stdout 'https://live.trading212.com/api/v0/equity/positions?ticker=AAPL_US_EQ	header = "Authorization: livekey"'
+
+_test 'given [<command> --help] should [print the page of that command only]'
+actual() { "$T212" sync --help; }
+_expect equal actual.exit 0
+_expect start-with actual.stdout 'NAME
+  t212 sync - Copy the history of the account into its database'
+_expect ! contain actual.stdout 'Places no order'
+
+_describe "t212 :: t212 :: invalid"
+
+before_each() { build_sandbox; }
+
+_test 'given [no command] should [print the help to stderr and exit 2]'
+actual() { "$T212"; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'SYNOPSIS'
+
+_test 'given [an unknown command] should [exit 2 and call nothing]'
+actual() { "$T212" buy; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Unknown command'
+_expect ! contain actual.stderr 'curl'
+
+_test 'given [db, a folder in t212.d] should [exit 2, a folder is not a command]'
+actual() { "$T212" db; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Unknown command'
+
+_test 'given [a command name with a dot] should [exit 2, not run lib.sh]'
+actual() { "$T212" lib.sh; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Unknown command'

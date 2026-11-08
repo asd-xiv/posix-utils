@@ -1,0 +1,70 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/sandbox.sh"
+# lib.sh finds bin/lib.sh from the folder of the command files
+_SCRIPT_DIR="$SCRIPT_DIR/../t212.d"
+# shellcheck source=../t212.d/lib.sh
+. "$_SCRIPT_DIR/lib.sh"
+
+_describe "t212.d/lib.sh :: _call_api :: valid"
+
+before_each() {
+  build_sandbox
+  use_fake_account
+}
+
+_test 'given [HTTP 200] should [write the body, and send the key on stdin]'
+prepare() { add_answer 1 200 '{"a":1}'; }
+actual() { _call_api /api/v0/x body && cat body && printf '\n' && cat calls.log; }
+_expect equal actual.exit 0
+_expect equal actual.stdout '{"a":1}
+https://demo.trading212.com/api/v0/x	header = "Authorization: demokey"'
+
+_test 'given [HTTP 429, then 200] should [wait period / limit seconds and call again]'
+prepare() {
+  add_answer 1 429 '{}' "$(printf 'x-ratelimit-limit: 2\r\nx-ratelimit-period: 2')"
+  add_answer 2 200 '{"ok":true}'
+}
+actual() { _call_api /api/v0/x body && cat body; }
+_expect equal actual.exit 0
+_expect equal actual.stdout '{"ok":true}'
+_expect contain actual.stderr 'Rate limited, waiting'
+_expect contain actual.stderr 'seconds=1'
+
+_describe "t212.d/lib.sh :: _call_api :: invalid"
+
+before_each() {
+  build_sandbox
+  use_fake_account
+}
+
+_test 'given [HTTP 401] should [exit 4 and name the key]'
+prepare() { add_answer 1 401 '{}'; }
+actual() { _call_api /api/v0/x body; }
+_expect equal actual.exit 4
+_expect contain actual.stderr 'The API refused the key'
+_expect contain actual.stderr 'T212_API_KEY_DEMO'
+
+_test 'given [HTTP 404] should [exit 4 and print the body]'
+prepare() { add_answer 1 404 '{"code":"NotFound"}'; }
+actual() { _call_api /api/v0/x body; }
+_expect equal actual.exit 4
+_expect contain actual.stderr 'body={"code":"NotFound"}'
+
+_test 'given [HTTP 429 three times] should [exit 4 after the third call]'
+prepare() {
+  add_answer 1 429 '{}'
+  add_answer 2 429 '{}'
+  add_answer 3 429 '{}'
+}
+actual() { (_call_api /api/v0/x body) || {
+  status=$?
+  wc -l <calls.log | tr -d ' '
+  exit "$status"
+}; }
+_expect equal actual.exit 4
+_expect equal actual.stdout '3'
+_expect contain actual.stderr 'Rate limited, giving up'

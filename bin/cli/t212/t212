@@ -1,0 +1,111 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   t212 - Read a Trading 212 account: cash, positions, orders and history
+#
+# SYNOPSIS
+#   t212 [--live] <command> [flag...] [positional...]
+#   t212 <command> --help
+#   t212 -h | --help
+#
+# DESCRIPTION
+#   Calls the Trading 212 Public API, or reads the database of the account,
+#   and prints JSON to stdout: indented at a terminal, one line otherwise.
+#   Places no order.
+#
+#     summary       Print the cash and investment totals of the account
+#     positions     Print every open position, or the one in a ticker
+#     orders        Print every pending order, or the pending order <id>
+#     history       Print the filled orders, dividends or transactions
+#     exports       Print each CSV report requested and its status
+#     instruments   Print every instrument the account can trade
+#     exchanges     Print every exchange and its working hours
+#     pies          Print every pie, or the pie <id> with its instruments
+#     sync          Copy the history of the account into its database
+#     sql           Query the database of the account
+#
+#   The API allows each endpoint a few calls per period. On HTTP 429, t212
+#   waits until the API frees one call, then calls again, up to 3 calls.
+#
+# OPTIONS
+#   --live       Use the live account, with real money (default: the demo
+#                account)
+#   -h, --help   Print this help
+#
+# ENVIRONMENT
+#   T212_API_KEY_DEMO   API key of the demo account
+#   T212_API_KEY_LIVE   API key of the live account
+#   LOG_LEVEL           Last log level to print (default: info)
+#
+# EXAMPLE
+#   t212 positions
+#   t212 --live positions
+#   t212 history --help
+#
+# EXIT CODES
+#   0   Done
+#   2   Invalid usage, eg. an unknown command or a missing API key
+#   3   Could not run, eg. no curl or no network
+#   4   The API refused the call, or its answer has the wrong shape
+#
+# SEE ALSO
+#   curl, jq, https://docs.trading212.com/api
+
+# tools/install symlinks this script, so "$0" names the link. realpath follows
+# it to find lib.sh and t212.d
+_SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$_SCRIPT_DIR/../../lib.sh"
+
+# _log reads these
+export LOG_NAMESPACE="t212"
+export LOG_LEVEL="${LOG_LEVEL:-info}"
+
+# ╭───
+# │ Bootstrap
+# ╰───
+
+# The command reads the account from _T212_ACCOUNT. t212 sets it on each
+# run, so a value from the shell never reaches the command
+_T212_ACCOUNT="demo" # --live sets "live"
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -h | --help)
+      _show_help "$0"
+      exit 0
+      ;;
+    --live)
+      _T212_ACCOUNT="live"
+      shift
+      ;;
+    -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
+    *) break ;;
+  esac
+done
+
+if [ "$#" -eq 0 ]; then
+  _show_help "$0" >&2
+  exit 2
+fi
+
+_COMMAND="$1"
+shift
+
+# ╭───
+# │ Main
+# ╰───
+
+# One file per command. A slug has no ".", so a command never names lib.sh
+# or views.sql
+_COMMAND_FILE="$_SCRIPT_DIR/t212.d/$_COMMAND"
+
+if ! _is slug "$_COMMAND" || [ ! -f "$_COMMAND_FILE" ] \
+  || [ ! -x "$_COMMAND_FILE" ]; then
+  _fail 2 -v command "$_COMMAND" "Unknown command"
+fi
+
+export _T212_ACCOUNT
+
+exec "$_COMMAND_FILE" "$@"

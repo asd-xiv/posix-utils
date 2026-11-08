@@ -1,0 +1,53 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+# lib.sh finds bin/lib.sh from the folder of the command files
+_SCRIPT_DIR="$SCRIPT_DIR/../t212.d"
+# shellcheck source=../t212.d/lib.sh
+. "$_SCRIPT_DIR/lib.sh"
+
+_describe "t212.d/lib.sh :: _parse_args :: valid"
+
+_test 'given [no args and max 0] should [set _POSITIONAL to empty]'
+actual() { _parse_args script 0 && printf '[%s]' "$_POSITIONAL"; }
+_expect equal actual.stdout '[]'
+
+_test 'given [one positional and max 1] should [set _POSITIONAL to it]'
+actual() { _parse_args script 1 42 && printf '%s' "$_POSITIONAL"; }
+_expect equal actual.stdout '42'
+
+_test 'given [-h] should [print the help of the script and exit 0]'
+prepare() { printf '#!/bin/sh\n\n# NAME\n#   demo - A demo\n\n' >script; }
+actual() { _parse_args script 0 -h; }
+_expect equal actual.exit 0
+_expect equal actual.stdout 'NAME
+  demo - A demo'
+
+_describe "t212.d/lib.sh :: _parse_args :: edge"
+
+_test 'given [-- then a value that starts with -] should [read it as the positional]'
+actual() { _parse_args script 1 -- -x && printf '%s' "$_POSITIONAL"; }
+_expect equal actual.stdout '-x'
+
+_describe "t212.d/lib.sh :: _parse_args :: invalid"
+
+_test 'given [two positionals and max 1] should [exit 2]'
+actual() { _parse_args script 1 a b; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Too many positionals'
+
+_test 'given [a positional and max 0] should [exit 2]'
+actual() { _parse_args script 0 a; }
+_expect equal actual.exit 2
+
+_test 'given [a flag] should [exit 2]'
+actual() { _parse_args script 1 --all; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Unknown flag'
+
+_test 'given [--live] should [exit 2 and say where it goes]'
+actual() { _parse_args script 0 --live; }
+_expect equal actual.exit 2
+_expect contain actual.stderr '--live goes before the command, eg. t212 --live summary'

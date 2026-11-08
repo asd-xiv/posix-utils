@@ -1,0 +1,144 @@
+#!/bin/sh
+
+# NAME
+#   sandbox.contract - Verify what the fake curl of sandbox.sh assumes, on the
+#   demo API
+#
+# DESCRIPTION
+#   Each test checks one assumption of the fake curl against the real demo
+#   account. A changed API contract fails the test of that assumption, while
+#   the tests that use the fake stay green.
+#
+#   Makes 13 calls. Skips the whole file without T212_API_KEY_DEMO, eg. in CI.
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+# lib.sh finds bin/lib.sh from the folder of the command files
+_SCRIPT_DIR="$SCRIPT_DIR/../t212.d"
+# shellcheck source=../t212.d/lib.sh
+. "$_SCRIPT_DIR/lib.sh"
+
+[ -n "${T212_API_KEY_DEMO:-}" ] || _skip_all "T212_API_KEY_DEMO is not set"
+command -v curl >/dev/null 2>&1 || _skip_all "curl is not installed"
+command -v jq >/dev/null 2>&1 || _skip_all "jq is not installed"
+
+# call_api <path> [key]
+# Call GET <path> on the demo host as t212 does, with <key> or the demo key.
+# Write the HTTP status to http_status, the headers to headers and the body to
+# body, in the test folder.
+call_api() {
+  printf 'header = "Authorization: %s"\n' "${2:-$T212_API_KEY_DEMO}" \
+    | curl -sS --max-time 30 -K - -D headers -o body -w '%{http_code}' \
+      "https://demo.trading212.com$1" >http_status
+}
+
+_describe "t212.t/sandbox.sh :: curl :: valid"
+
+_test 'given [the key in an Authorization header] should [answer 200 to summary, with the numbers summaries reads]'
+actual() {
+  call_api /api/v0/equity/account/summary
+  cat http_status
+  jq -r '"", ([.totalValue, .cash.availableToTrade, .investments.currentValue,
+    .investments.totalCost, .investments.realizedProfitLoss,
+    .investments.unrealizedProfitLoss] | all(type == "number"))' body
+}
+_expect equal actual.stdout '200
+true'
+
+_test 'given [positions] should [answer an array whose items have the fields positions reads]'
+actual() {
+  call_api /api/v0/equity/positions
+  jq '(type == "array") and all(.[]; (.instrument.ticker | type) == "string"
+    and ([.quantity, .currentPrice, .averagePricePaid,
+      .walletImpact.totalCost, .walletImpact.currentValue,
+      .walletImpact.unrealizedProfitLoss] | all(type == "number")))' body
+}
+_expect equal actual.stdout 'true'
+
+_test 'given [any answer] should [carry x-ratelimit-limit and x-ratelimit-period as positive integers]'
+actual() {
+  call_api /api/v0/equity/orders
+  for header in x-ratelimit-limit x-ratelimit-period; do
+    _is positive-integer "$(_find_header "$header" headers)" \
+      && printf '%s ok\n' "$header"
+  done
+}
+_expect equal actual.stdout 'x-ratelimit-limit ok
+x-ratelimit-period ok'
+
+_test 'given [each kind of history] should [answer items as an array, and nextPagePath as an API path or null]'
+actual() {
+  for kind in orders dividends transactions; do
+    call_api "/api/v0/equity/history/$kind?limit=1"
+    jq -r --arg kind "$kind" '"\($kind) \((.items | type) == "array"
+      and (.nextPagePath == null or (.nextPagePath | startswith("/api/v0/"))))"' body
+  done
+}
+_expect equal actual.stdout 'orders true
+dividends true
+transactions true'
+
+_test 'given [history orders] should [give each item an integer order.id, and a fill that is null or has an integer id]'
+actual() {
+  call_api "/api/v0/equity/history/orders?limit=50"
+  jq 'all(.items[]; (.order.id | type) == "number"
+    and (.fill == null or (.fill.id | type) == "number"))' body
+}
+_expect equal actual.stdout 'true'
+
+_test 'given [history dividends] should [give each item a reference]'
+actual() {
+  call_api "/api/v0/equity/history/dividends?limit=50"
+  jq 'all(.items[]; (.reference | type) == "string")' body
+}
+_expect equal actual.stdout 'true'
+
+_test 'given [history transactions] should [give each item a reference, type, amount, currency and dateTime]'
+actual() {
+  call_api "/api/v0/equity/history/transactions?limit=50"
+  jq 'all(.items[]; has("reference") and has("type") and has("amount")
+    and has("currency") and has("dateTime"))' body
+}
+_expect equal actual.stdout 'true'
+
+_describe "t212.t/sandbox.sh :: curl :: invalid"
+
+_test 'given [any answer] should [carry a Date header that _to_iso_time reads]'
+actual() {
+  call_api /api/v0/equity/history/exports
+  _to_iso_time "$(_find_header date headers)" | cut -c 1-2
+}
+_expect equal actual.stdout '20'
+
+_test 'given [an id no pie has] should [answer 404]'
+actual() {
+  call_api /api/v0/equity/pies/1
+  cat http_status
+}
+_expect equal actual.stdout '404'
+
+_test 'given [a second summary within 5 s] should [answer 429 with x-ratelimit-limit and x-ratelimit-period]'
+actual() {
+  call_api /api/v0/equity/account/summary
+  call_api /api/v0/equity/account/summary
+  cat http_status
+  printf '\n'
+  for header in x-ratelimit-limit x-ratelimit-period; do
+    _is positive-integer "$(_find_header "$header" headers)" \
+      && printf '%s ok\n' "$header"
+  done
+}
+_expect equal actual.stdout '429
+x-ratelimit-limit ok
+x-ratelimit-period ok'
+
+_test 'given [a key the API does not know] should [answer 401 or 403]'
+actual() {
+  call_api /api/v0/equity/positions notakey
+  case "$(cat http_status)" in
+    401 | 403) printf 'refused\n' ;;
+    *) cat http_status ;;
+  esac
+}
+_expect equal actual.stdout 'refused'

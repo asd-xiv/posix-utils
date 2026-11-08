@@ -1,0 +1,31 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   t212 orders - Print every pending order, or the pending order <id>
+#
+# SYNOPSIS
+#   t212 [--live] orders [id]
+#
+# ARGUMENTS
+#   id   Id of a pending order, a positive integer
+#
+# EXAMPLE
+#   t212 orders
+#   t212 orders 42
+
+# t212 runs this file by its path, and exports LOG_NAMESPACE, LOG_LEVEL and
+# _T212_ACCOUNT
+_SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$_SCRIPT_DIR/lib.sh"
+
+_parse_args "$0" 1 "$@"
+_guard_id "$_POSITIONAL"
+
+_use_account
+_create_temp_dir
+
+_print_api "/api/v0/equity/orders${_POSITIONAL:+/$_POSITIONAL}"
+
+exit 0

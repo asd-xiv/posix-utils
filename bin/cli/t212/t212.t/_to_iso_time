@@ -1,0 +1,39 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+# lib.sh finds bin/lib.sh from the folder of the command files
+_SCRIPT_DIR="$SCRIPT_DIR/../t212.d"
+# shellcheck source=../t212.d/lib.sh
+. "$_SCRIPT_DIR/lib.sh"
+
+_describe "t212.d/lib.sh :: _to_iso_time :: valid"
+
+_test 'given [an HTTP Date] should [print it as ISO 8601 in UTC]'
+actual() { _to_iso_time 'Sun, 08 Nov 2026 14:27:46 GMT'; }
+_expect equal actual.exit 0
+_expect equal actual.stdout '2026-11-08T14:27:46Z'
+
+_describe "t212.d/lib.sh :: _to_iso_time :: edge"
+
+_test 'given [each month] should [print its number]'
+actual() {
+  for month in Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec; do
+    _to_iso_time "Mon, 01 $month 2026 00:00:00 GMT" | cut -c 6-7
+  done | tr '\n' ' '
+}
+_expect equal actual.stdout '01 02 03 04 05 06 07 08 09 10 11 12 '
+
+_describe "t212.d/lib.sh :: _to_iso_time :: invalid"
+
+_test 'given [an empty value, a word, a time zone other than GMT, or a bad month] should [print nothing and return 1 for each]'
+actual() {
+  for value in '' soon 'Sun, 08 Nov 2026 14:27:46 CET' 'Sun, 08 Foo 2026 14:27:46 GMT'; do
+    _to_iso_time "$value" || printf '1\n'
+  done
+}
+_expect equal actual.stdout '1
+1
+1
+1'

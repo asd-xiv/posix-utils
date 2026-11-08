@@ -1,0 +1,37 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+# lib.sh finds bin/lib.sh from the folder of the command files
+_SCRIPT_DIR="$SCRIPT_DIR/../t212.d"
+# shellcheck source=../t212.d/lib.sh
+. "$_SCRIPT_DIR/lib.sh"
+
+_describe "t212.d/lib.sh :: _use_account :: valid"
+
+before_each() { export _T212_ACCOUNT=demo T212_API_KEY_DEMO=demokey; }
+
+_test 'given [the demo account and its key] should [set the account, the host and the key]'
+actual() {
+  _use_account
+  printf '%s\n' "$_ACCOUNT" "$_HOST" "$_KEY_NAME" "$_API_KEY"
+}
+_expect equal actual.stdout 'demo
+https://demo.trading212.com
+T212_API_KEY_DEMO
+demokey'
+
+_describe "t212.d/lib.sh :: _use_account :: invalid"
+
+before_each() { export _T212_ACCOUNT=live; }
+
+_test 'given [the live account without its key] should [exit 2 and name the variable]'
+actual() { T212_API_KEY_LIVE="" _use_account; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'T212_API_KEY_LIVE'
+
+_test 'given [a key with a quote] should [exit 2, it would break the curl config line]'
+actual() { T212_API_KEY_LIVE='ab"c' _use_account; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Not an API key'

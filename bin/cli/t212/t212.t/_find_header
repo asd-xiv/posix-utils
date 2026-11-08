@@ -1,0 +1,46 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+# lib.sh finds bin/lib.sh from the folder of the command files
+_SCRIPT_DIR="$SCRIPT_DIR/../t212.d"
+# shellcheck source=../t212.d/lib.sh
+. "$_SCRIPT_DIR/lib.sh"
+
+_describe "t212.d/lib.sh :: _find_header :: valid"
+
+_test 'given [a header in another case, with CRLF ends] should [print its value without the CR]'
+prepare() {
+  printf 'HTTP/1.1 429 Too Many Requests\r\nX-RateLimit-Period: 60\r\n\r\n' \
+    >headers
+}
+actual() { _find_header x-ratelimit-period headers; }
+_expect equal actual.exit 0
+_expect equal actual.stdout '60'
+
+_describe "t212.d/lib.sh :: _find_header :: edge"
+
+_test 'given [two responses in one file] should [print the value of the last]'
+prepare() {
+  printf 'HTTP/1.1 429 Too Many Requests\r\nx-ratelimit-limit: 1\r\n\r\n' \
+    >headers
+  printf 'HTTP/1.1 200 OK\r\nx-ratelimit-limit: 20\r\n\r\n' >>headers
+}
+actual() { _find_header x-ratelimit-limit headers; }
+_expect equal actual.stdout '20'
+
+_test 'given [a last response without the header] should [print nothing]'
+prepare() {
+  printf 'HTTP/1.1 429 Too Many Requests\r\nx-ratelimit-limit: 1\r\n\r\n' \
+    >headers
+  printf 'HTTP/1.1 200 OK\r\n\r\n' >>headers
+}
+actual() { _find_header x-ratelimit-limit headers; }
+_expect equal actual.exit 0
+_expect equal actual.stdout ''
+
+_test 'given [a header whose name ends with the one asked] should [print nothing]'
+prepare() { printf 'HTTP/1.1 200 OK\r\nx-limit: 5\r\n\r\n' >headers; }
+actual() { _find_header limit headers; }
+_expect equal actual.stdout ''

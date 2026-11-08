@@ -1,0 +1,32 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   t212 positions - Print every open position, or the one in a ticker
+#
+# SYNOPSIS
+#   t212 [--live] positions [ticker]
+#
+# ARGUMENTS
+#   ticker   Only the position in <ticker>, eg. AAPL_US_EQ
+#
+# EXAMPLE
+#   t212 positions AAPL_US_EQ
+
+# t212 runs this file by its path, and exports LOG_NAMESPACE, LOG_LEVEL and
+# _T212_ACCOUNT
+_SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$_SCRIPT_DIR/lib.sh"
+
+_parse_args "$0" 1 "$@"
+if [ -n "$_POSITIONAL" ] && ! _is_ticker "$_POSITIONAL"; then
+  _fail 2 -v ticker "$_POSITIONAL" "Not a ticker"
+fi
+
+_use_account
+_create_temp_dir
+
+_print_api "/api/v0/equity/positions${_POSITIONAL:+?ticker=$_POSITIONAL}"
+
+exit 0

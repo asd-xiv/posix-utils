@@ -1,0 +1,37 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+# lib.sh finds bin/lib.sh from the folder of the command files
+_SCRIPT_DIR="$SCRIPT_DIR/../t212.d"
+# shellcheck source=../t212.d/lib.sh
+. "$_SCRIPT_DIR/lib.sh"
+
+_describe "t212.d/lib.sh :: _to_wait_seconds :: valid"
+
+_test 'given [20 calls per 60 s] should [print 3]'
+actual() { _to_wait_seconds 60 20; }
+_expect equal actual.stdout '3'
+
+_test 'given [1 call per 5 s] should [print 5]'
+actual() { _to_wait_seconds 5 1; }
+_expect equal actual.stdout '5'
+
+_describe "t212.d/lib.sh :: _to_wait_seconds :: edge"
+
+_test 'given [a period the limit does not divide] should [round up]'
+actual() { _to_wait_seconds 10 3; }
+_expect equal actual.stdout '4'
+
+_describe "t212.d/lib.sh :: _to_wait_seconds :: invalid"
+
+_test 'given [an empty period, a zero limit or a word] should [print 1 for each]'
+actual() {
+  _to_wait_seconds "" 20
+  _to_wait_seconds 60 0
+  _to_wait_seconds abc 2
+}
+_expect equal actual.stdout '1
+1
+1'

@@ -1,0 +1,33 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+# lib.sh finds bin/lib.sh from the folder of the command files
+_SCRIPT_DIR="$SCRIPT_DIR/../t212.d"
+# shellcheck source=../t212.d/lib.sh
+. "$_SCRIPT_DIR/lib.sh"
+
+_describe "t212.d/lib.sh :: _is_ticker :: valid"
+
+_test 'given [AAPL_US_EQ] should [return 0]'
+actual() { _is_ticker AAPL_US_EQ; }
+_expect equal actual.exit 0
+
+_describe "t212.d/lib.sh :: _is_ticker :: edge"
+
+_test 'given [a ticker with a dot] should [return 0]'
+actual() { _is_ticker BRK.B_US_EQ; }
+_expect equal actual.exit 0
+
+_describe "t212.d/lib.sh :: _is_ticker :: invalid"
+
+_test 'given [an empty value, a quote or a space] should [return 1 for each]'
+actual() {
+  for value in '' 'A"B' 'A B'; do
+    _is_ticker "$value" || printf '1\n'
+  done
+}
+_expect equal actual.stdout '1
+1
+1'

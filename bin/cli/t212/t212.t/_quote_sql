@@ -1,0 +1,25 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+# lib.sh finds bin/lib.sh from the folder of the command files
+_SCRIPT_DIR="$SCRIPT_DIR/../t212.d"
+# shellcheck source=../t212.d/lib.sh
+. "$_SCRIPT_DIR/lib.sh"
+
+_describe "t212.d/lib.sh :: _quote_sql :: valid"
+
+_test 'given [a path] should [print it between single quotes]'
+actual() { _quote_sql '/tmp/t212.ab12/page'; }
+_expect equal actual.stdout "'/tmp/t212.ab12/page'"
+
+_describe "t212.d/lib.sh :: _quote_sql :: edge"
+
+_test 'given [a text with single quotes] should [double each one]'
+actual() { _quote_sql "it's 'x'"; }
+_expect equal actual.stdout "'it''s ''x'''"
+
+_test 'given [an empty text] should [print two quotes]'
+actual() { _quote_sql ''; }
+_expect equal actual.stdout "''"

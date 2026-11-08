@@ -1,0 +1,59 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/sandbox.sh"
+
+_describe "t212.d/history :: history :: valid"
+
+before_each() { build_sandbox; }
+
+_test 'given [no --all] should [print the items of the first page, 20 per page]'
+prepare() {
+  add_answer 1 200 '{"items":[{"id":1}],"nextPagePath":"/api/v0/equity/history/orders?cursor=2"}'
+}
+actual() { "$T212" history orders --ticker AAPL_US_EQ && cut -f 1 calls.log; }
+_expect equal actual.exit 0
+_expect equal actual.stdout '[{"id":1}]
+https://demo.trading212.com/api/v0/equity/history/orders?limit=20&ticker=AAPL_US_EQ'
+
+_test 'given [--all] should [follow nextPagePath, 50 per page, and print one array]'
+prepare() {
+  add_answer 1 200 '{"items":[{"id":1},{"id":2}],"nextPagePath":"/api/v0/equity/history/dividends?limit=50&cursor=2"}'
+  add_answer 2 200 '{"items":[{"id":3}],"nextPagePath":null}'
+}
+actual() { "$T212" history dividends --all && cut -f 1 calls.log; }
+_expect equal actual.exit 0
+_expect equal actual.stdout '[{"id":1},{"id":2},{"id":3}]
+https://demo.trading212.com/api/v0/equity/history/dividends?limit=50
+https://demo.trading212.com/api/v0/equity/history/dividends?limit=50&cursor=2'
+
+_describe "t212.d/history :: history :: edge"
+
+before_each() { build_sandbox; }
+
+_test 'given [an empty page] should [print an empty array]'
+prepare() { add_answer 1 200 '{"items":[],"nextPagePath":null}'; }
+actual() { "$T212" history transactions --all; }
+_expect equal actual.exit 0
+_expect equal actual.stdout '[]'
+
+_describe "t212.d/history :: history :: invalid"
+
+before_each() { build_sandbox; }
+
+_test 'given [history without a kind] should [exit 2]'
+actual() { "$T212" history; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'history needs orders, dividends or transactions'
+
+_test 'given [a limit above 50] should [exit 2]'
+actual() { "$T212" history orders --limit 51; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'Not a count from 1 to 50'
+
+_test 'given [--ticker with history transactions] should [exit 2]'
+actual() { "$T212" history transactions --ticker AAPL_US_EQ; }
+_expect equal actual.exit 2
+_expect contain actual.stderr '--ticker works only with'

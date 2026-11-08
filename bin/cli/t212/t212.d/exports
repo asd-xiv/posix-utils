@@ -1,0 +1,22 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   t212 exports - Print each CSV report requested and its status
+#
+# SYNOPSIS
+#   t212 [--live] exports
+
+# t212 runs this file by its path, and exports LOG_NAMESPACE, LOG_LEVEL and
+# _T212_ACCOUNT
+_SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$_SCRIPT_DIR/lib.sh"
+
+_parse_args "$0" 0 "$@"
+_use_account
+_create_temp_dir
+
+_print_api /api/v0/equity/history/exports
+
+exit 0

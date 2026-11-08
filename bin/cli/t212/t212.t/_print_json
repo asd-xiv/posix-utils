@@ -1,0 +1,25 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+# lib.sh finds bin/lib.sh from the folder of the command files
+_SCRIPT_DIR="$SCRIPT_DIR/../t212.d"
+# shellcheck source=../t212.d/lib.sh
+. "$_SCRIPT_DIR/lib.sh"
+
+_describe "t212.d/lib.sh :: _print_json :: valid"
+
+_test 'given [JSON, and stdout not a terminal] should [print it on one line]'
+prepare() { printf '{ "a": [1, 2] }' >file; }
+actual() { _print_json file; }
+_expect equal actual.stdout '{"a":[1,2]}'
+
+_describe "t212.d/lib.sh :: _print_json :: invalid"
+
+_test 'given [no JSON] should [exit 4 and name the file]'
+prepare() { printf '<html>' >file; }
+actual() { _print_json file; }
+_expect equal actual.exit 4
+_expect contain actual.stderr 'Not JSON'
+_expect contain actual.stderr 'file=file'

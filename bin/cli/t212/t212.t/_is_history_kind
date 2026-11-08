@@ -1,0 +1,33 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+# lib.sh finds bin/lib.sh from the folder of the command files
+_SCRIPT_DIR="$SCRIPT_DIR/../t212.d"
+# shellcheck source=../t212.d/lib.sh
+. "$_SCRIPT_DIR/lib.sh"
+
+_describe "t212.d/lib.sh :: _is_history_kind :: valid"
+
+_test 'given [orders, dividends and transactions] should [return 0 for each]'
+actual() {
+  for kind in orders dividends transactions; do
+    _is_history_kind "$kind" && printf '0\n'
+  done
+}
+_expect equal actual.stdout '0
+0
+0'
+
+_describe "t212.d/lib.sh :: _is_history_kind :: invalid"
+
+_test 'given [pies, an empty value or ORDERS] should [return 1 for each]'
+actual() {
+  for kind in pies '' ORDERS; do
+    _is_history_kind "$kind" || printf '1\n'
+  done
+}
+_expect equal actual.stdout '1
+1
+1'

@@ -1,0 +1,155 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+
+command -v sqlite3 >/dev/null 2>&1 || _skip_all "sqlite3 is not installed"
+
+DB_DIR="$SCRIPT_DIR/../t212.d/db"
+
+# db <sql>
+# Run <sql> on db, the database of the test folder. Create it first from
+# every migration, in order, then the views.
+db() {
+  if [ ! -f db ]; then
+    cat -- "$DB_DIR"/migrations/*.sql "$DB_DIR/views.sql" | sqlite3 -bail -batch db
+  fi
+  printf '%s\n' "$1" | sqlite3 -bail -batch db
+}
+
+_describe "t212.d/db/migrations :: transactions :: valid"
+
+_test 'given [a raw item] should [derive each column from it]'
+actual() {
+  db "INSERT INTO transactions (raw) VALUES ('{\"reference\":\"r\",\"type\":\"FEE\",\"amount\":-1.5,\"currency\":\"USD\",\"dateTime\":\"2026-01-01T00:00:00.000Z\"}');
+    SELECT reference, type, amount, currency, date_time FROM transactions;"
+}
+_expect equal actual.stdout 'r|FEE|-1.5|USD|2026-01-01T00:00:00.000Z'
+
+_describe "t212.d/db/migrations :: transactions :: invalid"
+
+_test 'given [a raw that is not JSON] should [refuse the row]'
+actual() { db "INSERT INTO transactions (raw) VALUES ('<html>');"; }
+_expect ! equal actual.exit 0
+
+_test 'given [a reference twice] should [keep one row with INSERT OR IGNORE]'
+actual() {
+  db "INSERT OR IGNORE INTO transactions (raw) VALUES ('{\"reference\":\"r\"}'), ('{\"reference\":\"r\"}');
+    SELECT count(*) FROM transactions;"
+}
+_expect equal actual.stdout '1'
+
+_describe "t212.d/db/migrations :: orders :: edge"
+
+_test 'given [an order filled in two trades, and a cancelled order, inserted twice] should [keep one row per fill and one for the cancelled order]'
+actual() {
+  db "INSERT OR IGNORE INTO orders (raw) VALUES
+      ('{\"order\":{\"id\":7},\"fill\":{\"id\":71}}'),
+      ('{\"order\":{\"id\":7},\"fill\":{\"id\":72}}'),
+      ('{\"order\":{\"id\":8},\"fill\":null}'),
+      ('{\"order\":{\"id\":7},\"fill\":{\"id\":71}}'),
+      ('{\"order\":{\"id\":8},\"fill\":null}');
+    SELECT id, coalesce(fill_id, '-') FROM orders ORDER BY id, fill_id;"
+}
+_expect equal actual.stdout '7|71
+7|72
+8|-'
+
+_describe "t212.d/db/migrations :: positions :: valid"
+
+_test 'given [a raw position] should [derive each column from it, and keep the sync id and the fetch time]'
+actual() {
+  db "INSERT INTO syncs (id, started_at) VALUES (1, '2026-11-08T10:00:00Z');
+    INSERT INTO positions (sync_id, fetched_at, raw) VALUES (1, '2026-11-08T10:00:01Z', '{\"instrument\":{\"ticker\":\"JPM_US_EQ\"},\"quantity\":2,\"currentPrice\":335,\"averagePricePaid\":150,\"walletImpact\":{\"totalCost\":300,\"currentValue\":670,\"unrealizedProfitLoss\":370}}');
+    SELECT sync_id, fetched_at, ticker, quantity, current_price, average_price_paid, total_cost, current_value, unrealized_pl FROM positions;"
+}
+_expect equal actual.stdout '1|2026-11-08T10:00:01Z|JPM_US_EQ|2.0|335.0|150.0|300.0|670.0|370.0'
+
+_describe "t212.d/db/migrations :: positions :: invalid"
+
+_test 'given [a ticker twice in one sync] should [keep one row with INSERT OR IGNORE]'
+actual() {
+  db "INSERT OR IGNORE INTO positions (sync_id, fetched_at, raw) VALUES
+      (1, 'x', '{\"instrument\":{\"ticker\":\"KO_US_EQ\"}}'),
+      (1, 'x', '{\"instrument\":{\"ticker\":\"KO_US_EQ\"}}'),
+      (2, 'x', '{\"instrument\":{\"ticker\":\"KO_US_EQ\"}}');
+    SELECT count(*) FROM positions;"
+}
+_expect equal actual.stdout '2'
+
+_describe "t212.d/db/migrations :: summaries :: valid"
+
+_test 'given [a raw summary] should [derive each column from it]'
+actual() {
+  db "INSERT INTO summaries (sync_id, fetched_at, raw) VALUES (1, '2026-11-08T10:00:02Z', '{\"totalValue\":1092,\"cash\":{\"availableToTrade\":42},\"investments\":{\"currentValue\":1050,\"totalCost\":556,\"realizedProfitLoss\":10,\"unrealizedProfitLoss\":494}}');
+    SELECT sync_id, fetched_at, total_value, cash, invested_value, invested_cost, realized_pl, unrealized_pl FROM summaries;"
+}
+_expect equal actual.stdout '1|2026-11-08T10:00:02Z|1092.0|42.0|1050.0|556.0|10.0|494.0'
+
+_describe "t212.d/db/views.sql :: latest_positions :: valid"
+
+_test 'given [two syncs] should [list the positions of the newest only]'
+actual() {
+  db "INSERT INTO summaries (sync_id, fetched_at, raw) VALUES (1, 'x', '{}'), (2, 'x', '{}');
+    INSERT INTO positions (sync_id, fetched_at, raw) VALUES
+      (1, 'x', '{\"instrument\":{\"ticker\":\"SOLD_US_EQ\"}}'),
+      (1, 'x', '{\"instrument\":{\"ticker\":\"KO_US_EQ\"}}'),
+      (2, 'x', '{\"instrument\":{\"ticker\":\"KO_US_EQ\"}}');
+    SELECT sync_id, ticker FROM latest_positions;"
+}
+_expect equal actual.stdout '2|KO_US_EQ'
+
+_describe "t212.d/db/views.sql :: latest_positions :: edge"
+
+_test 'given [a newest snapshot with no positions] should [list nothing, not the snapshot before]'
+actual() {
+  db "INSERT INTO summaries (sync_id, fetched_at, raw) VALUES (1, 'x', '{}'), (2, 'x', '{}');
+    INSERT INTO positions (sync_id, fetched_at, raw) VALUES
+      (1, 'x', '{\"instrument\":{\"ticker\":\"KO_US_EQ\"}}');
+    SELECT count(*) FROM latest_positions;"
+}
+_expect equal actual.stdout '0'
+
+_describe "t212.d/db/views.sql :: flows :: valid"
+
+_test 'given [USD deposits, withdrawals and refunds to the card] should [sum them per year]'
+actual() {
+  db "INSERT INTO transactions (raw) VALUES
+      ('{\"reference\":\"d1\",\"type\":\"DEPOSIT\",\"amount\":100,\"currency\":\"USD\",\"dateTime\":\"2021-03-01T00:00:00.000Z\"}'),
+      ('{\"reference\":\"d2\",\"type\":\"DEPOSIT\",\"amount\":50,\"currency\":\"USD\",\"dateTime\":\"2021-04-01T00:00:00.000Z\"}'),
+      ('{\"reference\":\"t1\",\"type\":\"TRANSFER\",\"amount\":-30,\"currency\":\"USD\",\"dateTime\":\"2021-05-01T00:00:00.000Z\"}'),
+      ('{\"reference\":\"w1\",\"type\":\"WITHDRAW\",\"amount\":-20,\"currency\":\"USD\",\"dateTime\":\"2022-01-01T00:00:00.000Z\"}');
+    SELECT year, deposited, withdrawn FROM flows ORDER BY year;"
+}
+_expect equal actual.stdout '2021|150.0|30.0
+2022||20.0'
+
+_describe "t212.d/db/views.sql :: flows :: edge"
+
+_test 'given [a EUR deposit and its USD conversion leg] should [count only the USD leg]'
+actual() {
+  db "INSERT INTO transactions (raw) VALUES
+      ('{\"reference\":\"eur-in\",\"type\":\"DEPOSIT\",\"amount\":302.10,\"currency\":\"EUR\",\"dateTime\":\"2023-10-30T19:43:34.000Z\"}'),
+      ('{\"reference\":\"eur-out\",\"type\":\"WITHDRAW\",\"amount\":-300,\"currency\":\"EUR\",\"dateTime\":\"2023-10-30T19:45:35.000Z\"}'),
+      ('{\"reference\":\"usd\",\"type\":\"DEPOSIT\",\"amount\":318.43,\"currency\":\"USD\",\"dateTime\":\"2023-10-30T19:45:35.000Z\"}');
+    SELECT year, deposited, withdrawn FROM flows;"
+}
+_expect equal actual.stdout '2023|318.43|'
+
+_describe "t212.d/db/views.sql :: income :: valid"
+
+_test 'given [dividends, interest and fees] should [sum each per year]'
+actual() {
+  db "INSERT INTO dividends (raw) VALUES
+      ('{\"reference\":\"v1\",\"amount\":1.5,\"paidOn\":\"2024-02-01T10:00:00.000+02:00\"}'),
+      ('{\"reference\":\"v2\",\"amount\":2.25,\"paidOn\":\"2024-05-01T10:00:00.000+02:00\"}');
+    INSERT INTO transactions (raw) VALUES
+      ('{\"reference\":\"i1\",\"type\":\"INTEREST_ON_FREE_CASH\",\"amount\":0.4,\"currency\":\"USD\",\"dateTime\":\"2024-03-01T00:00:00.000Z\"}'),
+      ('{\"reference\":\"i2\",\"type\":\"LENDING_INTEREST\",\"amount\":0.6,\"currency\":\"USD\",\"dateTime\":\"2024-03-02T00:00:00.000Z\"}'),
+      ('{\"reference\":\"f1\",\"type\":\"FEE\",\"amount\":-0.3,\"currency\":\"USD\",\"dateTime\":\"2025-01-01T00:00:00.000Z\"}'),
+      ('{\"reference\":\"f2\",\"type\":\"FEE\",\"amount\":-9,\"currency\":\"EUR\",\"dateTime\":\"2025-01-01T00:00:00.000Z\"}');
+    SELECT year, dividends, interest, fees FROM income ORDER BY year;"
+}
+_expect equal actual.stdout '2024|3.75|1.0|0.0
+2025|0.0|0.0|-0.3'

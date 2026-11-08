@@ -1,0 +1,16 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/sandbox.sh"
+
+_describe "t212.d/orders :: orders :: edge"
+
+before_each() { build_sandbox; }
+
+_test 'given [a positional after --] should [read it as the id]'
+actual() { "$T212" orders -- 42 && cut -f 1 calls.log; }
+_expect equal actual.exit 0
+_expect equal actual.stdout '{}
+https://demo.trading212.com/api/v0/equity/orders/42'

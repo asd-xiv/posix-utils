@@ -1,0 +1,21 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+# lib.sh finds bin/lib.sh from the folder of the command files
+_SCRIPT_DIR="$SCRIPT_DIR/../t212.d"
+# shellcheck source=../t212.d/lib.sh
+. "$_SCRIPT_DIR/lib.sh"
+
+_describe "t212.d/lib.sh :: _get_db_file :: valid"
+
+_test 'given [XDG_DATA_HOME] should [print the database under it]'
+actual() { XDG_DATA_HOME=/data _get_db_file live; }
+_expect equal actual.stdout '/data/t212/live.db'
+
+_describe "t212.d/lib.sh :: _get_db_file :: edge"
+
+_test 'given [no XDG_DATA_HOME] should [print the database under ~/.local/share]'
+actual() { unset XDG_DATA_HOME && HOME=/home/u _get_db_file demo; }
+_expect equal actual.stdout '/home/u/.local/share/t212/demo.db'

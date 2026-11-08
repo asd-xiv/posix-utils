@@ -1,0 +1,62 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/sandbox.sh"
+# lib.sh finds bin/lib.sh from the folder of the command files
+_SCRIPT_DIR="$SCRIPT_DIR/../t212.d"
+# shellcheck source=../t212.d/lib.sh
+. "$_SCRIPT_DIR/lib.sh"
+
+_describe "t212.d/lib.sh :: _get_cached :: valid"
+
+before_each() {
+  build_sandbox
+  use_fake_account
+}
+
+_test 'given [a path twice] should [call the API once, name the cache after the path, print the same answer]'
+prepare() { add_answer 1 200 '[{"ticker":"AAPL_US_EQ"}]'; }
+actual() {
+  _get_cached /api/v0/equity/metadata/instruments
+  _get_cached /api/v0/equity/metadata/instruments
+  wc -l <calls.log | tr -d ' '
+  ls cache/t212/demo
+}
+_expect equal actual.exit 0
+_expect equal actual.stdout '[{"ticker":"AAPL_US_EQ"}]
+[{"ticker":"AAPL_US_EQ"}]
+1
+instruments.json
+instruments.time'
+
+_describe "t212.d/lib.sh :: _get_cached :: edge"
+
+before_each() {
+  build_sandbox
+  use_fake_account
+}
+
+_test 'given [a cache older than 10 minutes] should [call the API again]'
+prepare() {
+  mkdir -p cache/t212/demo
+  printf '["old"]' >cache/t212/demo/exchanges.json
+  printf '%s\n' "$(($(date +%s) - 601))" >cache/t212/demo/exchanges.time
+  add_answer 1 200 '["new"]'
+}
+actual() { _get_cached /api/v0/equity/metadata/exchanges && cat cache/t212/demo/exchanges.json; }
+_expect equal actual.exit 0
+_expect equal actual.stdout '["new"]
+["new"]'
+
+_test 'given [a demo cache] should [not use it for the live account]'
+prepare() {
+  mkdir -p cache/t212/demo
+  printf '["demo"]' >cache/t212/demo/instruments.json
+  date +%s >cache/t212/demo/instruments.time
+  add_answer 1 200 '["live"]'
+}
+actual() { _ACCOUNT=live _get_cached /api/v0/equity/metadata/instruments; }
+_expect equal actual.exit 0
+_expect equal actual.stdout '["live"]'

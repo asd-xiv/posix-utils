@@ -1,0 +1,71 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   t212 sql - Query the database of the account
+#
+# SYNOPSIS
+#   t212 [--live] sql <query>
+#
+# DESCRIPTION
+#   Runs <query> on the database "t212 sync" fills, and prints the rows as
+#   one JSON array. Needs no API key.
+#
+#   Runs sqlite3 with -readonly and -safe, so a query cannot write the
+#   database, run a dot-command or read a file.
+#
+#   The tables orders, dividends and transactions have one row per API item.
+#   The tables positions and summaries have one row per snapshot.
+#   The table syncs has one row per run of sync. cursors has where the first
+#   sync of each kind stopped.
+#   The column raw keeps the item as the API returned it. SQLite derives the
+#   other columns from raw.
+#   The view latest_positions has the positions of the newest snapshot. The
+#   views flows and income sum per year, in USD: the money in and out, and
+#   the dividends, interest and fees. Print the schema with:
+#   t212 sql "SELECT sql FROM sqlite_schema"
+#
+# ARGUMENTS
+#   query   SQL query to run on the database
+#
+# ENVIRONMENT
+#   XDG_DATA_HOME   Parent of the databases (default: ~/.local/share)
+#
+# EXAMPLE
+#   t212 --live sql "SELECT * FROM flows"
+#   t212 --live sql "SELECT sum(deposited), sum(withdrawn) FROM flows"
+#
+# EXIT CODES
+#   2   sqlite3 rejected the query
+#   3   No database: run "t212 sync" first
+#
+# SEE ALSO
+#   sqlite3 3.38 or newer
+
+# t212 runs this file by its path, and exports LOG_NAMESPACE, LOG_LEVEL and
+# _T212_ACCOUNT
+_SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$_SCRIPT_DIR/lib.sh"
+
+_parse_args "$0" 1 "$@"
+[ -z "$_POSITIONAL" ] && _fail 2 "sql needs a query"
+
+_require_cmd jq sqlite3
+
+_DB_FILE=$(_get_db_file "$(_get_account)")
+[ -f "$_DB_FILE" ] \
+  || _fail 3 -v db "$_DB_FILE" "No database, run t212 sync first"
+
+_create_temp_dir
+
+# -safe turns off the dot-commands and functions that reach the shell or a
+# file, eg. .shell and readfile(). -readonly keeps the database as is
+_run_sql "$_DB_FILE" "$_POSITIONAL" -readonly -safe -json >"$_TEMP_DIR/body" \
+  || _fail 2 "sqlite3 rejected the query"
+
+# sqlite3 -json prints nothing for no rows
+[ -s "$_TEMP_DIR/body" ] || printf '[]' >"$_TEMP_DIR/body"
+_print_json "$_TEMP_DIR/body"
+
+exit 0

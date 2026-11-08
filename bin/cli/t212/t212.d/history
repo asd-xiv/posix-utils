@@ -1,0 +1,126 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   t212 history - Print the filled orders, dividends or transactions
+#
+# SYNOPSIS
+#   t212 [--live] history <orders|dividends|transactions> [--ticker <ticker>]
+#                         [--limit <count>] [--all]
+#
+# DESCRIPTION
+#   Prints one page, newest first, as one JSON array. With --all, prints
+#   every page. The API allows 20 calls per minute, so --all reads about
+#   1,000 rows a minute. To keep the history, see "t212 sync --help".
+#
+#   An order filled in several trades has one item per fill.
+#
+# OPTIONS
+#   --ticker <ticker>   With orders and dividends, only the instrument
+#                       <ticker>, eg. AAPL_US_EQ
+#   --limit <count>     Items per page, 1 to 50 (default: 20, 50 with --all)
+#   --all               Follow every page
+#
+# EXAMPLE
+#   t212 history orders --ticker AAPL_US_EQ
+#   t212 --live history dividends --all | jq 'map(.amount) | add'
+
+# t212 runs this file by its path, and exports LOG_NAMESPACE, LOG_LEVEL and
+# _T212_ACCOUNT
+_SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$_SCRIPT_DIR/lib.sh"
+
+_TICKER="" # --ticker, eg. AAPL_US_EQ
+_LIMIT=""  # --limit, 1 to 50
+_IS_ALL="" # --all, "true" or ""
+
+# ╭───
+# │ Primitives
+# ╰───
+
+# _append_items <page-file>
+#
+# Append the items of <page-file> to _TEMP_DIR/items, one per line.
+#
+# RETURNS
+#   1   _IS_ALL is empty, so _walk_pages stops after the first page
+# shellcheck disable=SC2329 # _walk_pages calls it
+_append_items() {
+  jq -c '.items[]' -- "$1" >>"$_TEMP_DIR/items" \
+    || _fail 4 "The API answered with no items"
+
+  if [ -z "$_IS_ALL" ]; then
+    return 1
+  fi
+}
+
+# ╭───
+# │ Bootstrap
+# ╰───
+
+_KIND="" # the positional: orders, dividends or transactions
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -h | --help)
+      _show_help "$0"
+      exit 0
+      ;;
+    --ticker)
+      [ "$#" -lt 2 ] && _fail 2 "--ticker needs a ticker"
+      _is_ticker "$2" || _fail 2 -v ticker "$2" "Not a ticker"
+      _TICKER="$2"
+      shift 2
+      ;;
+    --limit)
+      [ "$#" -lt 2 ] && _fail 2 "--limit needs a count"
+      if ! _is positive-integer "$2" || [ "$2" -gt 50 ]; then
+        _fail 2 -v limit "$2" "Not a count from 1 to 50"
+      fi
+      _LIMIT="$2"
+      shift 2
+      ;;
+    --all)
+      _IS_ALL="true"
+      shift
+      ;;
+    -?*) _fail_unknown_flag "$1" ;;
+    *)
+      [ -n "$_KIND" ] && _fail 2 -v positional "$1" "Too many positionals"
+      _KIND="$1"
+      shift
+      ;;
+  esac
+done
+
+if [ -z "$_KIND" ]; then
+  _fail 2 "history needs orders, dividends or transactions"
+fi
+_is_history_kind "$_KIND" \
+  || _fail 2 -v history "$_KIND" "Use orders, dividends or transactions"
+
+if [ "$_KIND" = "transactions" ] && [ -n "$_TICKER" ]; then
+  _fail 2 "--ticker works only with orders and dividends"
+fi
+
+if [ -z "$_LIMIT" ]; then
+  _LIMIT=20
+  [ -n "$_IS_ALL" ] && _LIMIT=50
+fi
+
+# ╭───
+# │ Main
+# ╰───
+
+_use_account
+_create_temp_dir
+
+: >"$_TEMP_DIR/items"
+_walk_pages "/api/v0/equity/history/$_KIND?limit=$_LIMIT${_TICKER:+&ticker=$_TICKER}" \
+  _append_items
+
+jq -s . -- "$_TEMP_DIR/items" >"$_TEMP_DIR/body"
+_print_json "$_TEMP_DIR/body"
+
+exit 0

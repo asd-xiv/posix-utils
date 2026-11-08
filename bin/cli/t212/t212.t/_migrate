@@ -1,0 +1,88 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/sandbox.sh"
+
+command -v sqlite3 >/dev/null 2>&1 || _skip_all "sqlite3 is not installed"
+
+_describe "t212.d/sync :: _migrate :: valid"
+
+before_each() { build_sandbox; }
+
+_test 'given [no database] should [create every table at the newest version]'
+prepare() { add_answer 1 200 '{"items":[],"nextPagePath":null}'; }
+actual() {
+  "$T212" sync transactions >/dev/null
+  db "PRAGMA user_version"
+  db "SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name"
+}
+_expect equal actual.exit 0
+_expect equal actual.stdout '3
+cursors
+dividends
+orders
+positions
+summaries
+syncs
+transactions'
+
+_test 'given [no database] should [give cursors a sync_id and no synced_at]'
+prepare() { add_answer 1 200 '{"items":[],"nextPagePath":null}'; }
+actual() {
+  "$T212" sync transactions >/dev/null
+  db "SELECT name FROM pragma_table_info('cursors') ORDER BY cid"
+}
+_expect equal actual.stdout 'kind
+next_page_path
+sync_id'
+
+_describe "t212.d/sync :: _migrate :: edge"
+
+before_each() { build_sandbox; }
+
+# A database t212 created before it had migrations: user_version 0, the
+# tables of 001, a first sync of transactions done, one snapshot
+_test 'given [a database from before the migrations] should [keep its history and its cursors, and drop its snapshots]'
+prepare() {
+  mkdir -p data/t212
+  sqlite3 -bail -batch data/t212/demo.db <"$SCRIPT_DIR/../t212.d/db/migrations/001-create-tables.sql"
+  db "INSERT INTO transactions (raw) VALUES ('{\"reference\":\"old\",\"type\":\"FEE\",\"amount\":-1,\"currency\":\"USD\",\"dateTime\":\"2026-01-01T00:00:00.000Z\"}');
+    INSERT INTO sync (kind, next_page_path, synced_at) VALUES ('transactions', NULL, 'x');
+    INSERT INTO positions (taken_at, raw) VALUES ('t', '{\"instrument\":{\"ticker\":\"KO_US_EQ\"}}');"
+  add_answer 1 200 '{"items":[{"reference":"new","type":"FEE","amount":-2,"currency":"USD","dateTime":"2026-01-02T00:00:00.000Z"},{"reference":"old","type":"FEE","amount":-1,"currency":"USD","dateTime":"2026-01-01T00:00:00.000Z"}],"nextPagePath":"/api/v0/equity/history/transactions?cursor=x"}'
+}
+actual() {
+  "$T212" sync transactions
+  db "PRAGMA user_version"
+  db "SELECT reference, coalesce(sync_id, '-') FROM transactions ORDER BY reference"
+  db "SELECT kind, next_page_path IS NULL, sync_id FROM cursors"
+  db "SELECT count(*) FROM positions"
+  db "SELECT count(*) FROM sqlite_schema WHERE name = 'sync'"
+  wc -l <calls.log | tr -d ' '
+}
+_expect equal actual.exit 0
+_expect equal actual.stdout '{"transactions":1}
+3
+new|1
+old|-
+transactions|1|1
+0
+0
+1'
+
+_test 'given [a second sync] should [apply no migration again]'
+prepare() {
+  add_answer 1 200 '{"items":[],"nextPagePath":null}'
+  add_answer 2 200 '{"items":[],"nextPagePath":null}'
+}
+actual() {
+  "$T212" sync transactions >/dev/null 2>&1
+  "$T212" sync transactions >/dev/null 2>second.stderr
+  grep -c 'Applied' second.stderr || true
+  db "PRAGMA user_version"
+}
+_expect equal actual.exit 0
+_expect equal actual.stdout '0
+3'

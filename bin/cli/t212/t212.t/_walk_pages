@@ -1,0 +1,79 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/sandbox.sh"
+# lib.sh finds bin/lib.sh from the folder of the command files
+_SCRIPT_DIR="$SCRIPT_DIR/../t212.d"
+# shellcheck source=../t212.d/lib.sh
+. "$_SCRIPT_DIR/lib.sh"
+
+# on_page <page-file>
+# Print the ids on the page. Return the status in the file stop, 0 without
+# it.
+on_page() {
+  jq -c '[.items[].id]' "$1"
+  return "$(cat stop 2>/dev/null || printf 0)"
+}
+
+_describe "t212.d/lib.sh :: _walk_pages :: valid"
+
+before_each() {
+  build_sandbox
+  use_fake_account
+}
+
+_test 'given [two pages] should [run on-page on each, then stop after the last]'
+prepare() {
+  add_answer 1 200 '{"items":[{"id":1}],"nextPagePath":"/api/v0/x?cursor=2"}'
+  add_answer 2 200 '{"items":[{"id":2}],"nextPagePath":null}'
+}
+actual() { _walk_pages /api/v0/x on_page && cut -f 1 calls.log; }
+_expect equal actual.exit 0
+_expect equal actual.stdout '[1]
+[2]
+https://demo.trading212.com/api/v0/x
+https://demo.trading212.com/api/v0/x?cursor=2'
+
+_test 'given [args after on-page] should [pass them before the page file]'
+prepare() { add_answer 1 200 '{"items":[],"nextPagePath":null}'; }
+actual() {
+  show() { printf '%s %s\n' "$1" "$(basename "$2")"; }
+  _walk_pages /api/v0/x show transactions
+}
+_expect equal actual.stdout 'transactions page'
+
+_describe "t212.d/lib.sh :: _walk_pages :: edge"
+
+before_each() {
+  build_sandbox
+  use_fake_account
+}
+
+_test 'given [on-page returns 1] should [stop after that page]'
+prepare() {
+  add_answer 1 200 '{"items":[{"id":1}],"nextPagePath":"/api/v0/x?cursor=2"}'
+  printf 1 >stop
+}
+actual() { _walk_pages /api/v0/x on_page && wc -l <calls.log | tr -d ' '; }
+_expect equal actual.exit 0
+_expect equal actual.stdout '[1]
+1'
+
+_test 'given [an empty path] should [call nothing]'
+actual() { _walk_pages '' on_page && [ ! -e calls.log ] && printf 'no call\n'; }
+_expect equal actual.stdout 'no call'
+
+_describe "t212.d/lib.sh :: _walk_pages :: invalid"
+
+before_each() {
+  build_sandbox
+  use_fake_account
+}
+
+_test 'given [a page without items] should [exit 4 before on-page runs]'
+prepare() { add_answer 1 200 '{"nextPagePath":null}'; }
+actual() { _walk_pages /api/v0/x on_page; }
+_expect equal actual.exit 4
+_expect equal actual.stdout ''
