@@ -125,12 +125,19 @@ link_command() {
 }
 
 # link_group <group-dir> <group>
-# Symlink every script in <group-dir> into PU_BIN_DIR, flat so PATH finds them
+# Symlink every script in <group-dir> into PU_BIN_DIR itself, so PATH finds
+# it. In a subfolder, symlink the script that has the subfolder's name, eg.
+# t212/t212
 link_group() {
   link_count=0
 
-  for link_script in "$1"/*; do
-    # Skip the subfolders a group may hold next to its scripts, eg. assets
+  for link_entry in "$1"/*; do
+    link_script="$link_entry"
+    if [ -d "$link_entry" ]; then
+      link_script="$link_entry/$(basename "$link_entry")"
+    fi
+
+    # Skip the other subfolders a group may have, eg. assets
     [ ! -f "$link_script" ] && continue
 
     if link_command "$link_script" "$(basename "$link_script")"; then
