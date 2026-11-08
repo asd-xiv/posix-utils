@@ -1,0 +1,40 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/sandbox.sh"
+
+PROGRAM="$SCRIPT_DIR/../get-trading-signals.d/to_signals.jq"
+
+# signals <chart-file>
+# Print the signals of <chart-file>, with KO as the input.
+signals() { jq -c --arg input KO -f "$PROGRAM" -- "$1"; }
+
+_describe "get-trading-signals.d/to_signals.jq :: to_signals :: valid"
+
+# 250 closes from 1 to 250. ma_50 is the mean of 201..250, ma_200 of 51..250,
+# momentum compares close 229 (22 days back) with close 1
+_test 'given [a year of rising closes and two dividends] should [print each signal]'
+prepare() { to_chart KO 250 260 1 250 0.5 0.5 >chart; }
+actual() { signals chart; }
+_expect equal actual.stdout '{"input":"KO","symbol":"KO","price":250,"high_52w":260,"below_high_pct":-3.85,"ma_50":225.5,"ma_200":150.5,"vs_ma_200_pct":66.11,"is_trend_up":true,"momentum_pct":22800,"dividends_12m":1,"yield_pct":0.4}'
+
+_describe "get-trading-signals.d/to_signals.jq :: to_signals :: edge"
+
+_test 'given [100 closes] should [print null for the signals that need 200]'
+prepare() { to_chart NEW 120 130 21 100 >chart; }
+actual() { signals chart | jq -c '{ma_50, ma_200, vs_ma_200_pct, is_trend_up}'; }
+_expect equal actual.stdout '{"ma_50":95.5,"ma_200":null,"vs_ma_200_pct":null,"is_trend_up":null}'
+
+_test 'given [no dividends] should [print 0 dividends and a 0 yield]'
+prepare() { to_chart GROW 100 110 1 250 >chart; }
+actual() { signals chart | jq -c '{dividends_12m, yield_pct}'; }
+_expect equal actual.stdout '{"dividends_12m":0,"yield_pct":0}'
+
+_test 'given [null closes, eg. a holiday] should [skip them]'
+prepare() {
+  to_chart KO 10 12 1 250 | jq -c '.chart.result[0].indicators.quote[0].close += [null, null]' >chart
+}
+actual() { signals chart | jq -c '{ma_50}'; }
+_expect equal actual.stdout '{"ma_50":225.5}'

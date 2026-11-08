@@ -42,6 +42,7 @@
 | ---------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
 | `cli/fancy-log`              | Print a log line with its time, type and namespace, in color       | terminal or CI                                                                                                        |
 | `cli/get-youtube-transcript` | Print the transcript of a YouTube video                            | curl, jq                                                                                                              |
+| `cli/get-trading-signals`    | Print the price trend and the dividend yield of stocks             | curl, jq                                                                                                              |
 | `cli/zettel`                 | A Zettelkasten: write a thought down, place it in a box of zettels | Neovim, fzf for `place` and `browse`. bat colors the preview when it is there                                         |
 | `cli/omnipack`               | Install OS dependencies, package manager agnostic                  | terminal or CI                                                                                                        |
 | `cli/recheck`                | A terminal UI for cron: run checks, keep the last state of each    | cron. Neovim for `edit`, fzf 0.73.0 or newer for `browse`, `PU_TERMINAL` for Alt+Enter in `browse`                    |

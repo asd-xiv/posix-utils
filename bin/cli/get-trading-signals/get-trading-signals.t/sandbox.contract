@@ -1,0 +1,62 @@
+#!/bin/sh
+
+# NAME
+#   sandbox.contract - Verify what the fake curl of sandbox.sh assumes, on
+#   Yahoo Finance
+#
+# DESCRIPTION
+#   Each test checks one assumption of the fake curl against the real Yahoo.
+#   Yahoo has no official API, so this file is the first to fail when Yahoo
+#   changes its answer.
+#
+#   Makes 4 calls. Skips itself in CI, where Yahoo often refuses a runner.
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+# lib.sh finds bin/lib.sh from the folder of the command files
+_SCRIPT_DIR="$SCRIPT_DIR/../get-trading-signals.d"
+# shellcheck source=../get-trading-signals.d/lib.sh
+. "$_SCRIPT_DIR/lib.sh"
+
+[ -z "${CI:-}" ] || _skip_all "Yahoo often refuses a request from CI"
+command -v curl >/dev/null 2>&1 || _skip_all "curl is not installed"
+command -v jq >/dev/null 2>&1 || _skip_all "jq is not installed"
+
+_describe "get-trading-signals.t/sandbox.sh :: curl :: valid"
+
+_test 'given [the ISIN of Coca-Cola] should [answer a search whose first quote is KO]'
+actual() {
+  _call_yahoo "https://query2.finance.yahoo.com/v1/finance/search?q=US1912161007&quotesCount=1&newsCount=0" body
+  printf '\n'
+  jq -r '.quotes[0].symbol' body
+}
+_expect equal actual.stdout '200
+KO'
+
+_test 'given [a chart of KO] should [answer the fields to_signals.jq reads]'
+actual() {
+  _call_yahoo "https://query1.finance.yahoo.com/v8/finance/chart/KO?range=1y&interval=1d&events=div" body
+  printf '\n'
+  jq '.chart.result[0] | (.meta.symbol == "KO")
+    and ([.meta.regularMarketPrice, .meta.fiftyTwoWeekHigh] | all(type == "number"))
+    and (.indicators.quote[0].close | type == "array" and length > 200)
+    and ([.events.dividends[] | .amount] | length > 0 and all(type == "number"))' body
+}
+_expect equal actual.stdout '200
+true'
+
+_describe "get-trading-signals.t/sandbox.sh :: curl :: invalid"
+
+_test 'given [a symbol Yahoo does not know] should [answer 404]'
+actual() {
+  _call_yahoo "https://query1.finance.yahoo.com/v8/finance/chart/NOTATICKERX?range=1y&interval=1d&events=div" body
+}
+_expect equal actual.stdout '404'
+
+_test 'given [an ISIN Yahoo does not know] should [answer a search with no quotes]'
+actual() {
+  _call_yahoo "https://query2.finance.yahoo.com/v1/finance/search?q=US0000000000&quotesCount=1&newsCount=0" body >/dev/null
+  jq '.quotes | length' body
+}
+_expect equal actual.stdout '0'

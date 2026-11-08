@@ -1,0 +1,166 @@
+#!/bin/sh
+
+set -eu
+
+# NAME
+#   get-trading-signals - Print the price trend and the dividend yield of
+#   stocks
+#
+# SYNOPSIS
+#   get-trading-signals [symbol-or-isin...]
+#   ... | get-trading-signals
+#
+# DESCRIPTION
+#   Reads one year of daily prices and dividends from Yahoo Finance per stock,
+#   and prints one JSON object per stock, in one array: indented at a
+#   terminal, one line otherwise. With no positional, reads one symbol or
+#   ISIN per line from stdin.
+#
+#   An ISIN resolves to the symbol of today, so a stock renamed since you
+#   bought it still resolves, eg. NRZ is now RITM.
+#
+#     input            The symbol or ISIN you gave
+#     symbol           The Yahoo symbol
+#     price            The last price
+#     high_52w         The highest price of the last 52 weeks
+#     below_high_pct   How far the price is below high_52w, in %
+#     ma_50, ma_200    The average close of the last 50 and 200 days
+#     vs_ma_200_pct    How far the price is above or below ma_200, in %
+#     is_trend_up      Whether ma_50 is above ma_200
+#     momentum_pct     The return from 12 months ago to 1 month ago, in %.
+#                      It skips the last month, which tends to reverse
+#     dividends_12m    The dividends per share of the last 12 months
+#     yield_pct        dividends_12m against the price, in %
+#
+#   A signal that needs more history than the stock has is null.
+#
+#   Yahoo Finance has no official API, so it may refuse a call or change its
+#   answer. A symbol takes 1 call, an ISIN 2.
+#
+# ARGUMENTS
+#   symbol-or-isin   A Yahoo symbol, eg. KO, or an ISIN, eg. US1912161007.
+#                    Repeatable
+#
+# OPTIONS
+#   -h, --help   Print this help
+#
+# EXAMPLE
+#   get-trading-signals KO JPM
+#   t212 --live positions | jq -r '.[].instrument.isin' | get-trading-signals
+#
+# EXIT CODES
+#   0   Done
+#   2   Invalid usage, eg. a positional that is neither a symbol nor an ISIN
+#   3   Could not run, eg. no curl or no network
+#   4   Yahoo knows no stock for at least one positional. Prints the others
+#
+# SEE ALSO
+#   curl, jq, t212
+
+# tools/install symlinks this script, so "$0" names the link. realpath follows
+# it to find lib.sh and get-trading-signals.d
+_SCRIPT_DIR=$(dirname "$(realpath "$0")")/get-trading-signals.d
+# shellcheck source=get-trading-signals.d/lib.sh
+. "$_SCRIPT_DIR/lib.sh"
+
+# _log reads these
+export LOG_NAMESPACE="get-trading-signals"
+export LOG_LEVEL="${LOG_LEVEL:-info}"
+
+# ╭───
+# │ Bootstrap
+# ╰───
+
+case "${1:-}" in
+  -h | --help)
+    _show_help "$0"
+    exit 0
+    ;;
+  --) shift ;;
+  -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
+esac
+
+# ╭───
+# │ Cleanup
+# ╰───
+
+# shellcheck disable=SC2329 # called by trap
+_cleanup() {
+  # 'set -u' aborts on an unset _TEMP_DIR, so default it
+  rm -rf -- "${_TEMP_DIR:-}"
+}
+
+trap _cleanup EXIT                                    # normal exit
+trap '_cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl-C
+trap '_cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout, CI cancel
+trap '_cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # SSH drop, closed window
+
+_TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/get-trading-signals.XXXXXX") \
+  || _fail 3 "Could not create a temporary folder"
+
+# ╭───
+# │ Main
+# ╰───
+
+# One symbol or ISIN per line, from the positionals or from stdin
+_INPUT_FILE="$_TEMP_DIR/input"
+if [ "$#" -gt 0 ]; then
+  printf '%s\n' "$@" >"$_INPUT_FILE"
+elif [ ! -t 0 ]; then
+  cat >"$_INPUT_FILE"
+else
+  _fail 2 "No symbol or ISIN, as a positional or on stdin"
+fi
+
+# Guard every line before the first call, so a typo costs no call
+_COUNT=0
+while IFS= read -r _LINE; do
+  [ -n "$_LINE" ] || continue
+  if ! _is_isin "$_LINE" && ! _is_symbol "$_LINE"; then
+    _fail 2 -v input "$_LINE" "Neither a symbol nor an ISIN"
+  fi
+  _COUNT=$((_COUNT + 1))
+done <"$_INPUT_FILE"
+
+[ "$_COUNT" -gt 0 ] || _fail 2 "No symbol or ISIN, as a positional or on stdin"
+
+_require_cmd curl jq
+
+_IS_MISSING=""
+: >"$_TEMP_DIR/signals"
+
+while IFS= read -r _LINE; do
+  [ -n "$_LINE" ] || continue
+
+  _SYMBOL="$_LINE"
+  if _is_isin "$_LINE"; then
+    _SYMBOL=$(_find_symbol "$_LINE" "$_TEMP_DIR/search")
+    if [ -z "$_SYMBOL" ] || ! _is_symbol "$_SYMBOL"; then
+      _warn -v isin "$_LINE" "Yahoo knows no stock for this ISIN, skipping"
+      _IS_MISSING="true"
+      continue
+    fi
+  fi
+
+  if ! _fetch_chart "$_SYMBOL" "$_TEMP_DIR/chart"; then
+    _warn -v symbol "$_SYMBOL" "Yahoo knows no such symbol, skipping"
+    _IS_MISSING="true"
+    continue
+  fi
+
+  jq -c --arg input "$_LINE" -f "$_SCRIPT_DIR/to_signals.jq" \
+    -- "$_TEMP_DIR/chart" >>"$_TEMP_DIR/signals" \
+    || _fail 3 -v symbol "$_SYMBOL" "Yahoo answered with no chart"
+done <"$_INPUT_FILE"
+
+if [ -t 1 ]; then
+  jq -s . -- "$_TEMP_DIR/signals"
+else
+  jq -s -c . -- "$_TEMP_DIR/signals"
+fi
+
+if [ -n "$_IS_MISSING" ]; then
+  exit 4
+fi
+
+exit 0

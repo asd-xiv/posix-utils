@@ -1,0 +1,39 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+# lib.sh finds bin/lib.sh from the folder of the command files
+_SCRIPT_DIR="$SCRIPT_DIR/../get-trading-signals.d"
+# shellcheck source=../get-trading-signals.d/lib.sh
+. "$_SCRIPT_DIR/lib.sh"
+
+_describe "get-trading-signals.d/lib.sh :: _is_symbol :: valid"
+
+_test 'given [KO] should [return 0]'
+actual() { _is_symbol KO; }
+_expect equal actual.exit 0
+
+_describe "get-trading-signals.d/lib.sh :: _is_symbol :: edge"
+
+_test 'given [a symbol with a dash or a dot] should [return 0 for each]'
+actual() {
+  for value in BRK-B RDSA.AS; do
+    _is_symbol "$value" && printf '0\n'
+  done
+}
+_expect equal actual.stdout '0
+0'
+
+_describe "get-trading-signals.d/lib.sh :: _is_symbol :: invalid"
+
+_test 'given [empty, lowercase, a URL character, or a leading dash] should [return 1 for each]'
+actual() {
+  for value in '' ko 'KO&x=1' -KO; do
+    _is_symbol "$value" || printf '1\n'
+  done
+}
+_expect equal actual.stdout '1
+1
+1
+1'

@@ -1,0 +1,86 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/sandbox.sh"
+
+_describe "get-trading-signals :: get-trading-signals :: valid"
+
+before_each() { build_sandbox; }
+
+_test 'given [a symbol] should [call the chart of that symbol once and print its signals]'
+prepare() { add_answer 1 200 "$(to_chart KO 250 260 1 250)"; }
+actual() {
+  "$SIGNALS" KO | jq -c 'map({input, symbol})'
+  cat calls.log
+}
+_expect equal actual.exit 0
+_expect equal actual.stdout '[{"input":"KO","symbol":"KO"}]
+https://query1.finance.yahoo.com/v8/finance/chart/KO?range=1y&interval=1d&events=div'
+
+_test 'given [an ISIN] should [search its symbol, then chart it, and keep the ISIN as the input]'
+prepare() {
+  add_answer 1 200 "$_SEARCH_RITM"
+  add_answer 2 200 "$(to_chart RITM 9 12 1 250)"
+}
+actual() {
+  "$SIGNALS" US64828T2015 | jq -c 'map({input, symbol})'
+  cat calls.log
+}
+_expect equal actual.exit 0
+_expect equal actual.stdout '[{"input":"US64828T2015","symbol":"RITM"}]
+https://query2.finance.yahoo.com/v1/finance/search?q=US64828T2015&quotesCount=1&newsCount=0
+https://query1.finance.yahoo.com/v8/finance/chart/RITM?range=1y&interval=1d&events=div'
+
+_test 'given [symbols on stdin, one per line] should [print one object per symbol]'
+prepare() {
+  add_answer 1 200 "$(to_chart KO 250 260 1 250)"
+  add_answer 2 200 "$(to_chart JPM 300 310 1 250)"
+}
+actual() { printf 'KO\n\nJPM\n' | "$SIGNALS" | jq -c 'map(.symbol)'; }
+_expect equal actual.exit 0
+_expect equal actual.stdout '["KO","JPM"]'
+
+_describe "get-trading-signals :: get-trading-signals :: invalid"
+
+before_each() { build_sandbox; }
+
+_test 'given [an unknown symbol among others] should [warn, print the others and exit 4]'
+prepare() {
+  add_answer 1 404 '{"chart":{"error":{"code":"Not Found"}}}'
+  add_answer 2 200 "$(to_chart KO 250 260 1 250)"
+}
+actual() { "$SIGNALS" NOTATICKER KO | jq -c 'map(.symbol)'; }
+_expect equal actual.stdout '["KO"]'
+_expect contain actual.stderr 'Yahoo knows no such symbol, skipping symbol=NOTATICKER'
+
+_test 'given [an unknown symbol alone] should [exit 4]'
+prepare() { add_answer 1 404 '{}'; }
+actual() { "$SIGNALS" NOTATICKER; }
+_expect equal actual.exit 4
+
+_test 'given [an ISIN Yahoo finds no stock for] should [exit 4]'
+prepare() { add_answer 1 200 '{"quotes":[]}'; }
+actual() { "$SIGNALS" US0000000000; }
+_expect equal actual.exit 4
+_expect contain actual.stderr 'Yahoo knows no stock for this ISIN'
+
+_test 'given [a positional that is neither a symbol nor an ISIN] should [exit 2 before any call]'
+actual() { "$SIGNALS" KO 'ko&x=1' || {
+  status=$?
+  [ ! -e calls.log ] && printf 'no call\n'
+  exit "$status"
+}; }
+_expect equal actual.exit 2
+_expect equal actual.stdout 'no call'
+
+_test 'given [Yahoo answers 429] should [exit 3]'
+prepare() { add_answer 1 429 'Too Many Requests'; }
+actual() { "$SIGNALS" KO; }
+_expect equal actual.exit 3
+_expect contain actual.stderr 'Yahoo refused the call'
+
+_test 'given [no positional and no stdin] should [exit 2]'
+actual() { "$SIGNALS" </dev/null; }
+_expect equal actual.exit 2

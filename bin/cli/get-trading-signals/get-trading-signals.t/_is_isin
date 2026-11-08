@@ -1,0 +1,34 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+# lib.sh finds bin/lib.sh from the folder of the command files
+_SCRIPT_DIR="$SCRIPT_DIR/../get-trading-signals.d"
+# shellcheck source=../get-trading-signals.d/lib.sh
+. "$_SCRIPT_DIR/lib.sh"
+
+_describe "get-trading-signals.d/lib.sh :: _is_isin :: valid"
+
+_test 'given [the ISIN of Coca-Cola] should [return 0]'
+actual() { _is_isin US1912161007; }
+_expect equal actual.exit 0
+
+_describe "get-trading-signals.d/lib.sh :: _is_isin :: edge"
+
+_test 'given [an ISIN with letters in the middle] should [return 0]'
+actual() { _is_isin US64828T2015; }
+_expect equal actual.exit 0
+
+_describe "get-trading-signals.d/lib.sh :: _is_isin :: invalid"
+
+_test 'given [a symbol, lowercase, a letter last, or 11 characters] should [return 1 for each]'
+actual() {
+  for value in KO us1912161007 US191216100X US191216100; do
+    _is_isin "$value" || printf '1\n'
+  done
+}
+_expect equal actual.stdout '1
+1
+1
+1'
