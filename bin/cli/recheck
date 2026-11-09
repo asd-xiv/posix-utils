@@ -166,7 +166,9 @@ set -eu
 # it to find lib.sh and recheck.d
 SCRIPT_FILE=$(realpath "$0")
 SCRIPT_DIR=$(dirname "$SCRIPT_FILE")
-. "$SCRIPT_DIR/../lib.sh"
+. "$SCRIPT_DIR/../lib/log.sh"
+. "$SCRIPT_DIR/../lib/validation.sh"
+. "$SCRIPT_DIR/../lib/help.sh"
 
 # _log reads these
 export LOG_NAMESPACE="recheck"

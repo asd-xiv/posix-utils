@@ -2,10 +2,12 @@
 
 # shellcheck disable=SC2329 # the harness calls prepare and actual
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$SCRIPT_DIR/../../tools/test-lib.sh"
-. "$SCRIPT_DIR/../lib.sh"
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../log.sh"
+. "$SCRIPT_DIR/../validation.sh"
+. "$SCRIPT_DIR/../os.sh"
 
-_describe "lib.sh :: _create_temp_dir :: valid"
+_describe "lib/os.sh :: _create_temp_dir :: valid"
 
 _test 'given [a name] should [print a new folder named after it, under TMPDIR]'
 prepare() { mkdir tmp; }
@@ -15,7 +17,7 @@ actual() {
 }
 _expect equal actual.stdout 'demo.'
 
-_describe "lib.sh :: _create_temp_dir :: invalid"
+_describe "lib/os.sh :: _create_temp_dir :: invalid"
 
 _test 'given [a TMPDIR that does not exist] should [exit 3]'
 actual() { TMPDIR="$PWD/missing" _create_temp_dir demo; }

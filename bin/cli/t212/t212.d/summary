@@ -14,7 +14,12 @@ set -eu
 # t212 runs this file by its path, and exports LOG_NAMESPACE, LOG_LEVEL and
 # _T212_ACCOUNT
 _SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$_SCRIPT_DIR/../../../lib.sh"
+. "$_SCRIPT_DIR/../../../lib/log.sh"
+. "$_SCRIPT_DIR/../../../lib/validation.sh"
+. "$_SCRIPT_DIR/../../../lib/guard.sh"
+. "$_SCRIPT_DIR/../../../lib/help.sh"
+. "$_SCRIPT_DIR/../../../lib/os.sh"
+. "$_SCRIPT_DIR/../../../lib/text.sh"
 . "$_SCRIPT_DIR/lib.sh"
 
 _parse_args "$0" 0 "$@"

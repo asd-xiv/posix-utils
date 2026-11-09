@@ -14,7 +14,7 @@
 #   _describe prints the group once, as a comment line before its tests. A
 #   result line holds the sentence of the test only:
 #
-#     # lib.sh :: _replace_block
+#     # lib/text.sh :: _replace_block
 #     ok 1 - given [both markers] should [replace the lines between them]
 #     not ok 2 - given [no new lines] should [drop the block and its markers]
 #

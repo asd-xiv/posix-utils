@@ -14,7 +14,11 @@
 # shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../../../tools/test-lib.sh"
-. "$SCRIPT_DIR/../../../lib.sh"
+. "$SCRIPT_DIR/../../../lib/log.sh"
+. "$SCRIPT_DIR/../../../lib/validation.sh"
+. "$SCRIPT_DIR/../../../lib/guard.sh"
+. "$SCRIPT_DIR/../../../lib/help.sh"
+. "$SCRIPT_DIR/../../../lib/text.sh"
 # shellcheck source=../t212.d/lib.sh
 . "$SCRIPT_DIR/../t212.d/lib.sh"
 

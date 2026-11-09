@@ -54,7 +54,11 @@ set -eu
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 LOG_NAMESPACE="omnipack"
-. "$SCRIPT_DIR/../lib.sh"
+. "$SCRIPT_DIR/../lib/log.sh"
+. "$SCRIPT_DIR/../lib/validation.sh"
+. "$SCRIPT_DIR/../lib/help.sh"
+. "$SCRIPT_DIR/../lib/os.sh"
+. "$SCRIPT_DIR/../lib/network.sh"
 
 TERRAFORM_DEFAULT_VERSION="1.13.4"
 NEO4J_DEFAULT_VERSION="5.26.0"

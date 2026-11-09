@@ -3,7 +3,6 @@
 # The lock and the primitives that start and stop both use. Each command
 # file sets _SCRIPT_DIR, then sources this file.
 
-. "$_SCRIPT_DIR/../../lib.sh"
 
 # _log reads these
 export LOG_NAMESPACE="screenrecord"

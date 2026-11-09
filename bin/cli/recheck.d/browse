@@ -16,6 +16,11 @@
 set -eu
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../lib/log.sh"
+. "$SCRIPT_DIR/../../lib/validation.sh"
+. "$SCRIPT_DIR/../../lib/guard.sh"
+. "$SCRIPT_DIR/../../lib/os.sh"
+. "$SCRIPT_DIR/../../lib/terminal.sh"
 . "$SCRIPT_DIR/lib.sh"
 
 TERMINAL_COMMAND="${PU_TERMINAL:-}"

@@ -2,10 +2,11 @@
 
 # shellcheck disable=SC2329 # the harness calls actual
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$SCRIPT_DIR/../../tools/test-lib.sh"
-. "$SCRIPT_DIR/../lib.sh"
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../log.sh"
+. "$SCRIPT_DIR/../validation.sh"
 
-_describe "lib.sh :: _is folgezettel"
+_describe "lib/validation.sh :: _is folgezettel"
 
 _test 'given [1] should [return 0]'
 actual() { _is folgezettel 1 && echo yes || echo no; }
@@ -47,7 +48,7 @@ _test 'given [1.b] a character that is no digit and no letter, should [return 1]
 actual() { _is folgezettel 1.b && echo yes || echo no; }
 _expect equal actual.stdout 'no'
 
-_describe "lib.sh :: _is non-negative-integer"
+_describe "lib/validation.sh :: _is non-negative-integer"
 
 _test 'given [0] should [return 0]'
 actual() { _is non-negative-integer 0 && echo yes || echo no; }
@@ -65,7 +66,7 @@ _test 'given [-1] should [return 1]'
 actual() { _is non-negative-integer -1 && echo yes || echo no; }
 _expect equal actual.stdout 'no'
 
-_describe "lib.sh :: _is geometry"
+_describe "lib/validation.sh :: _is geometry"
 
 _test 'given [10,20 300x400] should [return 0]'
 actual() { _is geometry '10,20 300x400' && echo yes || echo no; }

@@ -2,10 +2,12 @@
 
 # shellcheck disable=SC2329 # the harness calls actual
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$SCRIPT_DIR/../../tools/test-lib.sh"
-. "$SCRIPT_DIR/../lib.sh"
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../log.sh"
+. "$SCRIPT_DIR/../validation.sh"
+. "$SCRIPT_DIR/../os.sh"
 
-_describe "lib.sh :: _get_runtime_dir"
+_describe "lib/os.sh :: _get_runtime_dir"
 
 _test 'given [XDG_RUNTIME_DIR] should [print it]'
 actual() { XDG_RUNTIME_DIR=/some/dir _get_runtime_dir; }

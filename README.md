@@ -22,12 +22,14 @@
   - [Uninstall](#uninstall)
   - [Nx monorepo](#nx-monorepo)
 - [Primitives](#primitives)
-  - [Logging](#logging)
-  - [Predicates & Guards](#predicates--guards)
-  - [Files](#files)
-  - [Text](#text)
-  - [Terminal](#terminal)
-  - [Help](#help)
+  - [log.sh](#logsh)
+  - [validation.sh](#validationsh)
+  - [guard.sh](#guardsh)
+  - [os.sh](#ossh)
+  - [network.sh](#networksh)
+  - [text.sh](#textsh)
+  - [terminal.sh](#terminalsh)
+  - [help.sh](#helpsh)
 - [Exit codes](#exit-codes)
 - [Develop](#develop)
 - [License](#license)
@@ -114,9 +116,21 @@ node_modules/@asd14/posix-utils/bin/cli/fancy-log info "Build finished"
 
 ## Primitives
 
-`bin/lib.sh` holds domain-agnostic primitives.
+`bin/lib/` holds domain-agnostic primitives, one file per topic. A script
+sources the files it uses. The header of each file lists the files it needs, and
+the script sources those first. A file never sources another.
 
-### Logging
+```sh
+_SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$_SCRIPT_DIR/../lib/log.sh"
+. "$_SCRIPT_DIR/../lib/validation.sh"
+. "$_SCRIPT_DIR/../lib/guard.sh"
+```
+
+A primitive prints its result to stdout. A validation answers with its status
+and prints nothing. Everything else goes to stderr.
+
+### log.sh
 
 ```sh
 LOG_NAMESPACE="find-in-files"
@@ -148,29 +162,49 @@ _log info -v path "src/main.c" "Reading"
 
 > [!NOTE]  
 > `cli/fancy-log` is the command form of `_log`. Use it from a shell or a
-> pipeline that does not source `lib.sh`.
+> pipeline that does not source `log.sh`.
 
-### Predicates & Guards
+### validation.sh
+
+```sh
+_is positive-integer "$2" || _fail 2 -v max "$2" "Not a count"
+```
+
+| Function             | Does                                        |
+| -------------------- | ------------------------------------------- |
+| `_is <type> <value>` | Tell if `<value>` has the shape of `<type>` |
+
+### guard.sh
 
 ```sh
 _require_cmd grep
-_is positive-integer "$2" || _fail 2 -v max "$2" "Not a count"
 ```
 
 | Function                 | Does                                                      |
 | ------------------------ | --------------------------------------------------------- |
-| `_is <type> <value>`     | Tell if `<value>` has the shape of `<type>`               |
 | `_require_cmd <cmd>...`  | End the script unless the shell finds every `<cmd>`       |
 | `_require_var <NAME>...` | End the script unless every `<NAME>` is set and non-empty |
 
-### Files
+### os.sh
 
-| Function                             | Does                                                                    |
-| ------------------------------------ | ----------------------------------------------------------------------- |
-| `_download_file <url> <output-file>` | Download `<url>` into `<output-file>`                                   |
-| `_resolve_bin_dir`                   | Print the first writable bin dir of `/usr/local/bin` and `~/.local/bin` |
+```sh
+_TEMP_DIR=$(_create_temp_dir find-in-files)
+_delete_on_exit "$_TEMP_DIR"
+```
 
-### Text
+| Function                           | Does                                                                               |
+| ---------------------------------- | ---------------------------------------------------------------------------------- |
+| `_create_temp_dir <name>`          | Create a folder named after `<name>` under `TMPDIR`, and print its path            |
+| `_delete_on_exit <path> [on-exit]` | Delete `<path>` when the script exits or a signal stops it, after `<on-exit>` runs |
+| `_resolve_bin_dir`                 | Print the first writable bin dir of `/usr/local/bin` and `~/.local/bin`            |
+
+### network.sh
+
+| Function                             | Does                                  |
+| ------------------------------------ | ------------------------------------- |
+| `_download_file <url> <output-file>` | Download `<url>` into `<output-file>` |
+
+### text.sh
 
 A block is the lines between two marker lines, `<begin>` and `<end>`, in a text
 that otherwise belongs to someone else: a crontab, a shell profile. A marker is
@@ -194,7 +228,7 @@ or 2.
 | `_diff_lines <old-text> <new-text>`    | Print what changed between two sets of lines: `- <line>` for a line only in `<old-text>`, then `+ <line>` for a line only in `<new-text>` |
 | `_end_with_newline <text>`             | Print `<text>` with a newline at its end, the one `$(...)` strips                                                                         |
 
-### Terminal
+### terminal.sh
 
 | Function             | Does                                                                                   |
 | -------------------- | -------------------------------------------------------------------------------------- |
@@ -202,7 +236,7 @@ or 2.
 | `_restore_title`     | Restore the title the window had before `_set_title`                                   |
 | `_wait_for_enter`    | Stop until the user presses Enter, so a window that closes with the command stays open |
 
-### Help
+### help.sh
 
 | Function                   | Does                                                                                  |
 | -------------------------- | ------------------------------------------------------------------------------------- |

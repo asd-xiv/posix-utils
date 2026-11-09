@@ -35,7 +35,10 @@ set -eu
 #   rofi, wl-copy, awk
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$SCRIPT_DIR/../lib.sh"
+. "$SCRIPT_DIR/../lib/log.sh"
+. "$SCRIPT_DIR/../lib/validation.sh"
+. "$SCRIPT_DIR/../lib/guard.sh"
+. "$SCRIPT_DIR/../lib/help.sh"
 
 # _log reads these
 export LOG_NAMESPACE="yank-symbol"

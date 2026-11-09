@@ -24,7 +24,9 @@
 
 set -u
 
-. "$(dirname "$(realpath "$0")")/../../lib.sh"
+. "$(dirname "$(realpath "$0")")/../../lib/log.sh"
+. "$(dirname "$(realpath "$0")")/../../lib/validation.sh"
+. "$(dirname "$(realpath "$0")")/../../lib/wait.sh"
 
 # _has_size <lines> <columns>
 #

@@ -4,8 +4,11 @@
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../../tools/test-lib.sh"
 
-# lib.sh finds lib.sh from the folder of the command files
+# lib.sh reads SCRIPT_DIR as the folder of the command files
 SCRIPT_DIR="$SCRIPT_DIR/../recheck.d"
+. "$SCRIPT_DIR/../../lib/log.sh"
+. "$SCRIPT_DIR/../../lib/validation.sh"
+. "$SCRIPT_DIR/../../lib/os.sh"
 # shellcheck source=../recheck.d/lib.sh
 . "$SCRIPT_DIR/lib.sh"
 

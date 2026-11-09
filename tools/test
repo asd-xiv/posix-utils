@@ -18,7 +18,7 @@ set -eu
 #
 #   With no file, it runs every test file: an executable file in a folder under
 #   bin whose name ends in .t. A test file sources tools/test-lib.sh itself,
-#   so a shell runs one alone: dash bin/lib.t/_replace_block.
+#   so a shell runs one alone: dash bin/lib/text.t/_replace_block.
 #
 # ARGUMENTS
 #   file   Test file to run, repeatable
@@ -28,7 +28,7 @@ set -eu
 #
 # EXAMPLE
 #   test
-#   test bin/lib.t/_replace_block
+#   test bin/lib/text.t/_replace_block
 #
 # EXIT CODES
 #   0   Every run passed or was skipped
@@ -40,7 +40,11 @@ set -eu
 #   sh, realpath
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$SCRIPT_DIR/../bin/lib.sh"
+. "$SCRIPT_DIR/../bin/lib/log.sh"
+. "$SCRIPT_DIR/../bin/lib/validation.sh"
+. "$SCRIPT_DIR/../bin/lib/guard.sh"
+. "$SCRIPT_DIR/../bin/lib/help.sh"
+. "$SCRIPT_DIR/../bin/lib/os.sh"
 
 # _log reads it
 export LOG_NAMESPACE="test"

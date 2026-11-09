@@ -47,7 +47,10 @@ set -eu
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 LOG_NAMESPACE="jot"
-. "$SCRIPT_DIR/../lib.sh"
+. "$SCRIPT_DIR/../lib/log.sh"
+. "$SCRIPT_DIR/../lib/validation.sh"
+. "$SCRIPT_DIR/../lib/guard.sh"
+. "$SCRIPT_DIR/../lib/help.sh"
 
 JOT_HOME="${JOT_HOME:-${HOME}/.jot}"
 LAST_NOTE_LINK="${JOT_HOME}/last-note"

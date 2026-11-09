@@ -56,7 +56,11 @@ set -eu
 #   curl, jq
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$SCRIPT_DIR/../lib.sh"
+. "$SCRIPT_DIR/../lib/log.sh"
+. "$SCRIPT_DIR/../lib/validation.sh"
+. "$SCRIPT_DIR/../lib/guard.sh"
+. "$SCRIPT_DIR/../lib/help.sh"
+. "$SCRIPT_DIR/../lib/os.sh"
 . "$SCRIPT_DIR/get-youtube-transcript.d/lib.sh"
 
 # _log reads these

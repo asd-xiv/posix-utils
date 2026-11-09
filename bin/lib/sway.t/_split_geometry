@@ -2,10 +2,11 @@
 
 # shellcheck disable=SC2329 # the harness calls actual
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$SCRIPT_DIR/../../tools/test-lib.sh"
-. "$SCRIPT_DIR/../lib.sh"
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../log.sh"
+. "$SCRIPT_DIR/../sway.sh"
 
-_describe "lib.sh :: _split_geometry"
+_describe "lib/sway.sh :: _split_geometry"
 
 _test 'given [10,20 300x400] should [print the four numbers]'
 actual() { _split_geometry '10,20 300x400'; }

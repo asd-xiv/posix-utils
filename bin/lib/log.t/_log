@@ -2,10 +2,10 @@
 
 # shellcheck disable=SC2329 # the harness calls actual
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$SCRIPT_DIR/../../tools/test-lib.sh"
-. "$SCRIPT_DIR/../lib.sh"
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../log.sh"
 
-_describe "lib.sh :: _log"
+_describe "lib/log.sh :: _log"
 
 _test 'given [NO_LOG_TIME unset] should [print the time before the level]'
 actual() {

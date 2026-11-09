@@ -43,7 +43,7 @@ SYNOPSIS
 DESCRIPTION
   Downloads <ref>, copies bin/ into the data dir, then symlinks the chosen
   group into the bin dir. The folders stay nested in the data dir because each
-  script finds lib.sh through its symlink, and doomst its own assets.
+  script finds lib/ through its symlink, and doomst its own assets.
 
   cli    Terminal and CI, no display server
   sway   Sway session, needs Wayland and a notifier
@@ -69,7 +69,7 @@ FILES
   ~/.local/state/posix-utils/receipt   Lists the two dirs below, read by
                                        uninstall
   <data-dir>/<group>/                  The scripts, one folder per group
-  <data-dir>/lib.sh                    Sourced by every script
+  <data-dir>/lib/                      The primitives, one file per topic
   <data-dir>/uninstall                 Linked as pu-uninstall, removes
                                        everything install created
   <bin-dir>/<command>                  A symlink per command, flat for PATH
@@ -150,7 +150,7 @@ link_group() {
 
 # install_group <src> <group>
 # Copy one group into the data dir and relink its commands. Keep the folders
-# nested, each script finds lib.sh through its symlink.
+# nested, each script finds lib/ through its symlink.
 install_group() {
   install_src_dir="$1/bin/$2"
   install_data_dir="$PU_DATA_DIR/$2"
@@ -305,8 +305,10 @@ done
 mkdir -p "$PU_DATA_DIR" "$PU_BIN_DIR" \
   || fail 3 "Could not create the target directories"
 
-# Copy the shared library every group sources
-cp "$TEMP_SRC_DIR/bin/lib.sh" "$PU_DATA_DIR/lib.sh"
+# Copy the primitives every group sources. A 4.x install left one lib.sh
+rm -f -- "$PU_DATA_DIR/lib.sh"
+rm -rf -- "${PU_DATA_DIR:?}/lib"
+cp -R "$TEMP_SRC_DIR/bin/lib" "$PU_DATA_DIR/lib"
 
 install_uninstall "$TEMP_SRC_DIR"
 

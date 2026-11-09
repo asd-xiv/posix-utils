@@ -54,7 +54,10 @@ set -eu
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 LOG_NAMESPACE="doomst"
-. "$SCRIPT_DIR/../lib.sh"
+. "$SCRIPT_DIR/../lib/log.sh"
+. "$SCRIPT_DIR/../lib/validation.sh"
+. "$SCRIPT_DIR/../lib/guard.sh"
+. "$SCRIPT_DIR/../lib/help.sh"
 
 ASSETS_DIR="$SCRIPT_DIR/assets/doomst"
 

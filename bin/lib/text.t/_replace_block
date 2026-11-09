@@ -2,10 +2,11 @@
 
 # shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$SCRIPT_DIR/../../tools/test-lib.sh"
-. "$SCRIPT_DIR/../lib.sh"
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../log.sh"
+. "$SCRIPT_DIR/../text.sh"
 
-_describe "lib.sh :: _replace_block"
+_describe "lib/text.sh :: _replace_block"
 
 # Every test of this group starts from the same text
 before_each() { printf 'top\n# start\nold\n# end\nbottom\n' >input; }
@@ -50,7 +51,7 @@ actual() { _replace_block '# start' '# end' new; }
 _expect equal actual.exit 1
 _expect equal actual.stdout ''
 
-_describe "lib.sh :: _replace_block :: a text with no block"
+_describe "lib/text.sh :: _replace_block :: a text with no block"
 
 _test 'given [a text with no markers] should [add the block and its markers at the end]'
 prepare() { printf 'keep\n'; }

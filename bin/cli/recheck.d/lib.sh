@@ -3,7 +3,6 @@
 # The settings and primitives that two or more recheck commands use. Each
 # command file sets SCRIPT_DIR, then sources this file.
 
-. "$SCRIPT_DIR/../../lib.sh"
 
 # _log reads these
 export LOG_NAMESPACE="recheck"

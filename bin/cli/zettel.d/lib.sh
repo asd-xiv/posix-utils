@@ -4,7 +4,6 @@
 # a test file sources. Each
 # command file sets SCRIPT_DIR, then sources this file.
 
-. "$SCRIPT_DIR/../../lib.sh"
 
 # _log reads these
 export LOG_NAMESPACE="zettel"

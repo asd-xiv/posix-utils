@@ -2,7 +2,7 @@
 name: write-posix-sh
 description: |
   Writes and reviews POSIX shell scripts and the primitives in
-  `posix-utils/bin/lib.sh`. Use when the work is a shell script in `bin/`,
+  `posix-utils/bin/lib/`. Use when the work is a shell script in `bin/`,
   `tools/` or a `*.sh` file, with or without an extension, or when porting one
   from bash or zsh. Not for a Node CLI.
 metadata:
@@ -30,7 +30,7 @@ If part of `posix-utils`:
 
 Otherwise:
 
-1. Instead of `bin/lib.sh`, write each primitive locally
+1. Instead of `bin/lib/`, write each primitive locally
 2. Instead of `tools/verify`, run `shellcheck -s sh` and `sh -n` on the script
 
 ## Files
@@ -40,7 +40,7 @@ If part of `posix-utils`:
 ```text
 <posix-utils-root>/
 └── bin/                 # grouped by the running environment
-    ├── lib.sh           # primitives every script sources
+    ├── lib/             # primitives, one file per topic, eg. log.sh
     ├── cli/             # terminal and CI, no display server
     │   └── t212/        # a command with parts lives in its own folder
     │       ├── t212     # the script, named after the folder
@@ -62,7 +62,7 @@ When editing this skill, use these terms consistently.
 | positional | `<pattern>`, `$1`                       | An unnamed input, placed after flags     | argument, file argument   |
 | setting    | `_MAX_COUNT`                            | A top-level variable a flag sets once    | global, knob, config knob |
 | primitive  | `_is`, `_search_file`                   | A domain or domain-agnostic function     | helper, util              |
-| elevate    | `_ping_service_x` -> `_http_ping <url>` | Move a domain primitive up into `lib.sh` | move, promote, extract    |
+| elevate    | `_ping_service_x` -> `_http_ping <url>` | Move a domain primitive up into `bin/lib/` | move, promote, extract    |
 | status     | `$?` after `grep` or a pipe             | What anything the script runs gives back | exit code, return value   |
 | exit code  | `exit 2`, under `EXIT CODES`            | What the script itself ends with         | status, return code       |
 
@@ -209,20 +209,25 @@ set -eu
 
 ### 3. Domain-agnostic primitives
 
-- Read `bin/lib.sh` before you write a script and reuse what fits
+- Read the files of `bin/lib/` before you write a script and reuse what fits
+- Source each file the script uses, after the files its header lists
+  - A file of `bin/lib/` never sources another
 - Write a new primitive in the script
-- When a second script needs it, elevate it to `lib.sh`
+- When a second script needs it, elevate it to the file of its topic in
+  `bin/lib/`
   - Remove the domain from its name, eg. `_ping_service_x` -> `_http_ping <url>`
   - Start its variable prefix with `lib_`, eg. `lib_hp_status`, to avoid
     collisions with the variables of a script that sources it
 - `bin/cli/fancy-log` is the command form of `_log`, for a shell that does not
-  source `lib.sh`
+  source `log.sh`
 
 ```sh
 # tools/install symlinks this script, so "$0" names the link. realpath follows
-# it to find lib.sh
+# it to find lib/
 _SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$_SCRIPT_DIR/../lib.sh"
+. "$_SCRIPT_DIR/../lib/log.sh"
+. "$_SCRIPT_DIR/../lib/validation.sh"
+. "$_SCRIPT_DIR/../lib/guard.sh"
 
 # _log reads these
 export LOG_NAMESPACE="find-in-files"

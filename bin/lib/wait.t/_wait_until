@@ -2,10 +2,10 @@
 
 # shellcheck disable=SC2329 # the harness calls actual
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$SCRIPT_DIR/../../tools/test-lib.sh"
-. "$SCRIPT_DIR/../lib.sh"
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../wait.sh"
 
-_describe "lib.sh :: _wait_until"
+_describe "lib/wait.sh :: _wait_until"
 
 _test 'given [a command that exits 0] should [return 0]'
 actual() { : >ready; _wait_until 1 test -f ready && echo yes || echo no; }

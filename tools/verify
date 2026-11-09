@@ -46,7 +46,10 @@ set -eu
 #   sh, shellcheck
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$SCRIPT_DIR/../bin/lib.sh"
+. "$SCRIPT_DIR/../bin/lib/log.sh"
+. "$SCRIPT_DIR/../bin/lib/validation.sh"
+. "$SCRIPT_DIR/../bin/lib/guard.sh"
+. "$SCRIPT_DIR/../bin/lib/help.sh"
 
 # _log reads it
 export LOG_NAMESPACE="verify"

@@ -13,6 +13,8 @@
 set -eu
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../lib/log.sh"
+. "$SCRIPT_DIR/../../lib/validation.sh"
 . "$SCRIPT_DIR/lib.sh"
 
 # ╭───

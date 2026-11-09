@@ -4,7 +4,7 @@
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../../tools/test-lib.sh"
 . "$SCRIPT_DIR/sandbox.sh"
-. "$SCRIPT_DIR/../../lib.sh" # for _wait_until
+. "$SCRIPT_DIR/../../lib/wait.sh" # for _wait_until
 
 _describe "recheck :: run"
 

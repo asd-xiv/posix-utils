@@ -51,7 +51,13 @@ set -eu
 #   beep_cancel
 
 _SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$_SCRIPT_DIR/../lib.sh"
+. "$_SCRIPT_DIR/../lib/log.sh"
+. "$_SCRIPT_DIR/../lib/validation.sh"
+. "$_SCRIPT_DIR/../lib/guard.sh"
+. "$_SCRIPT_DIR/../lib/help.sh"
+. "$_SCRIPT_DIR/../lib/os.sh"
+. "$_SCRIPT_DIR/../lib/sway.sh"
+. "$_SCRIPT_DIR/../lib/notify.sh"
 
 # _log reads these
 export LOG_NAMESPACE="screenshot"

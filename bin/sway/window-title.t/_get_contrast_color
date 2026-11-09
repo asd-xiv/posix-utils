@@ -3,7 +3,7 @@
 # shellcheck disable=SC2329 # the harness calls actual
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../../tools/test-lib.sh"
-. "$SCRIPT_DIR/../../lib.sh"
+. "$SCRIPT_DIR/../../lib/log.sh"
 . "$SCRIPT_DIR/../window-title.d/lib.sh"
 
 _describe "window-title :: _get_contrast_color"

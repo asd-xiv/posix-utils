@@ -2,15 +2,23 @@
 
 # shellcheck disable=SC2329 # the harness calls prepare and actual
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$SCRIPT_DIR/../../tools/test-lib.sh"
-. "$SCRIPT_DIR/../lib.sh"
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../log.sh"
+. "$SCRIPT_DIR/../validation.sh"
+. "$SCRIPT_DIR/../os.sh"
 
 # run_script
-# Run the script on stdin in a new shell that sources lib.sh, as a script
-# does. The traps of _delete_on_exit fire when that shell exits.
-run_script() { { printf '. "%s"\n' "$SCRIPT_DIR/../lib.sh"; cat; } | sh -s; }
+# Run the script on stdin in a new shell that sources os.sh and what it
+# needs, as a script does. The traps of _delete_on_exit fire when that shell exits.
+run_script() {
+  {
+    printf '. "%s"\n' "$SCRIPT_DIR/../log.sh" "$SCRIPT_DIR/../validation.sh" \
+      "$SCRIPT_DIR/../os.sh"
+    cat
+  } | sh -s
+}
 
-_describe "lib.sh :: _delete_on_exit :: valid"
+_describe "lib/os.sh :: _delete_on_exit :: valid"
 
 _test 'given [a script that exits] should [delete the path]'
 prepare() { mkdir dir && touch dir/file; }
@@ -38,7 +46,7 @@ _expect equal actual.stdout 'code 4, dir kept
 exit 4
 deleted'
 
-_describe "lib.sh :: _delete_on_exit :: edge"
+_describe "lib/os.sh :: _delete_on_exit :: edge"
 
 _test 'given [a TERM] should [run on-exit with 143, delete the path, then end by TERM]'
 prepare() { mkdir dir; }
@@ -66,7 +74,7 @@ SCRIPT
 }
 _expect equal actual.stdout 'deleted'
 
-_describe "lib.sh :: _delete_on_exit :: invalid"
+_describe "lib/os.sh :: _delete_on_exit :: invalid"
 
 _test 'given [a command as on-exit] should [exit 3 and not run it]'
 prepare() { mkdir dir; }
