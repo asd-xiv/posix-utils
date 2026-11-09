@@ -323,8 +323,13 @@ _TERMINAL_PID=""   # alacritty, while it runs
 _IS_RECORDING=""   # "true" while screenrecord records
 _USER_WORKSPACE="" # the workspace to switch back to
 
-# shellcheck disable=SC2329 # called by trap
-_cleanup() {
+# _stop_capture
+#
+# Stop the recording, close the terminal and switch back to the workspace of
+# the user. _delete_on_exit runs it when the script exits or a signal stops
+# it.
+# shellcheck disable=SC2329 # _delete_on_exit calls it
+_stop_capture() {
   if [ -n "$_IS_RECORDING" ]; then
     NO_NOTIFY=1 "$_SCRIPT_DIR/screenrecord" stop >/dev/null 2>&1 || true
   fi
@@ -336,18 +341,10 @@ _cleanup() {
   if [ -n "$_USER_WORKSPACE" ]; then
     swaymsg --quiet "workspace \"$_USER_WORKSPACE\"" >/dev/null 2>&1 || true
   fi
-
-  rm -rf -- "${_TEMP_DIR:-}"
 }
 
-trap _cleanup EXIT                                    # normal exit
-trap '_cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl-C
-trap '_cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout
-trap '_cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
-
-# _cleanup does more than delete the folder, also on a signal, so it keeps
-# its own traps instead of _delete_on_exit
 _TEMP_DIR=$(_create_temp_dir capture-terminal)
+_delete_on_exit "$_TEMP_DIR" _stop_capture
 
 # ╭───
 # │ Main

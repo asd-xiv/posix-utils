@@ -24,11 +24,11 @@ SCRIPT
 _expect equal actual.exit 0
 _expect equal actual.stdout 'deleted'
 
-_test 'given [an on-exit function] should [run it with the exit code, then delete the path]'
+_test 'given [an on-exit function] should [run it with the exit code as its positional, then delete the path]'
 prepare() { mkdir dir; }
 actual() {
   run_script <<'SCRIPT' || printf 'exit %s\n' "$?"
-save_code() { printf 'code %s, dir %s\n' "$?" "$([ -d dir ] && echo kept)"; }
+save_code() { printf 'code %s, dir %s\n' "$1" "$([ -d dir ] && echo kept)"; }
 _delete_on_exit "$PWD/dir" save_code
 exit 4
 SCRIPT
@@ -39,6 +39,21 @@ exit 4
 deleted'
 
 _describe "lib.sh :: _delete_on_exit :: edge"
+
+_test 'given [a TERM] should [run on-exit with 143, delete the path, then end by TERM]'
+prepare() { mkdir dir; }
+actual() {
+  run_script <<'SCRIPT' || printf 'exit %s\n' "$?"
+save_code() { printf 'code %s, dir %s\n' "$1" "$([ -d dir ] && echo kept)"; }
+_delete_on_exit "$PWD/dir" save_code
+kill -TERM $$
+printf 'not reached\n'
+SCRIPT
+  [ ! -e dir ] && printf 'deleted\n'
+}
+_expect equal actual.stdout 'code 143, dir kept
+exit 143
+deleted'
 
 _test 'given [a path with a quote and a space] should [delete it]'
 prepare() { mkdir "it's here"; }

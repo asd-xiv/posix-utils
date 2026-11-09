@@ -451,9 +451,10 @@ _create_temp_dir() {
 
 # _delete_on_exit <path> [on-exit]
 #
-# Delete <path> when the script exits, or when INT, TERM or HUP stops it. On
-# EXIT, run the function <on-exit> first, eg. to save the exit code, which it
-# reads from $?. Replaces the traps of EXIT, INT, TERM and HUP.
+# Delete <path> when the script exits, or when INT, TERM or HUP stops it. Run
+# the function <on-exit> first, with the exit code as its positional: the
+# code of the script on EXIT, 130 on INT, 143 on TERM, 129 on HUP. Replaces
+# the traps of EXIT, INT, TERM and HUP.
 #
 # EXIT
 #   3   <on-exit> is not a function name
@@ -466,14 +467,16 @@ _delete_on_exit() {
   # The path goes into the text of the traps, so quote it for the shell
   doe_rm="rm -rf -- '$(printf '%s' "$1" | sed "s/'/'\\\\''/g")'"
 
+  # A signal trap clears the EXIT trap, so <on-exit> runs once. The code is
+  # 128 plus the number of the signal, as the shell reports it
   # shellcheck disable=SC2064 # expand the path now, the traps run later
-  trap "$doe_on_exit; $doe_rm" EXIT
+  trap "$doe_on_exit \$?; $doe_rm" EXIT
   # shellcheck disable=SC2064
-  trap "$doe_rm; trap - EXIT INT; kill -INT $$" INT # Ctrl-C
+  trap "$doe_on_exit 130; $doe_rm; trap - EXIT INT; kill -INT $$" INT # Ctrl-C
   # shellcheck disable=SC2064
-  trap "$doe_rm; trap - EXIT TERM; kill -TERM $$" TERM # kill, timeout, CI cancel
+  trap "$doe_on_exit 143; $doe_rm; trap - EXIT TERM; kill -TERM $$" TERM # kill, timeout, CI cancel
   # shellcheck disable=SC2064
-  trap "$doe_rm; trap - EXIT HUP; kill -HUP $$" HUP # SSH drop, closed window
+  trap "$doe_on_exit 129; $doe_rm; trap - EXIT HUP; kill -HUP $$" HUP # SSH drop, closed window
 }
 
 # ╭───

@@ -25,7 +25,8 @@ set -eu
 #
 #   Each run of sync gets an id, in the table syncs. A history row keeps the
 #   id of the run that first saw it, a snapshot the id of its run. When the
-#   run ends, syncs keeps its exit code, as "t212 --help" lists them.
+#   run ends, syncs keeps its exit code, as "t212 --help" lists them, or 130,
+#   143 or 129 when INT, TERM or HUP stops it.
 #
 #   First, sync brings the database to the newest version. It applies each
 #   migration the database lacks, in order, then creates the views again. To
@@ -110,20 +111,17 @@ _take_snapshot() {
     "$_TEMP_DIR/summary" "$ts_summary_at"
 }
 
-# _finish_sync
+# _finish_sync <exit-code>
 #
-# Save the exit code of the script and the time it ended to the row of
-# _SYNC_ID in syncs. Runs on EXIT, so it saves a failed run too. Does nothing
-# before the run has a row.
+# Save <exit-code> and the time the script ended to the row of _SYNC_ID in
+# syncs. _delete_on_exit runs it when the script exits or a signal stops it,
+# so it saves a failed run too. Does nothing before the run has a row.
 # shellcheck disable=SC2329 # _delete_on_exit calls it
 _finish_sync() {
-  # The first command, since every command sets $?
-  fs_exit_code=$?
-
   if [ -n "${_SYNC_ID:-}" ]; then
     _run_sql "$_DB_FILE" "UPDATE syncs
       SET finished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-        exit_code = $fs_exit_code
+        exit_code = $1
       WHERE id = $_SYNC_ID;" \
       || _warn -v sync_id "$_SYNC_ID" "Could not save the exit code"
   fi
