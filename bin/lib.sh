@@ -274,10 +274,15 @@ _is() {
         *) return 1 ;;
       esac
 
-      # shellcheck disable=SC2046 # _split_geometry prints four words
-      set -- $(_split_geometry "$2")
-      _is non-negative-integer "${1#-}" && _is non-negative-integer "${2#-}" \
-        && _is positive-integer "$3" && _is positive-integer "$4" \
+      # "-10,0 800x600": x, y, then the size
+      lib_is_x=${2%%,*}
+      lib_is_y=${2#*,}
+      lib_is_y=${lib_is_y%% *}
+      lib_is_size=${2##* }
+      _is non-negative-integer "${lib_is_x#-}" \
+        && _is non-negative-integer "${lib_is_y#-}" \
+        && _is positive-integer "${lib_is_size%%x*}" \
+        && _is positive-integer "${lib_is_size#*x}" \
         || return 1
       ;;
     *)
