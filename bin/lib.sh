@@ -437,6 +437,46 @@ _resolve_bin_dir() {
     "No writable bin dir (/usr/local/bin, ~/.local/bin)"
 }
 
+# _create_temp_dir <name>
+#
+# Create a folder named after <name> under TMPDIR, eg. /tmp/t212.Ab12Cd, and
+# print its path. Pass the path to _delete_on_exit on the next line: a signal
+# between the two leaves the empty folder behind.
+#
+# EXIT
+#   3   mktemp failed
+_create_temp_dir() {
+  mktemp -d "${TMPDIR:-/tmp}/$1.XXXXXX" \
+    || _fail 3 "Could not create a temporary folder"
+}
+
+# _delete_on_exit <path> [on-exit]
+#
+# Delete <path> when the script exits, or when INT, TERM or HUP stops it. On
+# EXIT, run the function <on-exit> first, eg. to save the exit code, which it
+# reads from $?. Replaces the traps of EXIT, INT, TERM and HUP.
+#
+# EXIT
+#   3   <on-exit> is not a function name
+_delete_on_exit() {
+  doe_on_exit="${2:-:}"
+  if [ "$doe_on_exit" != ":" ] && ! _is identifier "$doe_on_exit"; then
+    _fail 3 -v on_exit "$doe_on_exit" "_delete_on_exit takes a function name"
+  fi
+
+  # The path goes into the text of the traps, so quote it for the shell
+  doe_rm="rm -rf -- '$(printf '%s' "$1" | sed "s/'/'\\\\''/g")'"
+
+  # shellcheck disable=SC2064 # expand the path now, the traps run later
+  trap "$doe_on_exit; $doe_rm" EXIT
+  # shellcheck disable=SC2064
+  trap "$doe_rm; trap - EXIT INT; kill -INT $$" INT # Ctrl-C
+  # shellcheck disable=SC2064
+  trap "$doe_rm; trap - EXIT TERM; kill -TERM $$" TERM # kill, timeout, CI cancel
+  # shellcheck disable=SC2064
+  trap "$doe_rm; trap - EXIT HUP; kill -HUP $$" HUP # SSH drop, closed window
+}
+
 # ╭───
 # │ Text
 # ╰───

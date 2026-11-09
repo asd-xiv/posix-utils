@@ -1,0 +1,68 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../lib.sh"
+
+# run_script
+# Run the script on stdin in a new shell that sources lib.sh, as a script
+# does. The traps of _delete_on_exit fire when that shell exits.
+run_script() { { printf '. "%s"\n' "$SCRIPT_DIR/../lib.sh"; cat; } | sh -s; }
+
+_describe "lib.sh :: _delete_on_exit :: valid"
+
+_test 'given [a script that exits] should [delete the path]'
+prepare() { mkdir dir && touch dir/file; }
+actual() {
+  run_script <<'SCRIPT'
+_delete_on_exit "$PWD/dir"
+exit 0
+SCRIPT
+  [ ! -e dir ] && printf 'deleted\n'
+}
+_expect equal actual.exit 0
+_expect equal actual.stdout 'deleted'
+
+_test 'given [an on-exit function] should [run it with the exit code, then delete the path]'
+prepare() { mkdir dir; }
+actual() {
+  run_script <<'SCRIPT' || printf 'exit %s\n' "$?"
+save_code() { printf 'code %s, dir %s\n' "$?" "$([ -d dir ] && echo kept)"; }
+_delete_on_exit "$PWD/dir" save_code
+exit 4
+SCRIPT
+  [ ! -e dir ] && printf 'deleted\n'
+}
+_expect equal actual.stdout 'code 4, dir kept
+exit 4
+deleted'
+
+_describe "lib.sh :: _delete_on_exit :: edge"
+
+_test 'given [a path with a quote and a space] should [delete it]'
+prepare() { mkdir "it's here"; }
+actual() {
+  run_script <<'SCRIPT'
+_delete_on_exit "$PWD/it's here"
+exit 0
+SCRIPT
+  [ ! -e "it's here" ] && printf 'deleted\n'
+}
+_expect equal actual.stdout 'deleted'
+
+_describe "lib.sh :: _delete_on_exit :: invalid"
+
+_test 'given [a command as on-exit] should [exit 3 and not run it]'
+prepare() { mkdir dir; }
+actual() {
+  status=0
+  run_script <<'SCRIPT' || status=$?
+_delete_on_exit "$PWD/dir" 'touch ran'
+SCRIPT
+  [ ! -e ran ] || printf 'ran\n'
+  exit "$status"
+}
+_expect equal actual.exit 3
+_expect contain actual.stderr '_delete_on_exit takes a function name'
+_expect equal actual.stdout ''
