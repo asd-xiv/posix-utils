@@ -24,9 +24,10 @@
 
 set -u
 
-. "$(dirname "$(realpath "$0")")/../../lib/log.sh"
-. "$(dirname "$(realpath "$0")")/../../lib/validation.sh"
-. "$(dirname "$(realpath "$0")")/../../lib/wait.sh"
+_SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$_SCRIPT_DIR/../../lib/log.sh"
+. "$_SCRIPT_DIR/../../lib/validation.sh"
+. "$_SCRIPT_DIR/../../lib/wait.sh"
 
 # _has_size <lines> <columns>
 #

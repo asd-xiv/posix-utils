@@ -18,6 +18,10 @@ set -eu
 #
 #   A sourced library, a *.sh file, must not be executable.
 #
+#   A command must source each file of bin/lib whose function it calls, and
+#   each file their header lists under Needs. The calls of a file the command
+#   sources count as its own, eg. a parts lib.sh.
+#
 #   A private command, a command under a *.d directory, skips the smoke test.
 #   Only its public command runs a private command, so it has no man page.
 #
@@ -54,6 +58,8 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 # _log reads it
 export LOG_NAMESPACE="verify"
 
+LIB_DIR=$(realpath "$SCRIPT_DIR/../bin/lib")
+
 # ╭───
 # │ Primitives
 # ╰───
@@ -73,6 +79,79 @@ skips_smoke_test() {
   esac
 
   return 1
+}
+
+# list_sourced_files <file>
+#
+# Print the path of each file that <file> sources with a line like
+# . "$SCRIPT_DIR/<path>" or . "$_SCRIPT_DIR/<path>", read from the folder of
+# <file>. Print only the files that exist.
+list_sourced_files() {
+  lsf_dir=$(dirname "$(realpath "$1")")
+
+  # shellcheck disable=SC2016 # the pattern matches a literal $SCRIPT_DIR
+  sed -n 's/^[[:space:]]*\. "\$_\{0,1\}SCRIPT_DIR\/\([^"]*\)".*/\1/p' "$1" \
+    | while IFS= read -r lsf_path; do
+      [ -f "$lsf_dir/$lsf_path" ] || continue
+      realpath "$lsf_dir/$lsf_path"
+    done
+}
+
+# list_called_functions <file>...
+#
+# Print each name like _name that the code of <file> calls, once. Skip
+# comment lines, and a name inside a longer word, eg. lib_is_x.
+list_called_functions() {
+  grep -hv '^[[:space:]]*#' "$@" \
+    | grep -oE '(^|[^A-Za-z0-9_$])_[a-z][a-z_]*' \
+    | sed 's/^[^_]//' \
+    | sort -u
+}
+
+# find_topic <function>
+#
+# Print the name of the file of bin/lib that defines <function>, eg. log for
+# _fail. Print nothing when none does.
+find_topic() {
+  grep -l "^$1()" "$LIB_DIR"/*.sh 2>/dev/null | sed 's|.*/||; s|\.sh$||'
+}
+
+# list_needs <topic>
+#
+# Print the topics that the header of bin/lib/<topic>.sh lists under Needs,
+# one per line.
+list_needs() {
+  sed -n 's/^#   Needs \([a-z., ]*\)\. A .*/\1/p' "$LIB_DIR/$1.sh" \
+    | tr ',' '\n' | sed 's/^ *//; s/\.sh$//' | grep -v '^$' || true
+}
+
+# find_missing_topics <file>
+#
+# Print each topic of bin/lib that <file> needs and does not source, one per
+# line: the topic of each function that <file>, or a file it sources, calls,
+# and what each needed topic needs.
+find_missing_topics() {
+  fmt_sourced=$(list_sourced_files "$1")
+  fmt_topics=$(printf '%s\n' "$fmt_sourced" | sed -n "s|^$LIB_DIR/\([a-z]*\)\.sh$|\1|p")
+  fmt_others=$(printf '%s\n' "$fmt_sourced" | grep -v "^$LIB_DIR/" || true)
+
+  fmt_needed=$(
+    # shellcheck disable=SC2086 # one path per word, none has a space
+    for fmt_fn in $(list_called_functions "$1" $fmt_others); do
+      find_topic "$fmt_fn"
+    done
+    for fmt_topic in $fmt_topics; do
+      printf '%s\n' "$fmt_topic"
+    done
+  )
+
+  for fmt_topic in $(printf '%s\n' "$fmt_needed" | sort -u); do
+    printf '%s\n' "$fmt_topic"
+    list_needs "$fmt_topic"
+  done | sort -u | while IFS= read -r fmt_topic; do
+    printf '%s\n' "$fmt_topics" | grep -qx "$fmt_topic" \
+      || printf '%s\n' "$fmt_topic"
+  done
 }
 
 # ╭───
@@ -141,6 +220,13 @@ while IFS= read -r FILE; do
         _error -v script "$FILE" "A command must be executable"
         FILE_RC=1
       }
+
+      MISSING=$(find_missing_topics "$FILE")
+      if [ -n "$MISSING" ]; then
+        _error -v script "$FILE" -v missing "$(printf '%s' "$MISSING" | tr '\n' ' ')" \
+          "A file of bin/lib is not sourced"
+        FILE_RC=1
+      fi
 
       if ! skips_smoke_test "$FILE"; then
         /bin/sh "$FILE" --help >/dev/null || {
