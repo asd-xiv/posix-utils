@@ -3,10 +3,9 @@
 # shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../../../tools/test-lib.sh"
-# lib.sh finds bin/lib.sh from the folder of the command files
-_SCRIPT_DIR="$SCRIPT_DIR/../get-trading-signals.d"
+. "$SCRIPT_DIR/../../../lib.sh"
 # shellcheck source=../get-trading-signals.d/lib.sh
-. "$_SCRIPT_DIR/lib.sh"
+. "$SCRIPT_DIR/../get-trading-signals.d/lib.sh"
 
 _describe "get-trading-signals.d/lib.sh :: _is_symbol :: valid"
 
@@ -27,7 +26,7 @@ _expect equal actual.stdout '0
 
 _describe "get-trading-signals.d/lib.sh :: _is_symbol :: invalid"
 
-_test 'given [empty, lowercase, a URL character, or a leading dash] should [return 1 for each]'
+_test 'given [an empty value, lowercase, a URL character, or a leading dash] should [return 1 for each]'
 actual() {
   for value in '' ko 'KO&x=1' -KO; do
     _is_symbol "$value" || printf '1\n'

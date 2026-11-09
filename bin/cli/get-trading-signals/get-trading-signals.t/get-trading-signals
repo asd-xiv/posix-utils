@@ -19,7 +19,7 @@ _expect equal actual.exit 0
 _expect equal actual.stdout '[{"input":"KO","symbol":"KO"}]
 https://query1.finance.yahoo.com/v8/finance/chart/KO?range=1y&interval=1d&events=div'
 
-_test 'given [an ISIN] should [search its symbol, then chart it, and keep the ISIN as the input]'
+_test 'given [an ISIN] should [search its symbol, then fetch its chart, and keep the ISIN as the input]'
 prepare() {
   add_answer 1 200 "$_SEARCH_RITM"
   add_answer 2 200 "$(to_chart RITM 9 12 1 250)"
@@ -75,10 +75,10 @@ actual() { "$SIGNALS" KO 'ko&x=1' || {
 _expect equal actual.exit 2
 _expect equal actual.stdout 'no call'
 
-_test 'given [Yahoo answers 429] should [exit 3]'
+_test 'given [Yahoo answers HTTP 429] should [exit 4]'
 prepare() { add_answer 1 429 'Too Many Requests'; }
 actual() { "$SIGNALS" KO; }
-_expect equal actual.exit 3
+_expect equal actual.exit 4
 _expect contain actual.stderr 'Yahoo refused the call'
 
 _test 'given [no positional and no stdin] should [exit 2]'

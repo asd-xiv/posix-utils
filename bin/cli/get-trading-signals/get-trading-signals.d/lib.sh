@@ -1,13 +1,10 @@
 #!/bin/sh
 
-# The primitives of get-trading-signals. The command sets _SCRIPT_DIR to
-# get-trading-signals.d, then sources this file. So does a test of a
-# primitive. This file sources bin/lib.sh, sets no shell options and runs
-# nothing.
+# The primitives of get-trading-signals. The command sources bin/lib.sh,
+# then this file. So does a test of a primitive. This file sets no shell
+# options and runs nothing.
 
-. "$_SCRIPT_DIR/../../../lib.sh"
-
-# Yahoo answers 429 to the user agent of curl. A browser-like one passes
+# Yahoo answers HTTP 429 to the user agent of curl. A browser-like one passes
 _USER_AGENT="Mozilla/5.0 (X11; Linux x86_64) get-trading-signals"
 
 # ╭───
@@ -65,18 +62,19 @@ _call_yahoo() {
 # Yahoo finds none.
 #
 # EXIT
-#   3   curl failed, or Yahoo refused the call
+#   3   curl failed
+#   4   Yahoo refused the call, or answered with no JSON
 _find_symbol() {
   fs_http_status=$(_call_yahoo \
     "https://query2.finance.yahoo.com/v1/finance/search?q=$1&quotesCount=1&newsCount=0" \
     "$2")
 
   if [ "$fs_http_status" != "200" ]; then
-    _fail 3 -v isin "$1" -v http_status "$fs_http_status" "Yahoo refused the call"
+    _fail 4 -v isin "$1" -v http_status "$fs_http_status" "Yahoo refused the call"
   fi
 
   jq -r '.quotes[0].symbol // empty' -- "$2" \
-    || _fail 3 -v isin "$1" "Yahoo answered with no JSON"
+    || _fail 4 -v isin "$1" "Yahoo answered with no JSON"
 }
 
 # _fetch_chart <symbol> <body-file>
@@ -88,7 +86,8 @@ _find_symbol() {
 #   1   Yahoo knows no such symbol
 #
 # EXIT
-#   3   curl failed, or Yahoo refused the call
+#   3   curl failed
+#   4   Yahoo refused the call
 _fetch_chart() {
   fc_http_status=$(_call_yahoo \
     "https://query1.finance.yahoo.com/v8/finance/chart/$1?range=1y&interval=1d&events=div" \
@@ -98,7 +97,7 @@ _fetch_chart() {
     200) ;;
     404) return 1 ;;
     *)
-      _fail 3 -v symbol "$1" -v http_status "$fc_http_status" \
+      _fail 4 -v symbol "$1" -v http_status "$fc_http_status" \
         "Yahoo refused the call"
       ;;
   esac

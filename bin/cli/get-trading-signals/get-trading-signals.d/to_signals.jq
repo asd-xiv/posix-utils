@@ -2,7 +2,8 @@
 # JSON object. Takes $input, the symbol or ISIN the caller asked for, so the
 # caller can join the object back to its own rows.
 #
-# A percent and a price have 2 decimals. A signal that needs more closes
+# A percent and an average have 2 decimals, dividends_12m 4. price and
+# high_52w are as Yahoo sends them. A signal that needs more closes
 # than the answer has is null, eg. ma_200 for a stock listed 3 months ago.
 
 def mean_of_last($values; $n):
@@ -26,13 +27,14 @@ def pct($value; $base):
     symbol: $result.meta.symbol,
     price: $price,
     high_52w: $high,
-    below_high_pct: pct($price; $high),
+    vs_high_pct: pct($price; $high),
     ma_50: ($ma_50 | round2),
     ma_200: ($ma_200 | round2),
     vs_ma_200_pct: pct($price; $ma_200),
     is_trend_up: (if $ma_50 == null or $ma_200 == null then null
                   else $ma_50 > $ma_200 end),
-    momentum_pct: (if ($closes | length) >= 22 then pct($closes[-22]; $closes[0])
+    # 1 year has 250 to 252 closes. 240 allows for missing days
+    momentum_pct: (if ($closes | length) >= 240 then pct($closes[-22]; $closes[0])
                    else null end),
     dividends_12m: (($dividends * 10000 | round) / 10000),
     yield_pct: (if $price == null or $price == 0 then null

@@ -5,7 +5,7 @@
 #
 # DESCRIPTION
 #   A test file sets SCRIPT_DIR to its own folder, sources tools/test-lib.sh,
-#   then sources this file.
+#   then this file.
 #
 #   get-trading-signals calls Yahoo Finance. A test that runs it calls
 #   build_sandbox first, from before_each. build_sandbox puts a fake curl

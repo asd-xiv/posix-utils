@@ -11,8 +11,8 @@ set -eu
 #   ... | get-trading-signals
 #
 # DESCRIPTION
-#   Reads one year of daily prices and dividends from Yahoo Finance per stock,
-#   and prints one JSON object per stock, in one array: indented at a
+#   Reads one year of daily prices and dividends per stock from Yahoo
+#   Finance. Prints one JSON object per stock, in one array: indented at a
 #   terminal, one line otherwise. With no positional, reads one symbol or
 #   ISIN per line from stdin.
 #
@@ -23,7 +23,7 @@ set -eu
 #     symbol           The Yahoo symbol
 #     price            The last price
 #     high_52w         The highest price of the last 52 weeks
-#     below_high_pct   How far the price is below high_52w, in %
+#     vs_high_pct      How far the price is above or below high_52w, in %
 #     ma_50, ma_200    The average close of the last 50 and 200 days
 #     vs_ma_200_pct    How far the price is above or below ma_200, in %
 #     is_trend_up      Whether ma_50 is above ma_200
@@ -52,16 +52,18 @@ set -eu
 #   0   Done
 #   2   Invalid usage, eg. a positional that is neither a symbol nor an ISIN
 #   3   Could not run, eg. no curl or no network
-#   4   Yahoo knows no stock for at least one positional. Prints the others
+#   4   Yahoo refused a call, answered with no chart, or knows no stock for
+#       a positional. On an unknown stock, prints the others
 #
 # SEE ALSO
 #   curl, jq, t212
 
 # tools/install symlinks this script, so "$0" names the link. realpath follows
-# it to find lib.sh and get-trading-signals.d
-_SCRIPT_DIR=$(dirname "$(realpath "$0")")/get-trading-signals.d
+# it to find bin/lib.sh and get-trading-signals.d
+_SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$_SCRIPT_DIR/../../lib.sh"
 # shellcheck source=get-trading-signals.d/lib.sh
-. "$_SCRIPT_DIR/lib.sh"
+. "$_SCRIPT_DIR/get-trading-signals.d/lib.sh"
 
 # _log reads these
 export LOG_NAMESPACE="get-trading-signals"
@@ -80,49 +82,32 @@ case "${1:-}" in
   -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
 esac
 
-# ╭───
-# │ Cleanup
-# ╰───
-
-# shellcheck disable=SC2329 # called by trap
-_cleanup() {
-  # 'set -u' aborts on an unset _TEMP_DIR, so default it
-  rm -rf -- "${_TEMP_DIR:-}"
-}
-
-trap _cleanup EXIT                                    # normal exit
-trap '_cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl-C
-trap '_cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout, CI cancel
-trap '_cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # SSH drop, closed window
-
-_TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/get-trading-signals.XXXXXX") \
-  || _fail 3 "Could not create a temporary folder"
+_TEMP_DIR=$(_create_temp_dir get-trading-signals)
+_delete_on_exit "$_TEMP_DIR"
 
 # ╭───
 # │ Main
 # ╰───
 
-# One symbol or ISIN per line, from the positionals or from stdin
+# One symbol or ISIN per line, from the positionals or from stdin. sed
+# removes the empty lines, so the loops below read only values
 _INPUT_FILE="$_TEMP_DIR/input"
 if [ "$#" -gt 0 ]; then
-  printf '%s\n' "$@" >"$_INPUT_FILE"
+  printf '%s\n' "$@" | sed '/^$/d' >"$_INPUT_FILE"
 elif [ ! -t 0 ]; then
-  cat >"$_INPUT_FILE"
+  sed '/^$/d' >"$_INPUT_FILE"
 else
   _fail 2 "No symbol or ISIN, as a positional or on stdin"
 fi
 
+[ -s "$_INPUT_FILE" ] || _fail 2 "No symbol or ISIN, as a positional or on stdin"
+
 # Guard every line before the first call, so a typo costs no call
-_COUNT=0
 while IFS= read -r _LINE; do
-  [ -n "$_LINE" ] || continue
   if ! _is_isin "$_LINE" && ! _is_symbol "$_LINE"; then
     _fail 2 -v input "$_LINE" "Neither a symbol nor an ISIN"
   fi
-  _COUNT=$((_COUNT + 1))
 done <"$_INPUT_FILE"
-
-[ "$_COUNT" -gt 0 ] || _fail 2 "No symbol or ISIN, as a positional or on stdin"
 
 _require_cmd curl jq
 
@@ -130,7 +115,6 @@ _IS_MISSING=""
 : >"$_TEMP_DIR/signals"
 
 while IFS= read -r _LINE; do
-  [ -n "$_LINE" ] || continue
 
   _SYMBOL="$_LINE"
   if _is_isin "$_LINE"; then
@@ -148,9 +132,9 @@ while IFS= read -r _LINE; do
     continue
   fi
 
-  jq -c --arg input "$_LINE" -f "$_SCRIPT_DIR/to_signals.jq" \
+  jq -c --arg input "$_LINE" -f "$_SCRIPT_DIR/get-trading-signals.d/to_signals.jq" \
     -- "$_TEMP_DIR/chart" >>"$_TEMP_DIR/signals" \
-    || _fail 3 -v symbol "$_SYMBOL" "Yahoo answered with no chart"
+    || _fail 4 -v symbol "$_SYMBOL" "Yahoo answered with no chart"
 done <"$_INPUT_FILE"
 
 if [ -t 1 ]; then
