@@ -43,7 +43,7 @@ SYNOPSIS
 DESCRIPTION
   Downloads <ref>, copies bin/ into the data dir, then symlinks the chosen
   group into the bin dir. The folders stay nested in the data dir because each
-  script resolves ../lib.sh through its symlink, and doomst its own assets.
+  script finds lib.sh through its symlink, and doomst its own assets.
 
   cli    Terminal and CI, no display server
   sway   Sway session, needs Wayland and a notifier
@@ -150,7 +150,7 @@ link_group() {
 
 # install_group <src> <group>
 # Copy one group into the data dir and relink its commands. Keep the folders
-# nested, each script resolves ../lib.sh through its symlink.
+# nested, each script finds lib.sh through its symlink.
 install_group() {
   install_src_dir="$1/bin/$2"
   install_data_dir="$PU_DATA_DIR/$2"
