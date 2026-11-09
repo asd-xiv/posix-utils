@@ -53,7 +53,7 @@ prepare() {
 }
 actual() {
   "$T212" sync
-  db "SELECT id, ticker FROM orders"
+  db "SELECT order_id, ticker FROM orders"
 }
 _expect equal actual.exit 0
 _expect equal actual.stdout '{"orders":1,"dividends":0,"transactions":0,"snapshot":2}
@@ -68,7 +68,7 @@ actual() {
   "$T212" sync snapshot
   db "SELECT sync_id, fetched_at, ticker, current_value FROM positions ORDER BY ticker"
   db "SELECT sync_id, fetched_at, total_value, cash FROM summaries"
-  db "SELECT id, finished_at IS NOT NULL FROM syncs"
+  db "SELECT id, exit_code, finished_at IS NOT NULL FROM syncs"
   cut -f 1 calls.log
 }
 _expect equal actual.exit 0
@@ -76,42 +76,9 @@ _expect equal actual.stdout '{"snapshot":2}
 1|2026-11-08T14:27:46Z|JPM_US_EQ|670.0
 1|2026-11-08T14:27:46Z|KO_US_EQ|380.0
 1|2026-11-08T14:27:51Z|1092.0|42.0
-1|1
+1|0|1
 https://demo.trading212.com/api/v0/equity/positions
 https://demo.trading212.com/api/v0/equity/account/summary'
-
-_test 'given [two syncs] should [stamp the cursor with the id of the last sync that read its kind]'
-prepare() {
-  add_answer 1 200 "$_PAGE_1"
-  add_answer 2 200 "$_PAGE_2"
-  add_answer 3 200 "$_PAGE_1"
-}
-actual() {
-  "$T212" sync transactions >/dev/null
-  db "SELECT kind, sync_id FROM cursors"
-  "$T212" sync transactions >/dev/null
-  db "SELECT kind, sync_id FROM cursors"
-}
-_expect equal actual.exit 0
-_expect equal actual.stdout 'transactions|1
-transactions|2'
-
-_test 'given [two syncs] should [give each history row the id of the sync that first saw it]'
-prepare() {
-  add_answer 1 200 "$_PAGE_1"
-  add_answer 2 200 "$_PAGE_2"
-  add_answer 3 200 '{"items":[{"reference":"d","type":"FEE","amount":-2,"currency":"USD","dateTime":"2026-01-04T00:00:00.000Z"},{"reference":"c","type":"FEE","amount":-1,"currency":"USD","dateTime":"2026-01-03T00:00:00.000Z"}],"nextPagePath":null}'
-}
-actual() {
-  "$T212" sync transactions >/dev/null
-  "$T212" sync transactions >/dev/null
-  db "SELECT reference, sync_id FROM transactions ORDER BY reference"
-}
-_expect equal actual.exit 0
-_expect equal actual.stdout 'a|1
-b|1
-c|1
-d|2'
 
 _describe "t212.d/sync :: sync :: edge"
 
@@ -143,17 +110,17 @@ _describe "t212.d/sync :: sync :: invalid"
 
 before_each() { build_sandbox; }
 
-_test 'given [a sync that fails halfway] should [leave its finished_at empty]'
+_test 'given [a sync that fails halfway] should [save its exit code and the time it ended]'
 prepare() {
   add_answer 1 200 "$_PAGE_1"
   add_answer 2 500 '{}'
 }
 actual() {
   "$T212" sync transactions || printf 'exit %s\n' "$?"
-  db "SELECT id, finished_at IS NULL FROM syncs"
+  db "SELECT id, exit_code, finished_at IS NOT NULL FROM syncs"
 }
 _expect equal actual.stdout 'exit 4
-1|1'
+1|4|1'
 
 _test 'given [a snapshot answer whose Date is not a date] should [exit 4 and save nothing]'
 prepare() {
@@ -180,25 +147,3 @@ actual() {
 _expect equal actual.stdout 'exit 4
 0'
 _expect contain actual.stderr 'The API answered with no positions'
-
-_test 'given [a first sync whose page has no items] should [exit 4 and save no place]'
-prepare() { add_answer 1 200 '{"nextPagePath":null}'; }
-actual() {
-  "$T212" sync dividends || printf 'exit %s\n' "$?"
-  db "SELECT count(*) FROM cursors"
-}
-_expect equal actual.stdout 'exit 4
-0'
-_expect contain actual.stderr 'The API answered with no items'
-
-_test 'given [a first sync whose page 2 has no items but a next page path] should [keep the place at page 2]'
-prepare() {
-  add_answer 1 200 "$_PAGE_1"
-  add_answer 2 200 '{"nextPagePath":"/api/v0/equity/history/transactions?limit=50&cursor=z&time=2020-01-01T00:00:00.000Z"}'
-}
-actual() {
-  "$T212" sync transactions || printf 'exit %s\n' "$?"
-  db "SELECT next_page_path FROM cursors"
-}
-_expect equal actual.stdout 'exit 4
-/api/v0/equity/history/transactions?limit=50&cursor=a&time=2026-01-01T00:00:00.000Z'

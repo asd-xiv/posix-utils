@@ -8,23 +8,34 @@ set -eu
 # SYNOPSIS
 #   t212 [--live] pies [id]
 #
+# DESCRIPTION
+#   The API marks the pies endpoints deprecated: they still answer, but get
+#   no updates, and Trading 212 gave no date to switch them off. Pies in the
+#   app are not affected.
+#
 # ARGUMENTS
 #   id   Id of a pie, a positive integer
 #
 # EXAMPLE
 #   t212 pies
 #   t212 pies 42
+#
+# SEE ALSO
+#   curl, jq
 
 # t212 runs this file by its path, and exports LOG_NAMESPACE, LOG_LEVEL and
 # _T212_ACCOUNT
 _SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$_SCRIPT_DIR/../../../lib.sh"
 . "$_SCRIPT_DIR/lib.sh"
 
 _parse_args "$0" 1 "$@"
 _guard_id "$_POSITIONAL"
 
 _use_account
-_create_temp_dir
+_require_cmd curl jq
+_TEMP_DIR=$(_create_temp_dir t212)
+_delete_on_exit "$_TEMP_DIR"
 
 _print_api "/api/v0/equity/pies${_POSITIONAL:+/$_POSITIONAL}"
 

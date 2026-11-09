@@ -4,10 +4,9 @@
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../../../tools/test-lib.sh"
 . "$SCRIPT_DIR/sandbox.sh"
-# lib.sh finds bin/lib.sh from the folder of the command files
-_SCRIPT_DIR="$SCRIPT_DIR/../t212.d"
+. "$SCRIPT_DIR/../../../lib.sh"
 # shellcheck source=../t212.d/lib.sh
-. "$_SCRIPT_DIR/lib.sh"
+. "$SCRIPT_DIR/../t212.d/lib.sh"
 
 _describe "t212.d/lib.sh :: _get_cached :: valid"
 
@@ -60,3 +59,22 @@ prepare() {
 actual() { _ACCOUNT=live _get_cached /api/v0/equity/metadata/instruments; }
 _expect equal actual.exit 0
 _expect equal actual.stdout '["live"]'
+
+_describe "t212.d/lib.sh :: _get_cached :: invalid"
+
+before_each() {
+  build_sandbox
+  use_fake_account
+}
+
+_test 'given [an answer that is not JSON] should [exit 4 and cache nothing]'
+prepare() { add_answer 1 200 '<html>'; }
+actual() {
+  (_get_cached /api/v0/equity/metadata/instruments) || {
+    status=$?
+    find cache -type f 2>/dev/null | wc -l | tr -d ' '
+    exit "$status"
+  }
+}
+_expect equal actual.exit 4
+_expect equal actual.stdout '0'

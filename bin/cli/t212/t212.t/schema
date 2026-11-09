@@ -3,19 +3,22 @@
 # shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../../../lib.sh"
+# shellcheck source=../t212.d/lib.sh
+. "$SCRIPT_DIR/../t212.d/lib.sh"
+# shellcheck source=../t212.d/db/db.sh
+. "$SCRIPT_DIR/../t212.d/db/db.sh"
 
 command -v sqlite3 >/dev/null 2>&1 || _skip_all "sqlite3 is not installed"
 
-DB_DIR="$SCRIPT_DIR/../t212.d/db"
-
 # db <sql>
-# Run <sql> on db, the database of the test folder. Create it first from
-# every migration, in order, then the views.
+# Run <sql> on db, the database of the test folder. Create it first with
+# _migrate, as sync does.
 db() {
   if [ ! -f db ]; then
-    cat -- "$DB_DIR"/migrations/*.sql "$DB_DIR/views.sql" | sqlite3 -bail -batch db
+    _migrate db "$SCRIPT_DIR/../t212.d/db" 2>/dev/null
   fi
-  printf '%s\n' "$1" | sqlite3 -bail -batch db
+  _run_sql db "$1"
 }
 
 _describe "t212.d/db/migrations :: transactions :: valid"
@@ -50,7 +53,7 @@ actual() {
       ('{\"order\":{\"id\":8},\"fill\":null}'),
       ('{\"order\":{\"id\":7},\"fill\":{\"id\":71}}'),
       ('{\"order\":{\"id\":8},\"fill\":null}');
-    SELECT id, coalesce(fill_id, '-') FROM orders ORDER BY id, fill_id;"
+    SELECT order_id, coalesce(fill_id, '-') FROM orders ORDER BY order_id, fill_id;"
 }
 _expect equal actual.stdout '7|71
 7|72
@@ -70,7 +73,8 @@ _describe "t212.d/db/migrations :: positions :: invalid"
 
 _test 'given [a ticker twice in one sync] should [keep one row with INSERT OR IGNORE]'
 actual() {
-  db "INSERT OR IGNORE INTO positions (sync_id, fetched_at, raw) VALUES
+  db "INSERT INTO syncs (id, started_at) VALUES (1, 'x'), (2, 'x');
+    INSERT OR IGNORE INTO positions (sync_id, fetched_at, raw) VALUES
       (1, 'x', '{\"instrument\":{\"ticker\":\"KO_US_EQ\"}}'),
       (1, 'x', '{\"instrument\":{\"ticker\":\"KO_US_EQ\"}}'),
       (2, 'x', '{\"instrument\":{\"ticker\":\"KO_US_EQ\"}}');
@@ -82,7 +86,8 @@ _describe "t212.d/db/migrations :: summaries :: valid"
 
 _test 'given [a raw summary] should [derive each column from it]'
 actual() {
-  db "INSERT INTO summaries (sync_id, fetched_at, raw) VALUES (1, '2026-11-08T10:00:02Z', '{\"totalValue\":1092,\"cash\":{\"availableToTrade\":42},\"investments\":{\"currentValue\":1050,\"totalCost\":556,\"realizedProfitLoss\":10,\"unrealizedProfitLoss\":494}}');
+  db "INSERT INTO syncs (id, started_at) VALUES (1, 'x');
+    INSERT INTO summaries (sync_id, fetched_at, raw) VALUES (1, '2026-11-08T10:00:02Z', '{\"totalValue\":1092,\"cash\":{\"availableToTrade\":42},\"investments\":{\"currentValue\":1050,\"totalCost\":556,\"realizedProfitLoss\":10,\"unrealizedProfitLoss\":494}}');
     SELECT sync_id, fetched_at, total_value, cash, invested_value, invested_cost, realized_pl, unrealized_pl FROM summaries;"
 }
 _expect equal actual.stdout '1|2026-11-08T10:00:02Z|1092.0|42.0|1050.0|556.0|10.0|494.0'
@@ -91,7 +96,8 @@ _describe "t212.d/db/views.sql :: latest_positions :: valid"
 
 _test 'given [two syncs] should [list the positions of the newest only]'
 actual() {
-  db "INSERT INTO summaries (sync_id, fetched_at, raw) VALUES (1, 'x', '{}'), (2, 'x', '{}');
+  db "INSERT INTO syncs (id, started_at) VALUES (1, 'x'), (2, 'x');
+    INSERT INTO summaries (sync_id, fetched_at, raw) VALUES (1, 'x', '{}'), (2, 'x', '{}');
     INSERT INTO positions (sync_id, fetched_at, raw) VALUES
       (1, 'x', '{\"instrument\":{\"ticker\":\"SOLD_US_EQ\"}}'),
       (1, 'x', '{\"instrument\":{\"ticker\":\"KO_US_EQ\"}}'),
@@ -104,7 +110,8 @@ _describe "t212.d/db/views.sql :: latest_positions :: edge"
 
 _test 'given [a newest snapshot with no positions] should [list nothing, not the snapshot before]'
 actual() {
-  db "INSERT INTO summaries (sync_id, fetched_at, raw) VALUES (1, 'x', '{}'), (2, 'x', '{}');
+  db "INSERT INTO syncs (id, started_at) VALUES (1, 'x'), (2, 'x');
+    INSERT INTO summaries (sync_id, fetched_at, raw) VALUES (1, 'x', '{}'), (2, 'x', '{}');
     INSERT INTO positions (sync_id, fetched_at, raw) VALUES
       (1, 'x', '{\"instrument\":{\"ticker\":\"KO_US_EQ\"}}');
     SELECT count(*) FROM latest_positions;"

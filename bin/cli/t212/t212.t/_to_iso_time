@@ -3,10 +3,9 @@
 # shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../../../tools/test-lib.sh"
-# lib.sh finds bin/lib.sh from the folder of the command files
-_SCRIPT_DIR="$SCRIPT_DIR/../t212.d"
+. "$SCRIPT_DIR/../../../lib.sh"
 # shellcheck source=../t212.d/lib.sh
-. "$_SCRIPT_DIR/lib.sh"
+. "$SCRIPT_DIR/../t212.d/lib.sh"
 
 _describe "t212.d/lib.sh :: _to_iso_time :: valid"
 

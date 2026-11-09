@@ -1,0 +1,26 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../../../lib.sh"
+# shellcheck source=../t212.d/lib.sh
+. "$SCRIPT_DIR/../t212.d/lib.sh"
+
+_describe "t212.d/lib.sh :: _get_fetched_at :: valid"
+
+_test 'given [headers with a Date] should [print it as ISO 8601]'
+prepare() {
+  printf 'HTTP/1.1 200 OK\r\nDate: Sun, 08 Nov 2026 14:27:46 GMT\r\n\r\n' >headers
+}
+actual() { _get_fetched_at headers; }
+_expect equal actual.exit 0
+_expect equal actual.stdout '2026-11-08T14:27:46Z'
+
+_describe "t212.d/lib.sh :: _get_fetched_at :: invalid"
+
+_test 'given [headers with no Date] should [exit 4]'
+prepare() { printf 'HTTP/1.1 200 OK\r\n\r\n' >headers; }
+actual() { _get_fetched_at headers; }
+_expect equal actual.exit 4
+_expect contain actual.stderr 'The API answered with no Date header'

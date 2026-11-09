@@ -1,7 +1,7 @@
 -- A view has no data, so sync creates each view again on each run, after
--- the migrations, and a change here reaches every database. The views sum
+-- the migrations. A change here then reaches every database. The views sum
 -- in USD, the currency of the account. A EUR deposit or withdrawal has a USD
--- leg, so the USD rows alone count the money that crossed the edge of the
+-- leg, so the USD rows alone count the money that entered or left the
 -- account
 
 -- The positions of the newest snapshot. summaries has one row per snapshot,
@@ -13,7 +13,7 @@ CREATE VIEW latest_positions AS
 SELECT * FROM positions
 WHERE sync_id = (SELECT max(sync_id) FROM summaries);
 
--- The money in and out of the account per year. A TRANSFER refunded an
+-- The money in and out of the account per year. A TRANSFER refunds an
 -- earlier deposit to the card it came from
 DROP VIEW IF EXISTS flows;
 CREATE VIEW flows AS

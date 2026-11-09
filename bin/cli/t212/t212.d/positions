@@ -13,10 +13,14 @@ set -eu
 #
 # EXAMPLE
 #   t212 positions AAPL_US_EQ
+#
+# SEE ALSO
+#   curl, jq
 
 # t212 runs this file by its path, and exports LOG_NAMESPACE, LOG_LEVEL and
 # _T212_ACCOUNT
 _SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$_SCRIPT_DIR/../../../lib.sh"
 . "$_SCRIPT_DIR/lib.sh"
 
 _parse_args "$0" 1 "$@"
@@ -25,7 +29,9 @@ if [ -n "$_POSITIONAL" ] && ! _is_ticker "$_POSITIONAL"; then
 fi
 
 _use_account
-_create_temp_dir
+_require_cmd curl jq
+_TEMP_DIR=$(_create_temp_dir t212)
+_delete_on_exit "$_TEMP_DIR"
 
 _print_api "/api/v0/equity/positions${_POSITIONAL:+?ticker=$_POSITIONAL}"
 

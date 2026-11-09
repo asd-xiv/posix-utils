@@ -6,7 +6,7 @@ set -eu
 #   t212 - Read a Trading 212 account: cash, positions, orders and history
 #
 # SYNOPSIS
-#   t212 [--live] <command> [flag...] [positional...]
+#   t212 [--live] <command> [positional...] [flag...]
 #   t212 <command> --help
 #   t212 -h | --help
 #
@@ -27,7 +27,8 @@ set -eu
 #     sql           Query the database of the account
 #
 #   The API allows each endpoint a few calls per period. On HTTP 429, t212
-#   waits until the API frees one call, then calls again, up to 3 calls.
+#   waits until the API allows the next call, then calls again, up to 3
+#   calls.
 #
 # OPTIONS
 #   --live       Use the live account, with real money (default: the demo
@@ -51,7 +52,7 @@ set -eu
 #   4   The API refused the call, or its answer has the wrong shape
 #
 # SEE ALSO
-#   curl, jq, https://docs.trading212.com/api
+#   https://docs.trading212.com/api
 
 # tools/install symlinks this script, so "$0" names the link. realpath follows
 # it to find lib.sh and t212.d
@@ -97,8 +98,8 @@ shift
 # │ Main
 # ╰───
 
-# One file per command. A slug has no ".", so a command never names lib.sh
-# or views.sql
+# One file per command. A slug has no ".", so a command never names lib.sh.
+# The check below refuses a folder, eg. db
 _COMMAND_FILE="$_SCRIPT_DIR/t212.d/$_COMMAND"
 
 if ! _is slug "$_COMMAND" || [ ! -f "$_COMMAND_FILE" ] \

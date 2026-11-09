@@ -17,10 +17,10 @@ set -eu
 #
 #   The tables orders, dividends and transactions have one row per API item.
 #   The tables positions and summaries have one row per snapshot.
-#   The table syncs has one row per run of sync. cursors has where the first
-#   sync of each kind stopped.
+#   The table syncs has one row per run of sync. The table cursors has one
+#   row per kind, with the page where the first sync of the kind stopped.
 #   The column raw keeps the item as the API returned it. SQLite derives the
-#   other columns from raw.
+#   other columns from raw, except sync_id and fetched_at.
 #   The view latest_positions has the positions of the newest snapshot. The
 #   views flows and income sum per year, in USD: the money in and out, and
 #   the dividends, interest and fees. Print the schema with:
@@ -41,11 +41,12 @@ set -eu
 #   3   No database: run "t212 sync" first
 #
 # SEE ALSO
-#   sqlite3 3.38 or newer
+#   jq, sqlite3 3.38 or newer
 
 # t212 runs this file by its path, and exports LOG_NAMESPACE, LOG_LEVEL and
 # _T212_ACCOUNT
 _SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$_SCRIPT_DIR/../../../lib.sh"
 . "$_SCRIPT_DIR/lib.sh"
 
 _parse_args "$0" 1 "$@"
@@ -57,7 +58,8 @@ _DB_FILE=$(_get_db_file "$(_get_account)")
 [ -f "$_DB_FILE" ] \
   || _fail 3 -v db "$_DB_FILE" "No database, run t212 sync first"
 
-_create_temp_dir
+_TEMP_DIR=$(_create_temp_dir t212)
+_delete_on_exit "$_TEMP_DIR"
 
 # -safe turns off the dot-commands and functions that reach the shell or a
 # file, eg. .shell and readfile(). -readonly keeps the database as is

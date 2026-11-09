@@ -3,23 +3,29 @@
 # shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../../../tools/test-lib.sh"
-. "$SCRIPT_DIR/sandbox.sh"
+. "$SCRIPT_DIR/../../../lib.sh"
+# shellcheck source=../t212.d/lib.sh
+. "$SCRIPT_DIR/../t212.d/lib.sh"
+# shellcheck source=../t212.d/db/db.sh
+. "$SCRIPT_DIR/../t212.d/db/db.sh"
 
 command -v sqlite3 >/dev/null 2>&1 || _skip_all "sqlite3 is not installed"
 
-_describe "t212.d/sync :: _migrate :: valid"
+DB_DIR="$SCRIPT_DIR/../t212.d/db"
+NO_COLOR=1
+NO_LOG_TIME=1
+export NO_COLOR NO_LOG_TIME
 
-before_each() { build_sandbox; }
+_describe "t212.d/db/db.sh :: _migrate :: valid"
 
 _test 'given [no database] should [create every table at the newest version]'
-prepare() { add_answer 1 200 '{"items":[],"nextPagePath":null}'; }
 actual() {
-  "$T212" sync transactions >/dev/null
-  db "PRAGMA user_version"
-  db "SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name"
+  _migrate db "$DB_DIR" 2>/dev/null
+  _run_sql db "PRAGMA user_version;
+    SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name;"
 }
 _expect equal actual.exit 0
-_expect equal actual.stdout '3
+_expect equal actual.stdout '5
 cursors
 dividends
 orders
@@ -29,60 +35,64 @@ syncs
 transactions'
 
 _test 'given [no database] should [give cursors a sync_id and no synced_at]'
-prepare() { add_answer 1 200 '{"items":[],"nextPagePath":null}'; }
 actual() {
-  "$T212" sync transactions >/dev/null
-  db "SELECT name FROM pragma_table_info('cursors') ORDER BY cid"
+  _migrate db "$DB_DIR" 2>/dev/null
+  _run_sql db "SELECT name FROM pragma_table_info('cursors') ORDER BY cid;"
 }
 _expect equal actual.stdout 'kind
 next_page_path
 sync_id'
 
-_describe "t212.d/sync :: _migrate :: edge"
-
-before_each() { build_sandbox; }
+_describe "t212.d/db/db.sh :: _migrate :: edge"
 
 # A database t212 created before it had migrations: user_version 0, the
 # tables of 001, a first sync of transactions done, one snapshot
-_test 'given [a database from before the migrations] should [keep its history and its cursors, and drop its snapshots]'
+_test 'given [a database from before the migrations] should [keep its history and its cursors, and delete its snapshots]'
 prepare() {
-  mkdir -p data/t212
-  sqlite3 -bail -batch data/t212/demo.db <"$SCRIPT_DIR/../t212.d/db/migrations/001-create-tables.sql"
-  db "INSERT INTO transactions (raw) VALUES ('{\"reference\":\"old\",\"type\":\"FEE\",\"amount\":-1,\"currency\":\"USD\",\"dateTime\":\"2026-01-01T00:00:00.000Z\"}');
+  sqlite3 -bail -batch db <"$DB_DIR/migrations/001-create-tables.sql"
+  sqlite3 -bail -batch db "INSERT INTO transactions (raw) VALUES ('{\"reference\":\"old\"}');
     INSERT INTO sync (kind, next_page_path, synced_at) VALUES ('transactions', NULL, 'x');
     INSERT INTO positions (taken_at, raw) VALUES ('t', '{\"instrument\":{\"ticker\":\"KO_US_EQ\"}}');"
-  add_answer 1 200 '{"items":[{"reference":"new","type":"FEE","amount":-2,"currency":"USD","dateTime":"2026-01-02T00:00:00.000Z"},{"reference":"old","type":"FEE","amount":-1,"currency":"USD","dateTime":"2026-01-01T00:00:00.000Z"}],"nextPagePath":"/api/v0/equity/history/transactions?cursor=x"}'
 }
 actual() {
-  "$T212" sync transactions
-  db "PRAGMA user_version"
-  db "SELECT reference, coalesce(sync_id, '-') FROM transactions ORDER BY reference"
-  db "SELECT kind, next_page_path IS NULL, sync_id FROM cursors"
-  db "SELECT count(*) FROM positions"
-  db "SELECT count(*) FROM sqlite_schema WHERE name = 'sync'"
-  wc -l <calls.log | tr -d ' '
+  _migrate db "$DB_DIR" 2>/dev/null
+  _run_sql db "PRAGMA user_version;
+    SELECT reference, coalesce(sync_id, '-') FROM transactions;
+    SELECT kind, next_page_path IS NULL, coalesce(sync_id, '-') FROM cursors;
+    SELECT count(*) FROM positions;
+    SELECT count(*) FROM sqlite_schema WHERE name = 'sync';"
 }
 _expect equal actual.exit 0
-_expect equal actual.stdout '{"transactions":1}
-3
-new|1
+_expect equal actual.stdout '5
 old|-
-transactions|1|1
+transactions|1|-
 0
-0
-1'
+0'
 
-_test 'given [a second sync] should [apply no migration again]'
+_test 'given [a database at the newest version] should [apply no migration again]'
+prepare() { _migrate db "$DB_DIR" 2>/dev/null; }
+actual() { _migrate db "$DB_DIR"; }
+_expect equal actual.exit 0
+_expect ! contain actual.stderr 'Applied'
+
+_describe "t212.d/db/db.sh :: _migrate :: invalid"
+
+_test 'given [a migration that fails] should [exit 3 and keep the version before it]'
 prepare() {
-  add_answer 1 200 '{"items":[],"nextPagePath":null}'
-  add_answer 2 200 '{"items":[],"nextPagePath":null}'
+  mkdir -p bad/migrations
+  printf 'CREATE TABLE a (x);\n' >bad/migrations/001-create-a.sql
+  printf 'CREATE TABLE b (x);\nNOT SQL;\n' >bad/migrations/002-create-b.sql
+  : >bad/views.sql
 }
 actual() {
-  "$T212" sync transactions >/dev/null 2>&1
-  "$T212" sync transactions >/dev/null 2>second.stderr
-  grep -c 'Applied' second.stderr || true
-  db "PRAGMA user_version"
+  (_migrate db bad) || {
+    status=$?
+    _run_sql db "PRAGMA user_version;
+      SELECT name FROM sqlite_schema ORDER BY name;"
+    exit "$status"
+  }
 }
-_expect equal actual.exit 0
-_expect equal actual.stdout '0
-3'
+_expect equal actual.exit 3
+_expect equal actual.stdout '1
+a'
+_expect contain actual.stderr 'Migration failed'

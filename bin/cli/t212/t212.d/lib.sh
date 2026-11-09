@@ -1,10 +1,8 @@
 #!/bin/sh
 
-# The primitives every t212 command shares. A command sets _SCRIPT_DIR to
-# t212.d, then sources this file. So does a test of a primitive. This file
-# sources bin/lib.sh, sets no shell options and runs nothing.
-
-. "$_SCRIPT_DIR/../../../lib.sh"
+# The primitives every t212 command shares. A command sources bin/lib.sh,
+# then this file. So does a test of a primitive. This file sets no shell
+# options and runs nothing.
 
 _MAX_TRIES=3 # calls per request while the API answers HTTP 429
 
@@ -63,8 +61,9 @@ _quote_sql() {
 
 # _to_wait_seconds <period> <limit>
 #
-# Print the seconds until the API frees one call: <period> / <limit>, rounded
-# up, eg. 3 for 20 calls per 60 s. Print 1 unless both are positive integers.
+# Print the seconds until the API allows the next call: <period> /
+# <limit>, rounded up, eg. 3 for 20 calls per 60 s. Print 1 unless both are
+# positive integers.
 #
 # x-ratelimit-reset gives the same time by the clock of the server. t212 does
 # not read it: a local clock off by a minute would make t212 wait a minute
@@ -197,7 +196,7 @@ _get_account() {
 #
 # EXIT
 #   2   The API key of the account is not set, or not an API key
-#   3   curl or jq is missing, or the command ran without t212
+#   3   The command ran without t212
 _use_account() {
   _ACCOUNT=$(_get_account)
 
@@ -216,7 +215,6 @@ _use_account() {
       ;;
   esac
 
-  _require_cmd curl jq
   _HOST="https://$_ACCOUNT.trading212.com"
 }
 
@@ -230,8 +228,9 @@ _get_db_file() {
 # _run_sql <db-file> <sql> [sqlite3-flag...]
 #
 # Run <sql> on <db-file> with sqlite3, print what it selects. Pass <sql> on
-# stdin, since sqlite3 reads an argument that starts with "-" as a flag, eg.
-# the "--" of an SQL comment.
+# stdin, since sqlite3 reads a positional that starts with "-" as a flag, eg.
+# the "--" of an SQL comment. Turn on the foreign keys, which sqlite3 leaves
+# off, so a row cannot name a sync that does not exist.
 #
 # RETURNS
 #   other   The status of sqlite3. The caller picks the exit code
@@ -240,33 +239,8 @@ _run_sql() {
   rs_sql="$2"
   shift 2
 
-  printf '%s\n' "$rs_sql" | sqlite3 -bail -batch "$@" "$rs_db_file"
-}
-
-# ╭───
-# │ Cleanup
-# ╰───
-
-# shellcheck disable=SC2329 # called by trap
-_cleanup() {
-  # 'set -u' aborts on an unset _TEMP_DIR, so default it
-  rm -rf -- "${_TEMP_DIR:-}"
-}
-
-# _create_temp_dir
-#
-# Create _TEMP_DIR, and register the traps that delete it.
-#
-# EXIT
-#   3   mktemp failed
-_create_temp_dir() {
-  trap _cleanup EXIT                                    # normal exit
-  trap '_cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl-C
-  trap '_cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout, CI cancel
-  trap '_cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # SSH drop, closed window
-
-  _TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/t212.XXXXXX") \
-    || _fail 3 "Could not create a temporary folder"
+  printf 'PRAGMA foreign_keys = ON;\n%s\n' "$rs_sql" \
+    | sqlite3 -bail -batch "$@" "$rs_db_file"
 }
 
 # ╭───
@@ -275,19 +249,20 @@ _create_temp_dir() {
 
 # _call_api <path> <body-file>
 #
-# Call GET <path> on the host of the account, write the body to <body-file>.
-# On HTTP 429, wait until the API frees one call and call again, up to
-# _MAX_TRIES calls. The key goes to curl on stdin, so ps never shows it.
+# Call GET <path> on the host of the account, write the body to <body-file>
+# and the headers to <body-file>.headers. On HTTP 429, wait until the API
+# allows the next call and call again, up to _MAX_TRIES calls. The key goes
+# to curl on stdin, so ps never shows it.
 #
 # EXIT
 #   3   curl failed
-#   4   The API answered with an error, or with 429 _MAX_TRIES times
+#   4   The API answered with an error, or with HTTP 429 _MAX_TRIES times
 _call_api() {
   ca_try=1
 
   while :; do
     ca_http_status=$(printf 'header = "Authorization: %s"\n' "$_API_KEY" \
-      | curl -sS --max-time 30 -K - -D "$_TEMP_DIR/headers" -o "$2" \
+      | curl -sS --max-time 30 -K - -D "$2.headers" -o "$2" \
         -w '%{http_code}' "$_HOST$1") \
       || _fail 3 -v path "$1" "curl failed"
 
@@ -309,13 +284,25 @@ _call_api() {
     fi
 
     ca_wait=$(_to_wait_seconds \
-      "$(_find_header x-ratelimit-period "$_TEMP_DIR/headers")" \
-      "$(_find_header x-ratelimit-limit "$_TEMP_DIR/headers")")
+      "$(_find_header x-ratelimit-period "$2.headers")" \
+      "$(_find_header x-ratelimit-limit "$2.headers")")
 
     _info -v path "$1" -v seconds "$ca_wait" "Rate limited, waiting"
     sleep "$ca_wait"
     ca_try=$((ca_try + 1))
   done
+}
+
+# _get_fetched_at <headers-file>
+#
+# Print the time the API answered, from the Date header in <headers-file>, as
+# ISO 8601 in UTC.
+#
+# EXIT
+#   4   The answer has no Date header, or one of another shape
+_get_fetched_at() {
+  _to_iso_time "$(_find_header date "$1")" \
+    || _fail 4 "The API answered with no Date header"
 }
 
 # _print_json <file>
@@ -341,41 +328,44 @@ _print_api() {
   _print_json "$_TEMP_DIR/body"
 }
 
-# _find_next_path <page-file>
+# _parse_next_path <page-file>
 #
 # Print the nextPagePath of <page-file>. Print nothing on the last page. A
-# caller reads it before it uses the items, so a page of the wrong shape
-# stops the work before any write.
+# caller runs _parse_next_path before it uses the items, so a page of the
+# wrong shape stops the work before any write.
 #
 # EXIT
 #   4   <page-file> has no items array, or a next page path outside the API
-_find_next_path() {
-  fnp_path=$(jq -r \
+_parse_next_path() {
+  pnp_path=$(jq -r \
     'if (.items | type) == "array" then .nextPagePath // empty
      else error("no items") end' -- "$1" 2>/dev/null) \
     || _fail 4 "The API answered with no items"
 
   # The path goes after _HOST, so it must stay inside the API
-  case "$fnp_path" in
+  case "$pnp_path" in
     "" | /api/v0/*) ;;
-    *) _fail 4 -v next "$fnp_path" "Unexpected next page path" ;;
+    *) _fail 4 -v next "$pnp_path" "Unexpected next page path" ;;
   esac
 
-  _end_with_newline "$fnp_path"
+  _end_with_newline "$pnp_path"
 }
 
-# _walk_pages <path> <on-page> [arg...]
+# _walk_pages <path> <on-page> [positional...]
 #
-# Call GET <path>, then each next page. Run "<on-page> [arg...] <page-file>"
-# on each page, after _find_next_path guards it. Stop when <on-page> returns
-# 1, or after the last page. Do nothing when <path> is empty.
+# Call GET <path>, then each next page. Run
+# "<on-page> [positional...] <page-file>" on each page, after
+# _parse_next_path guards it. Stop when <on-page> returns 1, or after the
+# last page. Do nothing when <path> is empty.
 #
-# <on-page> runs where set -e is off, since its status is read. So each
-# command in it that can fail must end the script itself, eg. with _fail.
+# <on-page> runs where set -e is off, since _walk_pages reads its status. So
+# a command in it that can fail, other than the last, must end the script
+# itself, eg. with _fail.
 #
 # EXIT
-#   3   curl failed
-#   4   The API refused the call, or a page has the wrong shape
+#   3       curl failed
+#   4       The API refused the call, or a page has the wrong shape
+#   other   The status of <on-page>, when not 0 or 1
 _walk_pages() {
   wp_path="$1"
   wp_on_page="$2"
@@ -383,8 +373,12 @@ _walk_pages() {
 
   while [ -n "$wp_path" ]; do
     _call_api "$wp_path" "$_TEMP_DIR/page"
-    wp_next_path=$(_find_next_path "$_TEMP_DIR/page")
-    "$wp_on_page" "$@" "$_TEMP_DIR/page" || return 0
+    wp_next_path=$(_parse_next_path "$_TEMP_DIR/page")
+    "$wp_on_page" "$@" "$_TEMP_DIR/page" || {
+      wp_status=$?
+      [ "$wp_status" -eq 1 ] && return 0
+      exit "$wp_status"
+    }
     wp_path="$wp_next_path"
   done
 }
@@ -410,9 +404,10 @@ _get_cached() {
     fi
   fi
 
+  # _print_json guards the answer before the cache keeps it
   _call_api "$1" "$_TEMP_DIR/body"
+  _print_json "$_TEMP_DIR/body"
   mkdir -p -- "$gc_dir"
   cp -- "$_TEMP_DIR/body" "$gc_file"
   printf '%s\n' "$gc_now" >"$gc_time_file"
-  _print_json "$gc_file"
 }

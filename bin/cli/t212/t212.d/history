@@ -11,8 +11,9 @@ set -eu
 #
 # DESCRIPTION
 #   Prints one page, newest first, as one JSON array. With --all, prints
-#   every page. The API allows 20 calls per minute, so --all reads about
-#   1,000 rows a minute. To keep the history, see "t212 sync --help".
+#   every page. The API allows 20 calls per minute. At 50 rows a page, --all
+#   reads about 1,000 rows a minute. To keep the history, see
+#   "t212 sync --help".
 #
 #   An order filled in several trades has one item per fill.
 #
@@ -25,10 +26,14 @@ set -eu
 # EXAMPLE
 #   t212 history orders --ticker AAPL_US_EQ
 #   t212 --live history dividends --all | jq 'map(.amount) | add'
+#
+# SEE ALSO
+#   curl, jq
 
 # t212 runs this file by its path, and exports LOG_NAMESPACE, LOG_LEVEL and
 # _T212_ACCOUNT
 _SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$_SCRIPT_DIR/../../../lib.sh"
 . "$_SCRIPT_DIR/lib.sh"
 
 _TICKER="" # --ticker, eg. AAPL_US_EQ
@@ -47,8 +52,9 @@ _IS_ALL="" # --all, "true" or ""
 #   1   _IS_ALL is empty, so _walk_pages stops after the first page
 # shellcheck disable=SC2329 # _walk_pages calls it
 _append_items() {
-  jq -c '.items[]' -- "$1" >>"$_TEMP_DIR/items" \
-    || _fail 4 "The API answered with no items"
+  # _walk_pages guarded .items before this runs. set -e is off here, so exit
+  # passes on a failed write
+  jq -c '.items[]' -- "$1" >>"$_TEMP_DIR/items" || exit
 
   if [ -z "$_IS_ALL" ]; then
     return 1
@@ -114,7 +120,9 @@ fi
 # ╰───
 
 _use_account
-_create_temp_dir
+_require_cmd curl jq
+_TEMP_DIR=$(_create_temp_dir t212)
+_delete_on_exit "$_TEMP_DIR"
 
 : >"$_TEMP_DIR/items"
 _walk_pages "/api/v0/equity/history/$_KIND?limit=$_LIMIT${_TICKER:+&ticker=$_TICKER}" \

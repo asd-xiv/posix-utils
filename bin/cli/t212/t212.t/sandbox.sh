@@ -4,13 +4,14 @@
 #   sandbox.sh - The sandbox and primitives of the t212 tests
 #
 # DESCRIPTION
-#   A test file sources it after tools/test-lib.sh and after it sets
-#   SCRIPT_DIR to its own folder.
+#   A test file sets SCRIPT_DIR to its own folder, sources tools/test-lib.sh,
+#   then this file.
 #
 #   t212 calls the Trading 212 API with a real key. A test that runs it calls
 #   build_sandbox first, from before_each. build_sandbox sets fake keys, points
 #   XDG_CACHE_HOME and XDG_DATA_HOME at the test folder and puts a fake curl
-#   first on PATH. Nothing in it calls the API.
+#   first on PATH, so nothing calls the API. sandbox.contract verifies what
+#   the fake assumes.
 #
 #   The fake curl answers call <n> with the files add_answer wrote for <n>,
 #   and with HTTP 200 and "{}" when there are none. Each answer has the
@@ -75,9 +76,9 @@ FAKE
   fi
 }
 
-# add_answer <call> <http-status> <body> [header-line]
-# Make the fake curl answer call <call> with <http-status>, <body> and one
-# header.
+# add_answer <call> <http-status> <body> [headers]
+# Make the fake curl answer call <call> with <http-status>, <body> and the
+# header lines in <headers>, joined by CRLF.
 add_answer() {
   printf '%s' "$2" >"answers/$1.http_status"
   printf '%s' "$3" >"answers/$1.body"
@@ -88,14 +89,15 @@ add_answer() {
 # Print what <sql> selects from the demo database.
 db() { sqlite3 -batch data/t212/demo.db "$1"; }
 
-# Two pages of transactions, newest first, that sync and sql answer with.
+# Two pages of transactions, newest first, that the fake curl gives the sync
+# and sql tests.
 # Page 1 points to page 2, page 2 is the last
 # shellcheck disable=SC2034 # the test files read them
 _PAGE_1='{"items":[{"reference":"c","type":"FEE","amount":-1,"currency":"USD","dateTime":"2026-01-03T00:00:00.000Z"},{"reference":"b","type":"DEPOSIT","amount":10,"currency":"USD","dateTime":"2026-01-02T00:00:00.000Z"}],"nextPagePath":"/api/v0/equity/history/transactions?limit=50&cursor=a&time=2026-01-01T00:00:00.000Z"}'
 _PAGE_2='{"items":[{"reference":"a","type":"DEPOSIT","amount":5,"currency":"USD","dateTime":"2026-01-01T00:00:00.000Z"}],"nextPagePath":null}'
 
 # use_fake_account
-# Set what _use_account and _create_temp_dir set, for the demo account, so a
+# Set what _use_account sets, and _TEMP_DIR, for the demo account, so a
 # test calls a primitive of lib.sh without a command. Call it after
 # build_sandbox.
 use_fake_account() {
