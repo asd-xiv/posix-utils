@@ -42,6 +42,10 @@ If part of `posix-utils`:
 └── bin/                 # grouped by the running environment
     ├── lib.sh           # primitives every script sources
     ├── cli/             # terminal and CI, no display server
+    │   └── t212/        # a command with parts lives in its own folder
+    │       ├── t212     # the script, named after the folder
+    │       ├── t212.d/  # its parts, eg. lib.sh, one file per subcommand
+    │       └── t212.t/  # its tests
     └── sway/            # Sway session, needs Wayland and a notifier
 
 <domain-pkg-root>/bin/   # scripts that only this package needs
@@ -296,8 +300,10 @@ _search_file() {
   always misses an edge case
 - Use a boolean flag instead of a value with two choices and a default, eg.
   `--ignore-case`, not `--case <match|ignore>`
-- Never install a dependency. Guard it with `_require_cmd` after the script
-  reads the flags and the positionals, so `--help` works without it
+- Never install a dependency
+  - Guard it with `_require_cmd` in the command file, never in a function
+  - Guard it after the command reads the flags and the positionals, so `--help`
+    works without it
   - Name it under `SEE ALSO`
   - Report invalid usage (exit `2`) before a missing dependency (exit `3`)
 
@@ -354,23 +360,8 @@ _require_cmd grep
     when a signal kills the script
 
 ```sh
-# ╭───
-# │ Cleanup
-# ╰───
-
-# shellcheck disable=SC2329 # called by trap
-_cleanup() {
-  # 'set -u' aborts on an unset _TEMP_DIR, so default it
-  rm -rf -- "${_TEMP_DIR:-}"
-}
-
-trap _cleanup EXIT # normal exit
-trap '_cleanup; trap - EXIT INT; kill -INT $$' INT # Ctrl-C
-trap '_cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout, CI cancel
-trap '_cleanup; trap - EXIT HUP; kill -HUP $$' HUP # SSH drop, closed window
-
-_TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/find-in-files.XXXXXX") \
-  || _fail 3 "Could not add a temporary directory"
+_TEMP_DIR=$(_create_temp_dir find-in-files)
+_delete_on_exit "$_TEMP_DIR"
 ```
 
 ### 8. Main
