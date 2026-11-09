@@ -219,22 +219,14 @@ is_recheck_file_safe() {
 }
 
 # guard_recheck_file
-# Exit 3 unless is_recheck_file_safe.
+# Exit 3 unless is_recheck_file_safe. sync, enable, disable and edit call it
+# before they change anything, so a failure changes nothing.
 guard_recheck_file() {
   is_recheck_file_safe \
     || _fail 3 -v path "$RECHECK_FILE" \
       "The script path has a character outside A-Za-z0-9_@+=:,./-"
 
   return 0
-}
-
-# guard_sync
-# Exit 3 unless a sync can run: the commands it needs are there, and the
-# path of recheck can stand in a crontab line. sync, enable, disable and edit
-# call it before they change anything, so a failure changes nothing.
-guard_sync() {
-  _require_cmd crontab awk
-  guard_recheck_file
 }
 
 # find_fzf_version

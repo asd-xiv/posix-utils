@@ -72,7 +72,7 @@
 set -eu
 
 _SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$_SCRIPT_DIR/lock.sh"
+. "$_SCRIPT_DIR/lib.sh"
 
 _OUTPUT_FILE=""        # -o/--output
 _GEOMETRY=""           # -g/--geometry, a geometry
@@ -187,8 +187,7 @@ _record() {
   trap _stop_recorder INT TERM
   trap '' HUP # a closed terminal does not stop it
 
-  _TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/screenrecord.XXXXXX") \
-    || _fail 3 "Could not add a temporary folder"
+  _TEMP_DIR=$(_create_temp_dir screenrecord)
 
   r_file="$_OUTPUT_FILE"
   if [ -n "$_IS_GIF" ]; then

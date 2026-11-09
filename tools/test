@@ -46,22 +46,8 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 export LOG_NAMESPACE="test"
 
 ROOT_DIR=$(dirname "$SCRIPT_DIR")
-OUT_FILE="" # the TAP output of the run in progress, removed on exit
+OUT_FILE="" # the TAP output of the run in progress
 HAS_FAILED=""
-
-# ╭───
-# │ Cleanup
-# ╰───
-
-# shellcheck disable=SC2329 # called by trap
-cleanup() {
-  [ -z "$OUT_FILE" ] || rm -f -- "$OUT_FILE"
-}
-
-trap cleanup EXIT                                    # normal exit
-trap 'cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl-C
-trap 'cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout, CI cancel
-trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
 
 # ╭───
 # │ Primitives
@@ -120,8 +106,9 @@ for FILE in "$@"; do
   [ -f "$FILE" ] || _fail 2 -v file "$FILE" "Not a file"
 done
 
-OUT_FILE=$(mktemp "${TMPDIR:-/tmp}/test.XXXXXX") \
-  || _fail 3 "Could not create a temporary file"
+OUT_DIR=$(_create_temp_dir test)
+_delete_on_exit "$OUT_DIR"
+OUT_FILE="$OUT_DIR/out"
 
 # ╭───
 # │ Main

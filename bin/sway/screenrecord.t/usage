@@ -77,8 +77,8 @@ actual() { "$SCREENRECORD" pause; }
 _expect equal actual.exit 2
 _expect contain actual.stderr 'Unknown command'
 
-_test 'given [lock.sh, the shared file, as a command] should [exit 2]'
-actual() { "$SCREENRECORD" lock.sh; }
+_test 'given [lib.sh, the shared file, as a command] should [exit 2]'
+actual() { "$SCREENRECORD" lib.sh; }
 _expect equal actual.exit 2
 _expect contain actual.stderr 'Unknown command'
 

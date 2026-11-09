@@ -8,7 +8,7 @@
 set -eu
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$SCRIPT_DIR/checks.sh"
+. "$SCRIPT_DIR/lib.sh"
 
 # ╭───
 # │ Main
@@ -24,7 +24,8 @@ for ID in "$@"; do
       "A disabled copy exists, the rename would replace it"
   fi
 done
-guard_sync
+_require_cmd crontab awk
+guard_recheck_file
 
 for ID in "$@"; do
   is_enabled "$ID" || continue

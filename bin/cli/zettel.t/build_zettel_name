@@ -4,10 +4,10 @@
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../../tools/test-lib.sh"
 
-# zettels.sh finds lib.sh from the folder of the command files
+# lib.sh finds lib.sh from the folder of the command files
 SCRIPT_DIR="$SCRIPT_DIR/../zettel.d"
-# shellcheck source=../zettel.d/zettels.sh
-. "$SCRIPT_DIR/zettels.sh"
+# shellcheck source=../zettel.d/lib.sh
+. "$SCRIPT_DIR/lib.sh"
 
 _describe "zettel :: build_zettel_name"
 

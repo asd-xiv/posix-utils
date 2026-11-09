@@ -30,7 +30,7 @@
 set -eu
 
 _SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$_SCRIPT_DIR/lock.sh"
+. "$_SCRIPT_DIR/lib.sh"
 
 # ╭───
 # │ Main

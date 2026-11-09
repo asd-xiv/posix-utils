@@ -8,7 +8,7 @@
 set -eu
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$SCRIPT_DIR/checks.sh"
+. "$SCRIPT_DIR/lib.sh"
 
 # ╭───
 # │ Main
@@ -22,7 +22,8 @@ for ID in "$@"; do
   find_cron_pattern "$ID" >/dev/null \
     || _fail 3 -v id "$ID" "No valid cron pattern in a '# CRON:' line"
 done
-guard_sync
+_require_cmd crontab awk
+guard_recheck_file
 
 for ID in "$@"; do
   is_enabled "$ID" && continue

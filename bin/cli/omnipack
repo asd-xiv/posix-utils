@@ -355,17 +355,8 @@ done
 # │ Cleanup
 # ╰───
 
-cleanup() {
-  rm -rf "${TEMP_DIR:-}" || true
-}
-
-trap cleanup EXIT                                    # normal exit
-trap 'cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl-C
-trap 'cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout, CI cancel
-trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # SSH drop, closed window
-
-TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/omnipack.XXXXXX") \
-  || _fail 3 "Could not create a temporary directory."
+TEMP_DIR=$(_create_temp_dir omnipack)
+_delete_on_exit "$TEMP_DIR"
 
 # ╭───
 # │ Main

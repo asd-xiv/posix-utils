@@ -10,7 +10,7 @@
 set -eu
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$SCRIPT_DIR/checks.sh"
+. "$SCRIPT_DIR/lib.sh"
 
 # ╭───
 # │ Cleanup
@@ -32,8 +32,8 @@ trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
 
 [ "$#" -le 1 ] || _fail 2 '"edit" takes at most one id'
 guard_id "$@"
-_require_cmd nvim
-guard_sync
+_require_cmd nvim crontab awk
+guard_recheck_file
 [ -t 0 ] || _fail 3 '"edit" needs a terminal'
 
 mkdir -p -- "$CHECKS_DIR"

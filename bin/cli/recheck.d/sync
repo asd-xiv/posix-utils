@@ -12,7 +12,7 @@
 set -eu
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$SCRIPT_DIR/checks.sh"
+. "$SCRIPT_DIR/lib.sh"
 
 BLOCK_BEGIN="# recheck:start"
 BLOCK_END="# recheck:end"
@@ -45,7 +45,8 @@ if [ "$#" -gt 1 ] || { [ "$#" -eq 1 ] && [ "$1" != "--wait" ]; }; then
   _fail 2 '"sync" takes only --wait'
 fi
 
-guard_sync
+_require_cmd crontab awk
+guard_recheck_file
 
 # Make every file in the checks folder executable, or recheck cannot run
 # it. A check written in `recheck edit` starts without +x

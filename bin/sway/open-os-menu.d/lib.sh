@@ -70,7 +70,7 @@ print_row() {
 # first line of stdout is the reason.
 #
 # It reads the filesystem and runs <health>. It needs SCRIPT_DIR, the folder
-# of the command file that sources this file, as checks.sh of recheck needs it
+# of the command file that sources this file, as lib.sh of recheck needs it
 # for its settings.
 find_reason() {
   find_path=${1%% *}

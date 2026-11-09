@@ -9,7 +9,7 @@
 set -eu
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$SCRIPT_DIR/checks.sh"
+. "$SCRIPT_DIR/lib.sh"
 
 CHANGE_HOOK_FILE="$CONFIG_DIR/on-change"
 RUNNING_CHECK_ID=""

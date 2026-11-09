@@ -49,8 +49,8 @@ set -eu
 _SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$_SCRIPT_DIR/../../../lib.sh"
 . "$_SCRIPT_DIR/lib.sh"
-# shellcheck source=db/db.sh
-. "$_SCRIPT_DIR/db/db.sh"
+# shellcheck source=db/lib.sh
+. "$_SCRIPT_DIR/db/lib.sh"
 
 # ╭───
 # │ Composers

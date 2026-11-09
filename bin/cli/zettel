@@ -198,7 +198,7 @@ fi
 # ╰───
 
 # One file per command. A slug holds no "/" and no ".", so a command names
-# only a file in zettel.d, and never zettels.sh
+# only a file in zettel.d, and never lib.sh
 COMMAND_FILE="$SCRIPT_DIR/zettel.d/$COMMAND"
 
 if ! _is slug "$COMMAND" || [ ! -f "$COMMAND_FILE" ] || [ ! -x "$COMMAND_FILE" ]; then

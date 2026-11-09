@@ -6,8 +6,8 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../../lib.sh"
 # shellcheck source=../t212.d/lib.sh
 . "$SCRIPT_DIR/../t212.d/lib.sh"
-# shellcheck source=../t212.d/db/db.sh
-. "$SCRIPT_DIR/../t212.d/db/db.sh"
+# shellcheck source=../t212.d/db/lib.sh
+. "$SCRIPT_DIR/../t212.d/db/lib.sh"
 . "$SCRIPT_DIR/sandbox.sh"
 
 command -v sqlite3 >/dev/null 2>&1 || _skip_all "sqlite3 is not installed"
@@ -21,7 +21,7 @@ build_db() {
   printf '%s' "$_SUMMARY" >summary
 }
 
-_describe "t212.d/db/db.sh :: _insert_snapshot :: valid"
+_describe "t212.d/db/lib.sh :: _insert_snapshot :: valid"
 
 before_each() { build_db; }
 
@@ -37,7 +37,7 @@ _expect equal actual.stdout '2
 1|2026-11-08T14:27:46Z|KO_US_EQ
 1|2026-11-08T14:27:51Z|1092.0'
 
-_describe "t212.d/db/db.sh :: _insert_snapshot :: edge"
+_describe "t212.d/db/lib.sh :: _insert_snapshot :: edge"
 
 before_each() { build_db; }
 
@@ -50,7 +50,7 @@ actual() {
 _expect equal actual.stdout '0
 1'
 
-_describe "t212.d/db/db.sh :: _insert_snapshot :: invalid"
+_describe "t212.d/db/lib.sh :: _insert_snapshot :: invalid"
 
 before_each() { build_db; }
 

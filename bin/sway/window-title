@@ -41,7 +41,7 @@ set -eu
 # it to find lib.sh and window-title.d
 _SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$_SCRIPT_DIR/../lib.sh"
-. "$_SCRIPT_DIR/window-title.d/window-title.sh"
+. "$_SCRIPT_DIR/window-title.d/lib.sh"
 
 # _log reads these
 export LOG_NAMESPACE="window-title"

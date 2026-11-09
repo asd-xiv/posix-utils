@@ -410,9 +410,8 @@ _get_runtime_dir() {
 # Download <url> into <output-file>.
 #
 # EXIT
-#   3   curl is not on PATH, or the download fails
+#   3   The download fails
 _download_file() {
-  _require_cmd curl
   curl --silent --show-error --fail --location --output "$2" "$1" \
     || _fail 3 -v url "$1" "Download failed"
 }

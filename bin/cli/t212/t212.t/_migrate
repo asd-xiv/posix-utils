@@ -6,8 +6,8 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../../lib.sh"
 # shellcheck source=../t212.d/lib.sh
 . "$SCRIPT_DIR/../t212.d/lib.sh"
-# shellcheck source=../t212.d/db/db.sh
-. "$SCRIPT_DIR/../t212.d/db/db.sh"
+# shellcheck source=../t212.d/db/lib.sh
+. "$SCRIPT_DIR/../t212.d/db/lib.sh"
 
 command -v sqlite3 >/dev/null 2>&1 || _skip_all "sqlite3 is not installed"
 
@@ -16,7 +16,7 @@ NO_COLOR=1
 NO_LOG_TIME=1
 export NO_COLOR NO_LOG_TIME
 
-_describe "t212.d/db/db.sh :: _migrate :: valid"
+_describe "t212.d/db/lib.sh :: _migrate :: valid"
 
 _test 'given [no database] should [create every table at the newest version]'
 actual() {
@@ -43,7 +43,7 @@ _expect equal actual.stdout 'kind
 next_page_path
 sync_id'
 
-_describe "t212.d/db/db.sh :: _migrate :: edge"
+_describe "t212.d/db/lib.sh :: _migrate :: edge"
 
 # A database t212 created before it had migrations: user_version 0, the
 # tables of 001, a first sync of transactions done, one snapshot
@@ -75,7 +75,7 @@ actual() { _migrate db "$DB_DIR"; }
 _expect equal actual.exit 0
 _expect ! contain actual.stderr 'Applied'
 
-_describe "t212.d/db/db.sh :: _migrate :: invalid"
+_describe "t212.d/db/lib.sh :: _migrate :: invalid"
 
 _test 'given [a migration that fails] should [exit 3 and keep the version before it]'
 prepare() {

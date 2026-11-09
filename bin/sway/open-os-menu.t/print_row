@@ -3,7 +3,7 @@
 # shellcheck disable=SC2329 # the harness calls actual
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../../tools/test-lib.sh"
-. "$SCRIPT_DIR/../open-os-menu.d/open-os-menu.sh"
+. "$SCRIPT_DIR/../open-os-menu.d/lib.sh"
 
 _describe "open-os-menu :: print_row"
 

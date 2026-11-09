@@ -345,8 +345,9 @@ trap '_cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl-C
 trap '_cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout
 trap '_cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
 
-_TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/capture-terminal.XXXXXX") \
-  || _fail 3 "Could not add a temporary folder"
+# _cleanup does more than delete the folder, also on a signal, so it keeps
+# its own traps instead of _delete_on_exit
+_TEMP_DIR=$(_create_temp_dir capture-terminal)
 
 # ╭───
 # │ Main

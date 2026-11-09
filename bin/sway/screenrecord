@@ -62,7 +62,7 @@ shift
 # ╰───
 
 # One file per command. A slug holds no "/" and no ".", so a command names
-# only a file in screenrecord.d, and never lock.sh
+# only a file in screenrecord.d, and never lib.sh
 _COMMAND_FILE="$_SCRIPT_DIR/screenrecord.d/$_COMMAND"
 
 if ! _is slug "$_COMMAND" || [ ! -f "$_COMMAND_FILE" ] \

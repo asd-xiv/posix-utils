@@ -35,7 +35,7 @@
 set -eu
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$SCRIPT_DIR/zettels.sh"
+. "$SCRIPT_DIR/lib.sh"
 
 SHOULD_PLACE="true" # --no-place, or no terminal on stdin, sets it to ""
 SHOULD_WAIT=""      # --wait, "true" or ""

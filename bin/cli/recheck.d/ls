@@ -11,7 +11,7 @@
 set -eu
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$SCRIPT_DIR/checks.sh"
+. "$SCRIPT_DIR/lib.sh"
 
 MODE=""        # --cron or --color, "" for the plain list
 HAS_COLUMNS="" # "true" once the caller passes --columns

@@ -4,10 +4,10 @@
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../../tools/test-lib.sh"
 
-# checks.sh finds lib.sh from the folder of the command files
+# lib.sh finds lib.sh from the folder of the command files
 SCRIPT_DIR="$SCRIPT_DIR/../recheck.d"
-# shellcheck source=../recheck.d/checks.sh
-. "$SCRIPT_DIR/checks.sh"
+# shellcheck source=../recheck.d/lib.sh
+. "$SCRIPT_DIR/lib.sh"
 
 _describe "recheck :: is_fzf_new_enough"
 

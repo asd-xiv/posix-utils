@@ -13,7 +13,7 @@
 set -eu
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
-. "$SCRIPT_DIR/zettels.sh"
+. "$SCRIPT_DIR/lib.sh"
 
 # ╭───
 # │ Main

@@ -74,7 +74,7 @@ set -eu
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../lib.sh"
-. "$SCRIPT_DIR/open-os-menu.d/open-os-menu.sh"
+. "$SCRIPT_DIR/open-os-menu.d/lib.sh"
 
 # _log reads these
 export LOG_NAMESPACE="open-os-menu"

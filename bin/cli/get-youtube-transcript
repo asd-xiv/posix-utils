@@ -57,7 +57,7 @@ set -eu
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../lib.sh"
-. "$SCRIPT_DIR/get-youtube-transcript.d/get-youtube-transcript.sh"
+. "$SCRIPT_DIR/get-youtube-transcript.d/lib.sh"
 
 # _log reads these
 export LOG_NAMESPACE="get-youtube-transcript"
@@ -186,19 +186,8 @@ VIDEO_ID=$(parse_video_id "$1") \
 # │ Cleanup
 # ╰───
 
-# shellcheck disable=SC2329 # called by trap
-cleanup() {
-  # 'set -u' aborts on an unset TEMP_DIR, so default it
-  rm -rf "${TEMP_DIR:-}"
-}
-
-trap cleanup EXIT                                    # normal exit
-trap 'cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl-C
-trap 'cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout, CI cancel
-trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # SSH drop, closed window
-
-TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/get-youtube-transcript.XXXXXX") \
-  || _fail 3 "Could not create a temporary directory"
+TEMP_DIR=$(_create_temp_dir get-youtube-transcript)
+_delete_on_exit "$TEMP_DIR"
 
 # ╭───
 # │ Main
