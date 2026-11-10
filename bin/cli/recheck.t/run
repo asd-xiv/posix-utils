@@ -6,22 +6,22 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/sandbox.sh"
 . "$SCRIPT_DIR/../../lib/wait.sh" # for _wait_until
 
-# add_traced_check <id>
+# create_traced_check <id>
 # Write an enabled check that appends "start" to check.log in the current folder
 # when it starts. Create check.log empty: a test that expects no start expects
 # an empty file.
-add_traced_check() {
+create_traced_check() {
   printf '#!/bin/sh\n# CRON: * * * * *\nprintf "start\\n" >>"%s/check.log"\n' \
     "$PWD" >"config/recheck/checks/$1"
   chmod +x "config/recheck/checks/$1"
   : >check.log
 }
 
-# add_retry_check <id> <retry-line> <red-runs>
+# create_retry_check <id> <retry-line> <red-runs>
 # Write an enabled check with "# RETRY: <retry-line>". It appends "start" to
 # check.log in the current folder, then exits 1 for its first <red-runs> runs
 # and 0 after.
-add_retry_check() {
+create_retry_check() {
   cat >"config/recheck/checks/$1" <<CHECK
 #!/bin/sh
 # CRON: * * * * *
@@ -38,13 +38,13 @@ CHECK
 
 _describe "recheck.d/run :: run :: valid"
 
-before_each() { build_sandbox; }
+before_each() { create_sandbox; }
 
 _test 'given [checks that exit 0, 1 and 7] should [print green, red and broken, exit 0]'
 prepare() {
-  add_check good 0
-  add_check bad 1
-  add_check odd 7
+  create_check good 0
+  create_check bad 1
+  create_check odd 7
 }
 actual() { "$RECHECK" run good bad odd; }
 _expect equal actual.exit 0
@@ -52,24 +52,20 @@ _expect equal actual.stdout "$(printf 'good\tgreen\nbad\tred\nodd\tbroken')"
 
 _test 'given [no id and two enabled checks] should [run both]'
 prepare() {
-  add_check a 0
-  add_check b 1
+  create_check a 0
+  create_check b 1
 }
 actual() { "$RECHECK" run | cut -f 1; }
 _expect equal actual.stdout "$(printf 'a\nb')"
 
 _test 'given [an on-update hook] should [run it]'
 prepare() {
-  add_check good 0
-  add_hook
+  create_check good 0
+  create_on_update_hook
 }
 actual() { "$RECHECK" run good; }
 _expect equal actual.exit 0
 _expect ! equal hook.log ''
-
-# recheck trusts a lock and never asks whether its process still runs. No run
-# command made the lock of add_lock, so the two tests below also cover the lock
-# a run command leaves when kill -9 ends it
 
 _test 'given [a check that lists its lock] should [take the lock and write pid and started before the check starts]'
 prepare() {
@@ -85,7 +81,7 @@ _expect equal actual.stdout 'a	green'
 _expect equal state/recheck/a/output "$(printf 'pid\nstarted')"
 
 _test 'given [a run that ended] should [leave no lock in the runtime folder]'
-prepare() { add_check a 0; }
+prepare() { create_check a 0; }
 actual() {
   "$RECHECK" run a >/dev/null
   ls runtime/recheck
@@ -97,20 +93,20 @@ _expect equal actual.stdout ''
 # sleeps 1 s, not longer
 
 _test 'given [RETRY: 3 0 and a check red for 2 runs] should [run it 3 times, print green once]'
-prepare() { add_retry_check a '3 0' 2; }
+prepare() { create_retry_check a '3 0' 2; }
 actual() { "$RECHECK" run a; }
 _expect equal actual.exit 0
 _expect equal actual.stdout 'a	green'
 _expect equal check.log "$(printf 'start\nstart\nstart')"
 
 _test 'given [RETRY: 2 0 and a check that stays red] should [run it 3 times, print red once]'
-prepare() { add_retry_check a '2 0' 9; }
+prepare() { create_retry_check a '2 0' 9; }
 actual() { "$RECHECK" run a; }
 _expect equal actual.stdout 'a	red'
 _expect equal check.log "$(printf 'start\nstart\nstart')"
 
 _test 'given [RETRY: 2 0 and a check red for 2 runs] should [log 3 lines, end the retries with 1/2 and 2/2]'
-prepare() { add_retry_check a '2 0' 2; }
+prepare() { create_retry_check a '2 0' 2; }
 actual() {
   "$RECHECK" run a >/dev/null
   cut -f 2,5,6 state/recheck/runs.log
@@ -119,48 +115,67 @@ _expect equal actual.stdout "$(printf 'red\ta\nred\ta\t1/2\ngreen\ta\t2/2')"
 
 _describe "recheck.d/run :: run :: edge"
 
-before_each() { build_sandbox; }
+before_each() { create_sandbox; }
 
 _test 'given [a named disabled check] should [skip it and print nothing]'
 prepare() {
-  add_check off 1
+  create_check off 1
   mv config/recheck/checks/off config/recheck/checks/_off
 }
 actual() { "$RECHECK" run off; }
 _expect equal actual.exit 0
 _expect equal actual.stdout ''
 
-_test 'given [a check with a lock] should [not start it, say "Already running, skipping" and name the lock]'
-prepare() {
-  add_traced_check a
-  add_lock a
+_test 'given [a check that another run command runs] should [not start it, say "Already running, skipping" and name the lock]'
+prepare() { create_waiting_check a 0; }
+actual() {
+  start_background_run a
+  wait_until_started a 1
+  "$RECHECK" run a
+  finish_background_run
 }
-actual() { "$RECHECK" run a; }
 _expect equal actual.exit 0
 _expect equal actual.stdout ''
-_expect equal check.log ''
+_expect equal a.starts 'start'
 _expect contain actual.stderr 'Already running, skipping id=a lock='
 _expect end-with actual.stderr '/runtime/recheck/a.lock'
 
-_test 'given [a check with a lock and two run commands that start together] should [not start the check, keep the lock]'
-prepare() {
-  add_traced_check a
-  add_lock a
-}
+# recheck trusts a lock and never asks whether its process still runs
+_test 'given [a lock left by a run command that kill -9 ended] should [not start the check]'
+prepare() { create_waiting_check a 0; }
 actual() {
-  "$RECHECK" run a >first.stdout 2>first.stderr &
-  "$RECHECK" run a >second.stdout 2>second.stderr &
-  wait
+  start_background_run a
+  wait_until_started a 1
+  kill -9 "$BACKGROUND_RUN_PID"
+  wait "$BACKGROUND_RUN_PID" 2>/dev/null || :
+  : >go
+  "$RECHECK" run a
 }
-_expect equal check.log ''
+_expect equal actual.exit 0
+_expect equal a.starts 'start'
+_expect contain actual.stderr 'Already running, skipping id=a'
+
+_test 'given [a check that runs and two run commands that start together] should [not start the check again, keep it running]'
+prepare() { create_waiting_check a 0; }
+actual() {
+  start_background_run a
+  wait_until_started a 1
+  "$RECHECK" run a >first.stdout 2>first.stderr &
+  first_pid=$!
+  "$RECHECK" run a >second.stdout 2>second.stderr &
+  second_pid=$!
+  wait "$first_pid" "$second_pid"
+  "$RECHECK" status
+  finish_background_run
+}
+_expect equal actual.stdout '0 0 0 1'
+_expect equal a.starts 'start'
 _expect contain first.stderr 'Already running, skipping'
 _expect contain second.stderr 'Already running, skipping'
-_expect equal runtime/recheck/a.lock/pid '4242'
-_expect equal runtime/recheck/a.lock/started '12:00:00'
 
 _test 'given [a slow check and two run commands that start together] should [start the check once, leave no lock]'
 prepare() {
-  add_traced_check a
+  create_traced_check a
   printf 'sleep 1\n' >>config/recheck/checks/a
 }
 actual() {
@@ -175,7 +190,7 @@ _expect equal actual.stdout 'a	green'
 
 _test 'given [a run command that gets TERM while its check runs] should [remove the lock and the half output]'
 prepare() {
-  add_traced_check a
+  create_traced_check a
   printf 'sleep 1\n' >>config/recheck/checks/a
 }
 actual() {
@@ -189,38 +204,39 @@ actual() {
 _expect equal actual.stdout "$(printf 'runtime/recheck:\n\nstate/recheck/a:')"
 
 _test 'given [a retry line that is not one or two integers] should [run the check once]'
-prepare() { add_retry_check a 'lots' 9; }
+prepare() { create_retry_check a 'lots' 9; }
 actual() { "$RECHECK" run a; }
 _expect equal actual.stdout 'a	red'
 _expect equal check.log 'start'
 
 _test 'given [RETRY: 1 0, an on-change hook and a green check red for 1 run] should [not run the hook]'
-prepare() {
-  add_retry_check a '1 0' 1
-  add_state a green
-  printf 'green\n' >state/recheck/a/state
+prepare() { create_check a 0; }
+actual() {
+  # A green run first, so the check starts the test green
+  "$RECHECK" run a >/dev/null
+  create_retry_check a '1 0' 1
   printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"%s/change.log"\n' "$PWD" \
     >config/recheck/on-change
   chmod +x config/recheck/on-change
   : >change.log
+  "$RECHECK" run a
 }
-actual() { "$RECHECK" run a; }
 _expect equal actual.stdout 'a	green'
 _expect equal change.log ''
 
 _describe "recheck.d/run :: run :: invalid"
 
-before_each() { build_sandbox; }
+before_each() { create_sandbox; }
 
 _test 'given [an id with no check] should [print nothing and exit 2]'
-prepare() { add_check good 0; }
+prepare() { create_check good 0; }
 actual() { "$RECHECK" run missing; }
 _expect equal actual.exit 2
 _expect equal actual.stdout ''
 
 _test 'given [a runtime folder that run cannot create] should [exit 3 and not start the check]'
 prepare() {
-  add_traced_check a
+  create_traced_check a
   : >file
 }
 actual() { XDG_RUNTIME_DIR="$PWD/file/runtime" "$RECHECK" run a; }
@@ -234,8 +250,8 @@ _expect contain actual.stderr 'Could not take the lock'
 
 _test 'given [two checks, the first with a lock that run cannot take] should [run the second, exit 3]'
 prepare() {
-  add_check a 0
-  add_check b 0
+  create_check a 0
+  create_check b 0
   mkdir -p runtime/recheck
   ln -s "$PWD/missing" runtime/recheck/a.lock
 }

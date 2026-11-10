@@ -4,48 +4,49 @@
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../../tools/test-lib.sh"
 . "$SCRIPT_DIR/../../cli/recheck.t/sandbox.sh"
+. "$SCRIPT_DIR/../../lib/wait.sh" # for wait_until_started
 
-# recheck-bar finds recheck itself, so the RECHECK of sandbox.sh stays unused
+# The sandbox looks for recheck next to the test file. recheck-bar finds it
+# itself, and the tests run recheck to give the checks a state
+RECHECK="$SCRIPT_DIR/../../cli/recheck"
 RECHECK_BAR="$SCRIPT_DIR/../recheck-bar"
 
-_describe "recheck-bar :: tooltip"
+_describe "recheck-bar :: recheck-bar :: valid"
 
-before_each() { build_sandbox; }
+before_each() { create_sandbox; }
 
 _test 'given [a last line with quotes, "&", "<" and a backslash] should [escape the last line for JSON and markup, and keep the span]'
 prepare() {
-  add_check a 0
-  add_output a 'say "hi" & <b> \\ it\n'
+  printf 'say "hi" & <b> \\ it\n' >a.out
+  create_check a 0 "cat '$PWD/a.out'"
+  "$RECHECK" run a >/dev/null
 }
 actual() { "$RECHECK_BAR"; }
-_expect equal actual.stdout '{"text":"✓ 0 ✗ 0","tooltip":"<span color=\"gray\">●</span> a | say &quot;hi&quot; &amp; &lt;b&gt; \\ it","class":"green"}'
+_expect equal actual.stdout '{"text":"✓ 1 ✗ 0","tooltip":"<span color=\"green\">●</span> a | say &quot;hi&quot; &amp; &lt;b&gt; \\ it","class":"green"}'
 
 _test 'given [two checks] should [join their rows with \n in the tooltip]'
 prepare() {
-  add_check a 0
-  add_check b 0
-  add_output a 'one\n'
-  add_output b 'two\n'
+  create_check a 0 'printf "one\n"'
+  create_check b 0 'printf "two\n"'
+  "$RECHECK" run a b >/dev/null
 }
 actual() { "$RECHECK_BAR"; }
-_expect equal actual.stdout '{"text":"✓ 0 ✗ 0","tooltip":"<span color=\"gray\">●</span> a | one\n<span color=\"gray\">●</span> b | two","class":"green"}'
+_expect equal actual.stdout '{"text":"✓ 2 ✗ 0","tooltip":"<span color=\"green\">●</span> a | one\n<span color=\"green\">●</span> b | two","class":"green"}'
 
 _test 'given [one check per state and one that never ran] should [color the dots green, red, yellow and gray]'
 prepare() {
-  add_check a 0
-  add_check b 0
-  add_check c 0
-  add_check d 0
-  add_state a green
-  add_state b red
-  add_state c broken
-  add_output a 'one\n'
-  add_output b 'two\n'
-  add_output c 'three\n'
-  add_output d 'four\n'
+  create_check a 0 'printf "one\n"'
+  create_check b 1 'printf "two\n"'
+  create_check c 7 'printf "three\n"'
+  create_check d 0
+  "$RECHECK" run a b c >/dev/null
 }
 actual() { "$RECHECK_BAR"; }
-_expect equal actual.stdout '{"text":"✓ 1 ✗ 1 ? 1","tooltip":"<span color=\"green\">●</span> a | one\n<span color=\"red\">●</span> b | two\n<span color=\"yellow\">●</span> c | three\n<span color=\"gray\">●</span> d | four","class":"red"}'
+_expect equal actual.stdout '{"text":"✓ 1 ✗ 1 ? 1","tooltip":"<span color=\"green\">●</span> a | one\n<span color=\"red\">●</span> b | two\n<span color=\"yellow\">●</span> c | three\n<span color=\"gray\">●</span> d | -","class":"red"}'
+
+_describe "recheck-bar :: recheck-bar :: edge"
+
+before_each() { create_sandbox; }
 
 _test 'given [no check] should [print empty text, tooltip and class]'
 prepare() { :; }

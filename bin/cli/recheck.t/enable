@@ -4,14 +4,15 @@
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../../tools/test-lib.sh"
 . "$SCRIPT_DIR/sandbox.sh"
+. "$SCRIPT_DIR/../../lib/wait.sh" # for wait_until_started
 
 _describe "recheck.d/enable :: enable :: valid"
 
-before_each() { build_sandbox; }
+before_each() { create_sandbox; }
 
 _test 'given [one disabled check] should [list it as "on", add its line to the crontab]'
 prepare() {
-  add_check a 0
+  create_check a 0
   mv config/recheck/checks/a config/recheck/checks/_a
 }
 actual() {
@@ -24,9 +25,9 @@ _expect equal actual.stdout "$(printf 'a\ton\n1')"
 
 _describe "recheck.d/enable :: enable :: invalid"
 
-before_each() { build_sandbox; }
+before_each() { create_sandbox; }
 
 _test 'given [an id with no check] should [exit 2]'
-prepare() { add_check a 0; }
+prepare() { create_check a 0; }
 actual() { "$RECHECK" enable missing; }
 _expect equal actual.exit 2

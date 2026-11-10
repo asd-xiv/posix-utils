@@ -4,15 +4,16 @@
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../../tools/test-lib.sh"
 . "$SCRIPT_DIR/sandbox.sh"
+. "$SCRIPT_DIR/../../lib/wait.sh" # for wait_until_started
 
 _describe "recheck.d/toggle :: toggle :: valid"
 
-before_each() { build_sandbox; }
+before_each() { create_sandbox; }
 
 _test 'given [one enabled check and one disabled, both ids in one call] should [list the first as "off", the second as "on"]'
 prepare() {
-  add_check a 0
-  add_check b 0
+  create_check a 0
+  create_check b 0
   mv config/recheck/checks/b config/recheck/checks/_b
 }
 actual() {

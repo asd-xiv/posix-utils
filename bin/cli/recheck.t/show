@@ -4,23 +4,26 @@
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../../tools/test-lib.sh"
 . "$SCRIPT_DIR/sandbox.sh"
+. "$SCRIPT_DIR/../../lib/wait.sh" # for wait_until_started
 
 _describe "recheck.d/show :: show :: valid"
 
-before_each() { build_sandbox; }
+before_each() { create_sandbox; }
 
-_test 'given [a check with a lock] should [print the start time of the lock as running_since]'
-prepare() {
-  add_check a 0
-  add_lock a
+_test 'given [a check that runs] should [print the time it started as running_since]'
+prepare() { create_waiting_check a 0; }
+actual() {
+  start_background_run a
+  wait_until_started a 1
+  "$RECHECK" show a | grep -c 'running_since: [0-2][0-9]:[0-5][0-9]:[0-5][0-9]'
+  finish_background_run
 }
-actual() { "$RECHECK" show a; }
 _expect equal actual.exit 0
-_expect contain actual.stdout 'running_since: 12:00:00'
+_expect equal actual.stdout '1'
 
 _test 'given [a check with "# RETRY: 3"] should [print retry with the default of 1 minute]'
 prepare() {
-  add_check a 0
+  create_check a 0
   printf '# RETRY: 3\n' >>config/recheck/checks/a
 }
 actual() { "$RECHECK" show a; }
