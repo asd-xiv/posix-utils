@@ -1,8 +1,30 @@
 #!/bin/sh
 
-# recheck disable <id>...
+# NAME
+#   recheck disable - Disable checks, then sync
 #
-# Put a "_" in front of the file name of each check, then sync.
+# SYNOPSIS
+#   recheck disable <id>...
+#
+# DESCRIPTION
+#   Puts a "_" in front of the file name of each check, then runs sync.
+#   Guards every id first, so a failure renames no check.
+#
+# ARGUMENTS
+#   id   Check to disable. Repeatable
+#
+# OPTIONS
+#   -h, --help   Print this help
+#
+# EXIT CODES
+#   0   Done
+#   2   Invalid usage, eg. an id with no check
+#   3   Could not run, eg. a disabled copy of the check exists or no crontab
+#       command
+#
+# SEE ALSO
+#   recheck enable, recheck toggle, recheck sync
+
 # recheck runs this file, never call it directly.
 
 set -eu

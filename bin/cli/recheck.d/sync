@@ -1,12 +1,39 @@
 #!/bin/sh
 
-# recheck sync [--wait]
+# NAME
+#   recheck sync - Write the recheck block of the crontab from the checks
 #
-# Make every check executable. Replace the recheck block of the crontab with
-# one line per enabled check that has a valid cron pattern, print the lines
-# that changed, then run the on-update hook. When the block is already the
-# same, write no crontab and run no hook. With --wait, wait for Enter after
-# sync printed the lines that changed, or the warning for a check it left out.
+# SYNOPSIS
+#   recheck sync [--wait]
+#
+# DESCRIPTION
+#   Makes every check executable. Replaces the recheck block of the crontab
+#   with one line per enabled check that has a valid cron pattern, prints the
+#   lines that changed to stderr, then runs the on-update hook. When the block
+#   is already the same, writes no crontab and runs no hook. Warns about a
+#   check without a valid cron pattern and leaves it out.
+#
+#   Run it after a change made outside "recheck edit": a new check, a rename
+#   by hand or a changed cron pattern.
+#
+# OPTIONS
+#   --wait       Wait for Enter after sync printed the lines that changed, or
+#                the warning for a check it left out
+#   -h, --help   Print this help
+#
+# ENVIRONMENT
+#   NO_COLOR   Disables color in the lines that changed when set and
+#              non-empty
+#
+# EXIT CODES
+#   0   Done, also when it left a check out
+#   2   Invalid usage, eg. an argument
+#   3   Could not run, eg. no crontab command, or a crontab with one block
+#       marker but not the other
+#
+# SEE ALSO
+#   crontab, recheck ls --cron
+
 # recheck runs this file, never call it directly.
 
 set -eu

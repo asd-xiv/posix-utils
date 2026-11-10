@@ -1,10 +1,31 @@
 #!/bin/sh
 
-# recheck show [--color] <id>
+# NAME
+#   recheck show - Print a check and the output of its last run
 #
-# Print a check as properties between "---" lines, as in front matter, then
-# the output of its last run, or of the run in progress. With --color, print
-# the property names in bold.
+# SYNOPSIS
+#   recheck show [--color] <id>
+#
+# DESCRIPTION
+#   Prints a check as properties between "---" lines, as in front matter:
+#   id, state, enabled, cron and retry, then exit_code, last_run and duration
+#   after its first run, and running_since while it runs. Then prints the
+#   output of its last run, or of the run in progress.
+#
+# ARGUMENTS
+#   id   Check to print
+#
+# OPTIONS
+#   --color      Print the property names in bold
+#   -h, --help   Print this help
+#
+# EXIT CODES
+#   0   Done
+#   2   Invalid usage, eg. an id with no check
+#
+# SEE ALSO
+#   recheck ls, recheck browse
+
 # recheck runs this file, never call it directly.
 
 set -eu

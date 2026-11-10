@@ -1,10 +1,33 @@
 #!/bin/sh
 
-# recheck edit [id]
+# NAME
+#   recheck edit - Edit the checks in Neovim, then sync
 #
-# Start Neovim in the config folder. With an id, open only the file of that
-# check. Sync when Neovim closes without an error, then exit with the status of
-# the sync. Exit 3 when Neovim fails.
+# SYNOPSIS
+#   recheck edit [id]
+#
+# DESCRIPTION
+#   Starts Neovim in ~/.config/recheck, in this terminal. With an id, opens
+#   only the file of that check. Syncs when Neovim closes without an error.
+#   Waits for Enter when the sync changed the crontab, left a check out or
+#   failed, so a window opened only for edit stays open to read.
+#
+# ARGUMENTS
+#   id   Check to open
+#
+# OPTIONS
+#   -h, --help   Print this help
+#
+# EXIT CODES
+#   0   Done
+#   2   Invalid usage, eg. an id with no check
+#   3   Could not run, eg. no nvim, no terminal or Neovim ended with an error
+#
+#   A failed sync exits with the code of sync.
+#
+# SEE ALSO
+#   nvim, recheck sync
+
 # recheck runs this file, never call it directly.
 
 set -eu

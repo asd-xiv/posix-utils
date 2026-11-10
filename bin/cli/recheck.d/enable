@@ -1,8 +1,30 @@
 #!/bin/sh
 
-# recheck enable <id>...
+# NAME
+#   recheck enable - Enable checks, then sync
 #
-# Remove the "_" from the file name of each check, then sync.
+# SYNOPSIS
+#   recheck enable <id>...
+#
+# DESCRIPTION
+#   Removes the "_" from the file name of each check, then runs sync. Guards
+#   every id first, so a failure renames no check.
+#
+# ARGUMENTS
+#   id   Check to enable. Repeatable
+#
+# OPTIONS
+#   -h, --help   Print this help
+#
+# EXIT CODES
+#   0   Done
+#   2   Invalid usage, eg. an id with no check
+#   3   Could not run, eg. a check without a valid cron pattern or no crontab
+#       command
+#
+# SEE ALSO
+#   recheck disable, recheck toggle, recheck sync
+
 # recheck runs this file, never call it directly.
 
 set -eu

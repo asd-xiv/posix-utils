@@ -42,7 +42,7 @@ set -eu
 #   window closes.
 #
 #   waybar runs a click command in a shell. That shell reads PU_TERMINAL from
-#   the environment of waybar. See PU_TERMINAL in "recheck --help".
+#   the environment of waybar. See PU_TERMINAL in "recheck browse --help".
 #
 #   In ~/.config/recheck/on-update, to refresh the module after every change:
 #

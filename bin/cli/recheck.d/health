@@ -1,12 +1,30 @@
 #!/bin/sh
 
-# recheck health
+# NAME
+#   recheck health - Print each reason recheck cannot work fully
 #
-# Print each reason recheck cannot work fully on this system, one per line, on
-# stdout: a missing command, an fzf older than 0.73.0, PU_TERMINAL not set or a
-# script path that is not safe. Each line names the command that needs the
-# thing. Print nothing when it finds none. health does not check the terminal,
-# the caller opens it. Exit 1 when it printed a reason.
+# SYNOPSIS
+#   recheck health
+#
+# DESCRIPTION
+#   Prints each reason recheck cannot work fully on this system, one per
+#   line, on stdout: a missing command, an fzf older than 0.73.0, PU_TERMINAL
+#   not set or a script path that is not safe. Each line names the command
+#   that needs the thing. Prints nothing when it finds none. health does not
+#   check the terminal, the caller opens it. open-os-menu runs health before
+#   it lets a person pick browse.
+#
+# OPTIONS
+#   -h, --help   Print this help
+#
+# EXIT CODES
+#   0   recheck can work fully
+#   1   recheck cannot work fully
+#   2   Invalid usage, eg. an argument
+#
+# SEE ALSO
+#   open-os-menu, recheck browse
+
 # recheck runs this file, never call it directly.
 
 set -eu

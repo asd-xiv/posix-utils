@@ -1,11 +1,42 @@
 #!/bin/sh
 
-# recheck ls [--cron | --color | --columns <names>]
+# NAME
+#   recheck ls - Print every check, one line each
 #
-# Print every check: state, on or off, id, cron pattern, last line. With
-# --cron, print the crontab line of each enabled check with a valid cron
-# pattern. With --color, print for a person. With --columns, print only the
-# named columns, in the order of <names>.
+# SYNOPSIS
+#   recheck ls [--cron | --color | --columns <names>]
+#
+# DESCRIPTION
+#   Prints every check: state, on or off, id, cron pattern, and the last
+#   non-empty line of its output, with a tab between them. ls prints a tab in
+#   the last line as a space.
+#
+# OPTIONS
+#   --cron       Print the crontab line of each enabled check with a valid
+#                cron pattern instead
+#   --color      Print for a person: a dot in the color of the state, on or
+#                off, id. Green, red, yellow for broken, gray before the first
+#                run, blue while the check runs. During a retry, and the wait
+#                before it, "[<retry>/<retries>]" after the id
+#   --columns <names>
+#                Print only the named columns, in the order of <names>.
+#                <names> holds column names with a comma between them. The
+#                names are state, switch (on or off), id, pattern (the cron
+#                pattern) and last-line (the last non-empty line of the
+#                output). Default: all five, in that order. Not with --cron or
+#                --color
+#   -h, --help   Print this help
+#
+# EXAMPLE
+#   recheck ls --columns state,id
+#
+# EXIT CODES
+#   0   Done
+#   2   Invalid usage, eg. a name that is not a column
+#
+# SEE ALSO
+#   recheck show, recheck browse
+
 # recheck runs this file, never call it directly.
 
 set -eu

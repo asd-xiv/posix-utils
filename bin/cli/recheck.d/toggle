@@ -1,8 +1,30 @@
 #!/bin/sh
 
-# recheck toggle <id>...
+# NAME
+#   recheck toggle - Disable each enabled check, enable each disabled one
 #
-# Disable each check that is enabled, enable each that is not.
+# SYNOPSIS
+#   recheck toggle <id>...
+#
+# DESCRIPTION
+#   Runs disable on each check that is enabled, and enable on each that is
+#   not. Both sync.
+#
+# ARGUMENTS
+#   id   Check to toggle. Repeatable
+#
+# OPTIONS
+#   -h, --help   Print this help
+#
+# EXIT CODES
+#   0   Done
+#   2   Invalid usage, eg. an id with no check
+#
+#   Every other code comes from enable or disable.
+#
+# SEE ALSO
+#   recheck enable, recheck disable
+
 # recheck runs this file, never call it directly.
 
 set -eu

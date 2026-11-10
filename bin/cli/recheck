@@ -6,18 +6,8 @@ set -eu
 #   recheck - A terminal UI for cron: run checks, keep the last state of each
 #
 # SYNOPSIS
-#   recheck ls [--cron | --color | --columns <names>]
-#   recheck enable <id>...
-#   recheck disable <id>...
-#   recheck toggle <id>...
-#   recheck sync [--wait]
-#   recheck run [id...]
-#   recheck status
-#   recheck log
-#   recheck show [--color] <id>
-#   recheck browse
-#   recheck health
-#   recheck edit [id]
+#   recheck <command> [ARGS]
+#   recheck <command> --help
 #   recheck -h | --help
 #
 # DESCRIPTION
@@ -32,7 +22,7 @@ set -eu
 #             green or red, to compare with the next run
 #
 #   ls prints the last non-empty line of the output of each check. End a check
-#   with the line ls should print. ls prints a tab in it as a space.
+#   with the line ls should print.
 #
 #   A check holds its cron pattern, five fields, in a comment line:
 #
@@ -44,54 +34,28 @@ set -eu
 #
 #     # RETRY: 3 5
 #
-#   run stops at the first green. The last run is the answer: run keeps it
-#   and runs the on-change hook for it. A retry line that is not one or two
-#   integers means no retry. The check keeps its lock through its retries and
-#   the waits between them. A cron tick in that time skips the check as
-#   "Already running", so keep the retries shorter than the cron interval.
+#   run stops at the first green. A retry line that is not one or two integers
+#   means no retry. The check keeps its lock through its retries and the waits
+#   between them. A cron tick in that time skips the check as "Already
+#   running", so keep the retries shorter than the cron interval.
 #
 #   The crontab holds one line per enabled check with a valid cron pattern,
 #   inside a block that sync keeps equal to the check files.
 #
-#     ls        Print every check: state, on or off, id, cron pattern, and
-#               the last non-empty line of its output. With --columns, print
-#               only the named columns
-#     enable    Remove the "_" from the file name, then sync
-#     disable   Put a "_" in front of the file name, then sync
-#     toggle    Disable each check that is enabled, enable each that is not
-#     sync      Make every check executable, then rewrite the recheck block of
-#               the crontab from the check files. Print the lines that
-#               changed. Run it after a change made outside "recheck edit": a
-#               new check, a rename by hand or a changed cron pattern
-#     run       Run every enabled check, or only the ones named. Skip a
-#               disabled check and a check that is already running. Print
-#               "<id>", a tab and "<state>" per check. cron calls it. At a
-#               terminal, also print what each check printed, to stderr
-#     status    Print the count of enabled checks per state, then how many
-#               are running now, as "<green> <red> <broken> <running>". A
-#               running check also counts under the state of its last run
-#     log       Print the last 10 runs, one line each, and the log file path
-#               to stderr.
-#     show      Print a check as properties between "---" lines, as in
-#               front matter, then the output of its last run, or of the
-#               run in progress
-#     browse    Open the browser: every check in fzf, with "show <id>" as
-#               the preview. There, Tab marks a check. Enter runs the
-#               marked checks again, Alt+E enables them and Alt+X disables
-#               them. With no check marked, the three act on the check
-#               under the cursor. Alt+T toggles the check under the cursor.
-#               Alt+Enter edits it in a new terminal window, opened with
-#               PU_TERMINAL. The browser needs a terminal and fzf 0.73.0 or
-#               newer
-#     health    Print each reason recheck cannot work fully on this system,
-#               one per line: a missing command, an fzf older than 0.73.0,
-#               PU_TERMINAL not set or a script path that is not safe. Print
-#               nothing when it finds none. open-os-menu runs health before
-#               it lets a person pick browse
-#     edit      Start Neovim in ~/.config/recheck, in this terminal. With an
-#               id, open only the file of that check. Sync when Neovim
-#               closes without an error. Wait for Enter when the sync
-#               changed the crontab or failed
+#     ls        Print every check, one line each
+#     enable    Enable checks, then sync
+#     disable   Disable checks, then sync
+#     toggle    Disable each enabled check, enable each disabled one
+#     sync      Write the recheck block of the crontab from the checks
+#     run       Run the enabled checks, or the ones named
+#     status    Print the count of enabled checks per state
+#     log       Print the last 10 runs
+#     show      Print a check and the output of its last run
+#     browse    Browse the checks in fzf
+#     health    Print each reason recheck cannot work fully
+#     edit      Edit the checks in Neovim, then sync
+#
+#   Each command prints its own help with --help.
 #
 #   When the state of a check changes from green to red or back, recheck runs
 #   the on-change hook, ~/.config/recheck/on-change <id> <old-state>
@@ -107,75 +71,29 @@ set -eu
 #   ~/.config/recheck/env exists, recheck sources it before each check and
 #   each hook.
 #
-#   recheck keeps the last run, the last green or red, and the last output
-#   of a check in ~/.local/state/recheck/<id>/. It appends one line
-#   per run to ~/.local/state/recheck/runs.log: time, state, exit code,
-#   seconds the run took and id. A retry adds "<retry>/<retries>".
-#
-#   While a check runs, recheck keeps its lock: the folder <id>.lock in
-#   /run/user/<user id>/recheck. It holds pid, the process id of the run
-#   command, and started, the time the check started. From the first retry
-#   on, it also holds retry: "<retry>/<retries>". While a check
-#   has a lock, run skips it, and status, show and "ls --color" report it as
-#   running. A run command that ends by "kill -9" leaves the lock. It stays
-#   until you remove it with "rm -r", or until the next boot clears
-#   /run/user/<user id>. When run cannot take the lock of a check, it skips
-#   that check. It runs the other checks. Then it exits 3.
-#
-# ARGUMENTS
-#   id   Check to act on. Repeatable for enable, disable and run
-#
 # OPTIONS
-#   --cron       With ls, print the crontab line of each enabled check with a
-#                valid cron pattern instead
-#   --color      With ls, print for a person: a dot in the color of the state,
-#                on or off, id. Green, red, yellow for broken, gray before
-#                the first run, blue while the check runs. During a
-#                retry, and the wait before it, "[<retry>/<retries>]"
-#                after the id.
-#                With show, print the property names in bold
-#   --columns <names>
-#                With ls, print only the named columns, in the order of
-#                <names>. <names> holds column names with a comma between
-#                them. The names are state, switch (on or off), id, pattern
-#                (the cron pattern) and last-line (the last non-empty line of
-#                the output). Default: all five, in that order. Not with
-#                --cron or --color
-#   --wait       With sync, wait for Enter after sync printed the lines that
-#                changed, or the warning for a check it left out
 #   -h, --help   Print this help
 #
 # ENVIRONMENT
-#   PU_TERMINAL        Command that opens a terminal window and runs the
-#                      command written after it. The flag that takes the
-#                      command differs per terminal, so include it, eg.
-#                      "alacritty --class float --command". Every command of
-#                      posix-utils that opens a terminal window reads it. The
-#                      browser writes "recheck edit <id>" after it
 #   XDG_CONFIG_HOME    Parent of the recheck config (default: ~/.config)
 #   XDG_STATE_HOME     Parent of the recheck state (default: ~/.local/state)
 #   XDG_RUNTIME_DIR    Parent of the folder "recheck" that holds the locks
-#                      (default: /run/user/<user id>). run exits 3 when it
-#                      cannot take a lock
+#                      (default: /run/user/<user id>)
 #   LOG_LEVEL          Last level to print (default: info)
-#   NO_COLOR           Disables color when set and non-empty, in log lines
-#                      and in the lines sync prints
+#   NO_COLOR           Disables color in log lines when set and non-empty
 #
 # EXAMPLE
 #   recheck enable typescript-eslint-accepts-typescript-7
 #   recheck run && recheck ls
+#   recheck run --help
 #
 # EXIT CODES
-#   0   Done. For status, no enabled check is red or broken
-#   1   For status, at least one enabled check is red or broken. For health,
-#       recheck cannot work fully
-#   2   Invalid usage
-#   3   Could not run, eg. no crontab command or a check without a valid cron
-#       pattern. For browse, no fzf, an fzf older than 0.73.0 or no terminal.
-#       For run, it could not take the lock of at least one check
+#   2   No command, or an unknown one
+#
+#   Every other code comes from the command.
 #
 # SEE ALSO
-#   crontab, recheck-bar, open-os-menu, nvim, fzf, awk
+#   crontab, recheck-bar, open-os-menu
 
 # tools/install symlinks this script, so "$0" names the link. realpath follows
 # it to find lib.sh and recheck.d

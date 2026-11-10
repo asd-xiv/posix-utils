@@ -1,16 +1,49 @@
 #!/bin/sh
 
-# recheck browse
+# NAME
+#   recheck browse - Browse the checks in fzf
 #
-# Open the browser: every check in fzf, with "show <id>" as the preview.
-# Tab marks a check. Enter runs the marked checks again, Alt+E enables them
-# and Alt+X disables them. With no check marked, the three act on the check
-# under the cursor. Alt+T toggles the check under the cursor, Alt+Enter edits
-# it in a new terminal window, opened with PU_TERMINAL. Esc closes the
-# browser. The list reloads every second. It shows each run when it starts and
-# when it ends, also a run that cron started. It needs fzf 0.73.0 or newer and
-# a terminal on stdin: the caller opens one. It does not run health, so a
-# missing Neovim does not stop it.
+# SYNOPSIS
+#   recheck browse
+#
+# DESCRIPTION
+#   Opens the browser: every check in fzf, as "ls --color" prints it, with
+#   "show <id>" as the preview. The list reloads every second. It shows each
+#   run when it starts and when it ends, also a run that cron started.
+#
+#     Tab         Mark a check
+#     Enter       Run the marked checks again
+#     Alt+E       Enable the marked checks
+#     Alt+X       Disable the marked checks
+#     Alt+T       Toggle the check under the cursor
+#     Alt+Enter   Edit the check under the cursor in a new terminal window,
+#                 opened with PU_TERMINAL
+#     Esc         Close the browser
+#
+#   With no check marked, Enter, Alt+E and Alt+X act on the check under the
+#   cursor. The browser needs a terminal on stdin: the caller opens one. It
+#   does not run health, so a missing Neovim does not stop it.
+#
+# OPTIONS
+#   -h, --help   Print this help
+#
+# ENVIRONMENT
+#   PU_TERMINAL   Command that opens a terminal window and runs the command
+#                 written after it. The flag that takes the command differs
+#                 per terminal, so include it, eg. "alacritty --class float
+#                 --command". Every command of posix-utils that opens a
+#                 terminal window reads it. The browser writes "recheck edit
+#                 <id>" after it
+#
+# EXIT CODES
+#   0   The browser closed
+#   2   Invalid usage, eg. an argument
+#   3   Could not run: no fzf, an fzf older than 0.73.0, no terminal, or fzf
+#       failed
+#
+# SEE ALSO
+#   fzf, recheck show, recheck health, open-os-menu
+
 # recheck runs this file, never call it directly.
 
 set -eu
@@ -71,7 +104,7 @@ _set_title "recheck :: browser"
 # The editor needs a window of its own, and only the user knows how their
 # terminal opens one. Without PU_TERMINAL, Alt+Enter only writes what
 # is missing into the preview label
-EDIT_ACTION="change-preview-label( [alt + enter] needs PU_TERMINAL, see recheck --help )"
+EDIT_ACTION="change-preview-label( [alt + enter] needs PU_TERMINAL, see recheck browse --help )"
 if [ -n "$TERMINAL_COMMAND" ]; then
   # The "action:" form runs to the end of the string, so the user's command
   # may hold parentheses

@@ -1,8 +1,25 @@
 #!/bin/sh
 
-# recheck log
+# NAME
+#   recheck log - Print the last 10 runs
 #
-# Print the last 10 runs, one line each, and the log file path to stderr.
+# SYNOPSIS
+#   recheck log
+#
+# DESCRIPTION
+#   Prints the last 10 lines of the run log, one per run, and the path of the
+#   log file to stderr. "recheck run --help" describes a line.
+#
+# OPTIONS
+#   -h, --help   Print this help
+#
+# EXIT CODES
+#   0   Done
+#   2   Invalid usage, eg. an argument
+#
+# SEE ALSO
+#   recheck run
+
 # recheck runs this file, never call it directly.
 
 set -eu

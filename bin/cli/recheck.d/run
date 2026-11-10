@@ -1,9 +1,49 @@
 #!/bin/sh
 
-# recheck run [id...]
+# NAME
+#   recheck run - Run the enabled checks, or the ones named
 #
-# Run every enabled check, or only the ones named, then run the on-update
-# hook.
+# SYNOPSIS
+#   recheck run [id...]
+#
+# DESCRIPTION
+#   Runs every enabled check, or only the ones named, then runs the on-update
+#   hook. Skips a disabled check and a check that is already running. Prints
+#   "<id>", a tab and "<state>" per check. cron calls it. At a terminal, also
+#   prints what each check printed, to stderr.
+#
+#   A check with a retry line runs again while it is not green, up to its
+#   retries. The last run is the answer: run keeps it and runs the on-change
+#   hook for it.
+#
+#   run keeps the last run, the last green or red, and the last output of a
+#   check in ~/.local/state/recheck/<id>/. It appends one line per run,
+#   retries included, to ~/.local/state/recheck/runs.log: time, state, exit
+#   code, seconds the run took and id. A retry adds "<retry>/<retries>".
+#
+#   While a check and its retries run, run keeps its lock: the folder
+#   <id>.lock in /run/user/<user id>/recheck. It holds pid, the process id of
+#   the run command, and started, the time the check started. From the first
+#   retry on, it also holds retry: "<retry>/<retries>". While a check has a
+#   lock, run skips it, and status, show and "ls --color" report it as
+#   running. A run command that ends by "kill -9" leaves the lock. It stays
+#   until you remove it with "rm -r", or until the next boot clears
+#   /run/user/<user id>.
+#
+# ARGUMENTS
+#   id   Check to run. Repeatable
+#
+# OPTIONS
+#   -h, --help   Print this help
+#
+# EXIT CODES
+#   0   Done, whatever the answers
+#   2   Invalid usage, eg. an id with no check
+#   3   It could not take the lock of at least one check. It ran the others
+#
+# SEE ALSO
+#   recheck status, recheck log
+
 # recheck runs this file, never call it directly.
 
 set -eu
