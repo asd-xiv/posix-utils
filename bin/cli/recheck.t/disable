@@ -5,7 +5,7 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../../tools/test-lib.sh"
 . "$SCRIPT_DIR/sandbox.sh"
 
-_describe "recheck :: disable"
+_describe "recheck.d/disable :: disable :: valid"
 
 before_each() { build_sandbox; }
 
@@ -32,6 +32,10 @@ actual() {
   "$RECHECK" ls --columns id,switch
 }
 _expect equal actual.stdout "$(printf 'a\toff\nb\toff')"
+
+_describe "recheck.d/disable :: disable :: invalid"
+
+before_each() { build_sandbox; }
 
 _test 'given [an id with no check] should [exit 2]'
 prepare() { add_check a 0; }

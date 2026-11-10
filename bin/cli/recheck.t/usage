@@ -6,7 +6,7 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 
 RECHECK="$SCRIPT_DIR/../recheck"
 
-_describe "recheck :: usage"
+_describe "recheck :: recheck :: valid"
 
 _test 'given [--help after each command] should [print the man page of the command and exit 0]'
 actual() {

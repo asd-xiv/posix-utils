@@ -5,7 +5,7 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../../tools/test-lib.sh"
 . "$SCRIPT_DIR/sandbox.sh"
 
-_describe "recheck :: toggle"
+_describe "recheck.d/toggle :: toggle :: valid"
 
 before_each() { build_sandbox; }
 

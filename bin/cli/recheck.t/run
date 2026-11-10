@@ -6,10 +6,6 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/sandbox.sh"
 . "$SCRIPT_DIR/../../lib/wait.sh" # for _wait_until
 
-_describe "recheck :: run"
-
-before_each() { build_sandbox; }
-
 # add_traced_check <id>
 # Write an enabled check that appends "start" to check.log in the current folder
 # when it starts. Create check.log empty: a test that expects no start expects
@@ -39,6 +35,11 @@ CHECK
 
 # One rule, the exit code of a check is its state. The three states are the
 # three rows of one table, so one run holds all three
+
+_describe "recheck.d/run :: run :: valid"
+
+before_each() { build_sandbox; }
+
 _test 'given [checks that exit 0, 1 and 7] should [print green, red and broken, exit 0]'
 prepare() {
   add_check good 0
@@ -48,21 +49,6 @@ prepare() {
 actual() { "$RECHECK" run good bad odd; }
 _expect equal actual.exit 0
 _expect equal actual.stdout "$(printf 'good\tgreen\nbad\tred\nodd\tbroken')"
-
-_test 'given [an id with no check] should [print nothing and exit 2]'
-prepare() { add_check good 0; }
-actual() { "$RECHECK" run missing; }
-_expect equal actual.exit 2
-_expect equal actual.stdout ''
-
-_test 'given [a named disabled check] should [skip it and print nothing]'
-prepare() {
-  add_check off 1
-  mv config/recheck/checks/off config/recheck/checks/_off
-}
-actual() { "$RECHECK" run off; }
-_expect equal actual.exit 0
-_expect equal actual.stdout ''
 
 _test 'given [no id and two enabled checks] should [run both]'
 prepare() {
@@ -84,6 +70,66 @@ _expect ! equal hook.log ''
 # recheck trusts a lock and never asks whether its process still runs. No run
 # command made the lock of add_lock, so the two tests below also cover the lock
 # a run command leaves when kill -9 ends it
+
+_test 'given [a check that lists its lock] should [take the lock and write pid and started before the check starts]'
+prepare() {
+  cat >config/recheck/checks/a <<'CHECK'
+#!/bin/sh
+# CRON: * * * * *
+ls "$XDG_RUNTIME_DIR/recheck/a.lock"
+CHECK
+  chmod +x config/recheck/checks/a
+}
+actual() { "$RECHECK" run a; }
+_expect equal actual.stdout 'a	green'
+_expect equal state/recheck/a/output "$(printf 'pid\nstarted')"
+
+_test 'given [a run that ended] should [leave no lock in the runtime folder]'
+prepare() { add_check a 0; }
+actual() {
+  "$RECHECK" run a >/dev/null
+  ls runtime/recheck
+}
+_expect equal actual.exit 0
+_expect equal actual.stdout ''
+
+# The shell runs a trap only after the check it waits for ends, so the check
+# sleeps 1 s, not longer
+
+_test 'given [RETRY: 3 0 and a check red for 2 runs] should [run it 3 times, print green once]'
+prepare() { add_retry_check a '3 0' 2; }
+actual() { "$RECHECK" run a; }
+_expect equal actual.exit 0
+_expect equal actual.stdout 'a	green'
+_expect equal check.log "$(printf 'start\nstart\nstart')"
+
+_test 'given [RETRY: 2 0 and a check that stays red] should [run it 3 times, print red once]'
+prepare() { add_retry_check a '2 0' 9; }
+actual() { "$RECHECK" run a; }
+_expect equal actual.stdout 'a	red'
+_expect equal check.log "$(printf 'start\nstart\nstart')"
+
+_test 'given [RETRY: 2 0 and a check red for 2 runs] should [log 3 lines, end the retries with 1/2 and 2/2]'
+prepare() { add_retry_check a '2 0' 2; }
+actual() {
+  "$RECHECK" run a >/dev/null
+  cut -f 2,5,6 state/recheck/runs.log
+}
+_expect equal actual.stdout "$(printf 'red\ta\nred\ta\t1/2\ngreen\ta\t2/2')"
+
+_describe "recheck.d/run :: run :: edge"
+
+before_each() { build_sandbox; }
+
+_test 'given [a named disabled check] should [skip it and print nothing]'
+prepare() {
+  add_check off 1
+  mv config/recheck/checks/off config/recheck/checks/_off
+}
+actual() { "$RECHECK" run off; }
+_expect equal actual.exit 0
+_expect equal actual.stdout ''
+
 _test 'given [a check with a lock] should [not start it, say "Already running, skipping" and name the lock]'
 prepare() {
   add_traced_check a
@@ -127,30 +173,6 @@ actual() {
 _expect equal check.log 'start'
 _expect equal actual.stdout 'a	green'
 
-_test 'given [a check that lists its lock] should [take the lock and write pid and started before the check starts]'
-prepare() {
-  cat >config/recheck/checks/a <<'CHECK'
-#!/bin/sh
-# CRON: * * * * *
-ls "$XDG_RUNTIME_DIR/recheck/a.lock"
-CHECK
-  chmod +x config/recheck/checks/a
-}
-actual() { "$RECHECK" run a; }
-_expect equal actual.stdout 'a	green'
-_expect equal state/recheck/a/output "$(printf 'pid\nstarted')"
-
-_test 'given [a run that ended] should [leave no lock in the runtime folder]'
-prepare() { add_check a 0; }
-actual() {
-  "$RECHECK" run a >/dev/null
-  ls runtime/recheck
-}
-_expect equal actual.exit 0
-_expect equal actual.stdout ''
-
-# The shell runs a trap only after the check it waits for ends, so the check
-# sleeps 1 s, not longer
 _test 'given [a run command that gets TERM while its check runs] should [remove the lock and the half output]'
 prepare() {
   add_traced_check a
@@ -165,52 +187,6 @@ actual() {
   ls runtime/recheck state/recheck/a
 }
 _expect equal actual.stdout "$(printf 'runtime/recheck:\n\nstate/recheck/a:')"
-
-_test 'given [a runtime folder that run cannot create] should [exit 3 and not start the check]'
-prepare() {
-  add_traced_check a
-  : >file
-}
-actual() { XDG_RUNTIME_DIR="$PWD/file/runtime" "$RECHECK" run a; }
-_expect equal actual.exit 3
-_expect equal actual.stdout ''
-_expect equal check.log ''
-_expect contain actual.stderr 'Could not take the lock'
-
-# mkdir cannot make a folder where a link exists, even as root. The link points
-# at nothing, so [ -d ] is false and take_lock returns 2
-_test 'given [two checks, the first with a lock that run cannot take] should [run the second, exit 3]'
-prepare() {
-  add_check a 0
-  add_check b 0
-  mkdir -p runtime/recheck
-  ln -s "$PWD/missing" runtime/recheck/a.lock
-}
-actual() { "$RECHECK" run a b; }
-_expect equal actual.exit 3
-_expect equal actual.stdout 'b	green'
-_expect contain actual.stderr 'Could not take the lock'
-
-_test 'given [RETRY: 3 0 and a check red for 2 runs] should [run it 3 times, print green once]'
-prepare() { add_retry_check a '3 0' 2; }
-actual() { "$RECHECK" run a; }
-_expect equal actual.exit 0
-_expect equal actual.stdout 'a	green'
-_expect equal check.log "$(printf 'start\nstart\nstart')"
-
-_test 'given [RETRY: 2 0 and a check that stays red] should [run it 3 times, print red once]'
-prepare() { add_retry_check a '2 0' 9; }
-actual() { "$RECHECK" run a; }
-_expect equal actual.stdout 'a	red'
-_expect equal check.log "$(printf 'start\nstart\nstart')"
-
-_test 'given [RETRY: 2 0 and a check red for 2 runs] should [log 3 lines, end the retries with 1/2 and 2/2]'
-prepare() { add_retry_check a '2 0' 2; }
-actual() {
-  "$RECHECK" run a >/dev/null
-  cut -f 2,5,6 state/recheck/runs.log
-}
-_expect equal actual.stdout "$(printf 'red\ta\nred\ta\t1/2\ngreen\ta\t2/2')"
 
 _test 'given [a retry line that is not one or two integers] should [run the check once]'
 prepare() { add_retry_check a 'lots' 9; }
@@ -231,3 +207,39 @@ prepare() {
 actual() { "$RECHECK" run a; }
 _expect equal actual.stdout 'a	green'
 _expect equal change.log ''
+
+_describe "recheck.d/run :: run :: invalid"
+
+before_each() { build_sandbox; }
+
+_test 'given [an id with no check] should [print nothing and exit 2]'
+prepare() { add_check good 0; }
+actual() { "$RECHECK" run missing; }
+_expect equal actual.exit 2
+_expect equal actual.stdout ''
+
+_test 'given [a runtime folder that run cannot create] should [exit 3 and not start the check]'
+prepare() {
+  add_traced_check a
+  : >file
+}
+actual() { XDG_RUNTIME_DIR="$PWD/file/runtime" "$RECHECK" run a; }
+_expect equal actual.exit 3
+_expect equal actual.stdout ''
+_expect equal check.log ''
+_expect contain actual.stderr 'Could not take the lock'
+
+# mkdir cannot make a folder where a link exists, even as root. The link points
+# at nothing, so [ -d ] is false and take_lock returns 2
+
+_test 'given [two checks, the first with a lock that run cannot take] should [run the second, exit 3]'
+prepare() {
+  add_check a 0
+  add_check b 0
+  mkdir -p runtime/recheck
+  ln -s "$PWD/missing" runtime/recheck/a.lock
+}
+actual() { "$RECHECK" run a b; }
+_expect equal actual.exit 3
+_expect equal actual.stdout 'b	green'
+_expect contain actual.stderr 'Could not take the lock'

@@ -5,7 +5,7 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../../tools/test-lib.sh"
 . "$SCRIPT_DIR/sandbox.sh"
 
-_describe "recheck :: ls"
+_describe "recheck.d/ls :: ls :: valid"
 
 before_each() { build_sandbox; }
 
@@ -16,6 +16,27 @@ prepare() {
 }
 actual() { "$RECHECK" ls | cut -f 5; }
 _expect equal actual.stdout '9.39.2'
+
+_test 'given [--columns last-line,id] should [print those two columns in that order]'
+prepare() {
+  add_check a 0
+  add_output a 'x\n'
+}
+actual() { "$RECHECK" ls --columns last-line,id; }
+_expect equal actual.stdout 'x	a'
+
+_test 'given [--color and a lock with a retry] should [print the retry after the id]'
+prepare() {
+  add_check a 1
+  add_lock a
+  printf '1/3\n' >runtime/recheck/a.lock/retry
+}
+actual() { "$RECHECK" ls --color; }
+_expect end-with actual.stdout 'a [1/3]'
+
+_describe "recheck.d/ls :: ls :: edge"
+
+before_each() { build_sandbox; }
 
 _test 'given [an output that ends with empty lines and a line of spaces] should [print the last line above them]'
 prepare() {
@@ -38,13 +59,9 @@ prepare() {
 actual() { "$RECHECK" ls | awk -F '\t' '{ print NF ":" $5 }'; }
 _expect equal actual.stdout '5:x y'
 
-_test 'given [--columns last-line,id] should [print those two columns in that order]'
-prepare() {
-  add_check a 0
-  add_output a 'x\n'
-}
-actual() { "$RECHECK" ls --columns last-line,id; }
-_expect equal actual.stdout 'x	a'
+_describe "recheck.d/ls :: ls :: invalid"
+
+before_each() { build_sandbox; }
 
 _test 'given [--columns with a name that is not a column] should [exit 2]'
 prepare() { add_check a 0; }
@@ -60,12 +77,3 @@ _test 'given [--columns with --cron] should [exit 2]'
 prepare() { add_check a 0; }
 actual() { "$RECHECK" ls --cron --columns id; }
 _expect equal actual.exit 2
-
-_test 'given [--color and a lock with a retry] should [print the retry after the id]'
-prepare() {
-  add_check a 1
-  add_lock a
-  printf '1/3\n' >runtime/recheck/a.lock/retry
-}
-actual() { "$RECHECK" ls --color; }
-_expect end-with actual.stdout 'a [1/3]'
