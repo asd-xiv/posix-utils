@@ -6,7 +6,7 @@
 # draft, print its text only. With --color, print the text through bat when
 # bat is there, in color. The picker and the browser call it for the preview.
 # Print nothing for an empty argument: the picker has one row without an id.
-# zettel runs this file, never call it directly.
+# zettel runs this file. Never call it directly.
 
 set -eu
 

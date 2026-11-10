@@ -5,7 +5,7 @@
 # Print the last 5 zettels placed, with every zettel of their lineages, as one
 # tree in Folgezettel order. The newest has "newest" after its name, behind a
 # tab. Print nothing when the box holds no zettel.
-# zettel runs this file, never call it directly.
+# zettel runs this file. Never call it directly.
 
 set -eu
 

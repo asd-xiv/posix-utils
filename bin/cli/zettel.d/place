@@ -8,7 +8,7 @@
 # the id 1, with no picker. An id in a draft counts as taken, so place never
 # gives it again. Print the id. Exit 4 when no parent is picked. The picker
 # needs fzf and a terminal on stdin: the caller opens one.
-# zettel runs this file, never call it directly.
+# zettel runs this file. Never call it directly.
 
 set -eu
 

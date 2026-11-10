@@ -7,7 +7,7 @@
 # the drafts, a fixed draft is elevated to the box. Wait for Enter when sync
 # printed a line. The browser calls it for Enter. It needs a terminal on
 # stdin: the caller opens one.
-# zettel runs this file, never call it directly.
+# zettel runs this file. Never call it directly.
 
 set -eu
 

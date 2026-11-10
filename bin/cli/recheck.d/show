@@ -26,7 +26,7 @@
 # SEE ALSO
 #   recheck ls, recheck browse
 
-# recheck runs this file, never call it directly.
+# recheck runs this file. Never call it directly.
 
 set -eu
 

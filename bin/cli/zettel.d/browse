@@ -9,7 +9,7 @@
 # behind the zettel under the cursor in the box. When Neovim closes, the
 # browser reads the list again. Esc closes the browser. It needs fzf, Neovim
 # and a terminal on stdin: the caller opens one.
-# zettel runs this file, never call it directly.
+# zettel runs this file. Never call it directly.
 
 set -eu
 

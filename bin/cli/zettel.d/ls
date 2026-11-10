@@ -6,7 +6,7 @@
 # Folgezettel order. With --drafts, print the path of every draft instead,
 # newest first. With --rows, print the rows the picker and the browser show in
 # fzf.
-# zettel runs this file, never call it directly.
+# zettel runs this file. Never call it directly.
 
 set -eu
 

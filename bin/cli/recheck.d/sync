@@ -34,7 +34,7 @@
 # SEE ALSO
 #   crontab, recheck ls --cron
 
-# recheck runs this file, never call it directly.
+# recheck runs this file. Never call it directly.
 
 set -eu
 

@@ -25,7 +25,7 @@
 # SEE ALSO
 #   screenrecord, screenrecord start
 
-# screenrecord runs this file, never call it directly.
+# screenrecord runs this file. Never call it directly.
 
 set -eu
 

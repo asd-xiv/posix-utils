@@ -10,7 +10,7 @@
 # with a claim. When Neovim ends with an error, run "sync --no-place":
 # the draft stays. Wait for Enter when sync printed a line. It needs a
 # terminal on stdin: the caller opens one.
-# zettel runs this file, never call it directly.
+# zettel runs this file. Never call it directly.
 
 set -eu
 

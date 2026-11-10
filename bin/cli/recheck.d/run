@@ -44,7 +44,7 @@
 # SEE ALSO
 #   recheck status, recheck log
 
-# recheck runs this file, never call it directly.
+# recheck runs this file. Never call it directly.
 
 set -eu
 

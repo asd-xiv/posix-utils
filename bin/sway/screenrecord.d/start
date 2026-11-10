@@ -67,7 +67,7 @@
 #   screenrecord, wf-recorder, ffmpeg, slurp, swaymsg, jq, xdg-user-dir,
 #   doomst, beep_success, beep_cancel
 
-# screenrecord runs this file, never call it directly.
+# screenrecord runs this file. Never call it directly.
 
 set -eu
 

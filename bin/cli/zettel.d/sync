@@ -30,7 +30,7 @@
 # picker and prints how many drafts wait for one. With --wait, sync waits for
 # Enter after it printed a line. When sync fails, it ends before that wait:
 # the caller waits.
-# zettel runs this file, never call it directly.
+# zettel runs this file. Never call it directly.
 
 set -eu
 

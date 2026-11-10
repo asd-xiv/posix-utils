@@ -8,7 +8,7 @@
 # it finds none. health does not check the terminal. The caller opens it. Exit
 # 1 when it printed a reason. open-os-menu runs it before it lets the user
 # pick the browser.
-# zettel runs this file, never call it directly.
+# zettel runs this file. Never call it directly.
 
 set -eu
 
