@@ -218,8 +218,8 @@ run_check() {
       || run_status=$?
     run_line=$(format_run "$run_status" "$(($(date +%s) - run_start_seconds))")
 
-    # The log is for a person: "recheck log" prints it, nothing parses it. It
-    # adds the id, and "<retry>/<retries>" on a retry
+    # The log is for a person: "recheck log" prints it, and filters it by the
+    # id in the fifth field. It adds "<retry>/<retries>" on a retry
     if [ "$run_attempt" -eq 0 ]; then
       printf '%s\t%s\n' "$run_line" "$1" >>"$RUN_LOG_FILE"
     else

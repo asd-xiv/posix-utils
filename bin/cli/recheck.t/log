@@ -1,0 +1,106 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls before_each, prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/sandbox.sh"
+
+# add_runs <id> <count>
+# Append <count> green runs of <id> to the run log, numbered in the code field
+add_runs() {
+  mkdir -p state/recheck
+  i=1
+  while [ "$i" -le "$2" ]; do
+    printf '2026-11-10T07:00:0%s+0100\tgreen\t%s\t1s\t%s\n' "$i" "$i" "$1" \
+      >>state/recheck/runs.log
+    i=$((i + 1))
+  done
+}
+
+_describe "recheck.d/log :: log :: valid"
+
+before_each() { build_sandbox; }
+
+_test 'given [no flag] should [print the last 10 runs]'
+prepare() {
+  add_check a 0
+  add_runs a 9
+  add_runs a 3
+}
+actual() { "$RECHECK" log 2>/dev/null | wc -l | tr -d ' '; }
+_expect equal actual.exit 0
+_expect equal actual.stdout '10'
+
+_test 'given [-n 2] should [print the last 2 runs]'
+prepare() {
+  add_check a 0
+  add_runs a 5
+}
+actual() { "$RECHECK" log -n 2 2>/dev/null | cut -f 3; }
+_expect equal actual.stdout '4
+5'
+
+_test 'given [an id] should [print only the runs of that check]'
+prepare() {
+  add_check a 0
+  add_check b 0
+  add_runs a 2
+  add_runs b 1
+  add_runs a 1
+}
+actual() { "$RECHECK" log b 2>/dev/null | cut -f 5; }
+_expect equal actual.stdout 'b'
+
+_test 'given [-n 2 and two ids] should [print the last 2 runs of those checks]'
+prepare() {
+  add_check a 0
+  add_check b 0
+  add_check c 0
+  add_runs a 1
+  add_runs b 1
+  add_runs c 1
+  add_runs a 1
+}
+actual() { "$RECHECK" log -n 2 a b 2>/dev/null | cut -f 5; }
+_expect equal actual.stdout 'b
+a'
+
+_describe "recheck.d/log :: log :: edge"
+
+before_each() { build_sandbox; }
+
+_test 'given [no run log] should [print nothing and exit 0]'
+actual() { "$RECHECK" log 2>/dev/null; }
+_expect equal actual.exit 0
+_expect equal actual.stdout ''
+
+_test 'given [a retry, with a sixth field] should [match its id in the fifth]'
+prepare() {
+  add_check a 0
+  mkdir -p state/recheck
+  printf '2026-11-10T07:05:00+0100\tred\t1\t1s\ta\t1/3\n' >state/recheck/runs.log
+}
+actual() { "$RECHECK" log a 2>/dev/null | cut -f 6; }
+_expect equal actual.stdout '1/3'
+
+_describe "recheck.d/log :: log :: invalid"
+
+before_each() { build_sandbox; }
+
+_test 'given [-n with no count] should [exit 2]'
+actual() { "$RECHECK" log -n; }
+_expect equal actual.exit 2
+
+_test 'given [-n 0, or a count that is not a number] should [exit 2 for each]'
+actual() {
+  for count in 0 abc; do
+    "$RECHECK" log -n "$count" 2>/dev/null || printf '%s\n' "$?"
+  done
+}
+_expect equal actual.stdout '2
+2'
+
+_test 'given [an id with no check] should [exit 2]'
+actual() { "$RECHECK" log nope; }
+_expect equal actual.exit 2
+_expect contain actual.stderr 'No such check'

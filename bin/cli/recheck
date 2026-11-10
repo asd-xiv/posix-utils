@@ -49,7 +49,7 @@ set -eu
 #     sync      Write the recheck block of the crontab from the checks
 #     run       Run the enabled checks, or the ones named
 #     status    Print the count of enabled checks per state
-#     log       Print the last 10 runs
+#     log       Print the last runs
 #     show      Print a check and the output of its last run
 #     browse    Browse the checks in fzf
 #     health    Print each reason recheck cannot work fully

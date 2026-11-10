@@ -1,21 +1,30 @@
 #!/bin/sh
 
 # NAME
-#   recheck log - Print the last 10 runs
+#   recheck log - Print the last runs
 #
 # SYNOPSIS
-#   recheck log
+#   recheck log [-n <count>] [id...]
 #
 # DESCRIPTION
 #   Prints the last 10 lines of the run log, one per run, and the path of the
-#   log file to stderr. "recheck run --help" describes a line.
+#   log file to stderr. With ids, prints only the runs of those checks, then
+#   takes the last 10 of them. "recheck run --help" describes a line.
+#
+# ARGUMENTS
+#   id   The id of a check, repeatable
 #
 # OPTIONS
+#   -n <count>   Print the last <count> lines (default: 10)
 #   -h, --help   Print this help
+#
+# EXAMPLE
+#   recheck log -n 50
+#   recheck log 05a_t212-snapshot-close
 #
 # EXIT CODES
 #   0   Done
-#   2   Invalid usage, eg. an argument
+#   2   Invalid usage, eg. an id with no check, or -n without a count
 #
 # SEE ALSO
 #   recheck run
@@ -31,23 +40,46 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../lib/os.sh"
 . "$SCRIPT_DIR/lib.sh"
 
-case "${1:-}" in
-  -h | --help)
-    _show_help "$0"
-    exit 0
-    ;;
-esac
+COUNT=10
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -h | --help)
+      _show_help "$0"
+      exit 0
+      ;;
+    -n)
+      [ "$#" -ge 2 ] || _fail 2 "-n needs a count"
+      _is positive-integer "$2" || _fail 2 -v count "$2" "Not a count"
+      COUNT="$2"
+      shift 2
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -?*) _fail 2 -v flag "$1" "Unknown flag" ;;
+    *) break ;;
+  esac
+done
+
+guard_id "$@"
 
 # ╭───
 # │ Main
 # ╰───
 
-[ "$#" -eq 0 ] || _fail 2 '"log" takes no arguments'
-
 _info -v path "$RUN_LOG_FILE" "Log file"
 
+# The fifth field of a line is the id. An id is a slug, so a space splits
+# the list
 if [ -f "$RUN_LOG_FILE" ]; then
-  tail -n 10 -- "$RUN_LOG_FILE"
+  awk -F '\t' -v ids="$*" '
+    BEGIN {
+      count = split(ids, list, " ")
+      for (i = 1; i <= count; i++) is_wanted[list[i]] = 1
+    }
+    count == 0 || ($5 in is_wanted)' "$RUN_LOG_FILE" | tail -n "$COUNT"
 fi
 
 exit 0
