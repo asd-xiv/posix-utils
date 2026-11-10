@@ -1,0 +1,21 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+
+RECHECK="$SCRIPT_DIR/../recheck"
+
+_describe "recheck :: usage"
+
+_test 'given [--help after each command] should [print the man page of the command and exit 0]'
+actual() {
+  for usage_file in "$SCRIPT_DIR"/../recheck.d/*; do
+    usage_command="${usage_file##*/}"
+    [ "$usage_command" = "lib.sh" ] && continue
+
+    "$RECHECK" "$usage_command" --help \
+      | grep -q "^  recheck $usage_command - " || return 1
+  done
+}
+_expect equal actual.exit 0

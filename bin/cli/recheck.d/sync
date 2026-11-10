@@ -40,12 +40,20 @@ set -eu
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../lib/log.sh"
+. "$SCRIPT_DIR/../../lib/help.sh"
 . "$SCRIPT_DIR/../../lib/validation.sh"
 . "$SCRIPT_DIR/../../lib/guard.sh"
 . "$SCRIPT_DIR/../../lib/os.sh"
 . "$SCRIPT_DIR/../../lib/text.sh"
 . "$SCRIPT_DIR/../../lib/terminal.sh"
 . "$SCRIPT_DIR/lib.sh"
+
+case "${1:-}" in
+  -h | --help)
+    _show_help "$0"
+    exit 0
+    ;;
+esac
 
 BLOCK_BEGIN="# recheck:start"
 BLOCK_END="# recheck:end"
