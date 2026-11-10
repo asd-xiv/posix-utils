@@ -86,22 +86,22 @@ remove_lock() {
   LOCK_DIR=""
 }
 
-# record_run <id> <exit-code> <seconds>
-# Keep a finished run and print "<id>", a tab and "<state>". Run the on-change
-# hook when the check went from green to red or back.
+# format_run <exit-code> <seconds>
+# Print a finished run as one line: time, state, exit code and seconds, with a
+# tab between them.
+format_run() {
+  printf '%s\t%s\t%s\t%ss' \
+    "$(date +%Y-%m-%dT%H:%M:%S%z)" "$(map_state "$1")" "$1" "$2"
+}
+
+# record_run <id> <exit-code> <run-line>
+# Keep the answer of a check and print "<id>", a tab and "<state>". Run the
+# on-change hook when the check went from green to red or back.
 record_run() {
   record_dir="$STATE_DIR/$1"
   record_state=$(map_state "$2")
-  record_line=$(
-    printf '%s\t%s\t%s\t%ss' \
-      "$(date +%Y-%m-%dT%H:%M:%S%z)" "$record_state" "$2" "$3"
-  )
 
-  # The same line in two files, the log adds the id. recheck reads "last".
-  # The log is for a person: "recheck log" prints it, nothing parses it
-  printf '%s\n' "$record_line" >"$record_dir/last"
-  printf '%s\t%s\n' "$record_line" "$1" >>"$RUN_LOG_FILE"
-
+  printf '%s\n' "$3" >"$record_dir/last"
   printf '%s\t%s\n' "$1" "$record_state"
 
   # Broken is no answer. recheck keeps the last green or red and runs no hook
@@ -124,8 +124,9 @@ record_run() {
 }
 
 # run_check <id>
-# Run a check and keep the run. Skip the check when it has a lock. When run
-# cannot take the lock, log an error, set HAS_FAILED and skip the check.
+# Run a check, and its retries while it is not green, then keep the answer.
+# Skip the check when it has a lock. When run cannot take the lock, log an
+# error, set HAS_FAILED and skip the check.
 run_check() {
   run_dir="$STATE_DIR/$1"
   mkdir -p -- "$run_dir"
@@ -151,12 +152,41 @@ run_check() {
   # In the background, so a slow hook does not delay the check
   run_hook "$UPDATE_HOOK_FILE" &
 
-  # Into output.new, so an interrupted run leaves the last output in place
-  run_start_seconds=$(date +%s)
-  run_status=0
-  run_with_env "$CHECKS_DIR/$1" </dev/null >"$run_dir/output.new" 2>&1 \
-    || run_status=$?
-  run_seconds=$(($(date +%s) - run_start_seconds))
+  run_retries=0
+  run_delay=0
+  if run_retry=$(find_retry "$1"); then
+    run_retries="${run_retry% *}"
+    run_delay="${run_retry#* }"
+  fi
+
+  # A run that is not green runs the check again, up to run_retries times. The
+  # first green, or the last retry, is the answer
+  run_attempt=0
+  while :; do
+    # Into output.new, so an interrupted run leaves the last output in place
+    run_start_seconds=$(date +%s)
+    run_status=0
+    run_with_env "$CHECKS_DIR/$1" </dev/null >"$run_dir/output.new" 2>&1 \
+      || run_status=$?
+    run_line=$(format_run "$run_status" "$(($(date +%s) - run_start_seconds))")
+
+    # The log is for a person: "recheck log" prints it, nothing parses it. It
+    # adds the id, and "<retry>/<retries>" on a retry
+    if [ "$run_attempt" -eq 0 ]; then
+      printf '%s\t%s\n' "$run_line" "$1" >>"$RUN_LOG_FILE"
+    else
+      printf '%s\t%s\t%s/%s\n' "$run_line" "$1" "$run_attempt" "$run_retries" \
+        >>"$RUN_LOG_FILE"
+    fi
+
+    if [ "$run_status" -eq 0 ] || [ "$run_attempt" -ge "$run_retries" ]; then
+      break
+    fi
+
+    run_attempt=$((run_attempt + 1))
+    printf '%s/%s\n' "$run_attempt" "$run_retries" >"$LOCK_DIR/retry"
+    sleep $((run_delay * 60))
+  done
 
   mv -- "$run_dir/output.new" "$run_dir/output"
   remove_lock
@@ -166,7 +196,7 @@ run_check() {
     cat -- "$run_dir/output" >&2
   fi
 
-  record_run "$1" "$run_status" "$run_seconds"
+  record_run "$1" "$run_status" "$run_line"
 }
 
 # run_checks <id>...

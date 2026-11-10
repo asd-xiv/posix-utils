@@ -17,3 +17,11 @@ prepare() {
 actual() { "$RECHECK" show a; }
 _expect equal actual.exit 0
 _expect contain actual.stdout 'running_since: 12:00:00'
+
+_test 'given [a check with "# RETRY: 3"] should [print retry with the default of 1 minute]'
+prepare() {
+  add_check a 0
+  printf '# RETRY: 3\n' >>config/recheck/checks/a
+}
+actual() { "$RECHECK" show a; }
+_expect contain actual.stdout 'retry: "3 1"'

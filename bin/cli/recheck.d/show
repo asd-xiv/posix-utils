@@ -49,6 +49,7 @@ if is_enabled "$1"; then
 fi
 
 PATTERN=$(find_cron_pattern "$1") || PATTERN="-"
+RETRY=$(find_retry "$1") || RETRY="-"
 
 # The file "last" is one line: time, state, exit code, seconds
 LAST_TIME=""
@@ -64,6 +65,7 @@ print_property "state" "$LAST_STATE"
 print_property "enabled" "$ENABLED"
 # In quotes. Front matter is YAML, which reads a leading "*" as an alias
 print_property "cron" "\"$PATTERN\""
+print_property "retry" "\"$RETRY\""
 
 if [ -n "$LAST_TIME" ]; then
   # 2026-10-08T12:00:03+0200 -> 2026-10-08 12:00:03

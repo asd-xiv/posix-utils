@@ -60,3 +60,12 @@ _test 'given [--columns with --cron] should [exit 2]'
 prepare() { add_check a 0; }
 actual() { "$RECHECK" ls --cron --columns id; }
 _expect equal actual.exit 2
+
+_test 'given [--color and a lock with a retry] should [print the retry after the id]'
+prepare() {
+  add_check a 1
+  add_lock a
+  printf '1/3\n' >runtime/recheck/a.lock/retry
+}
+actual() { "$RECHECK" ls --color; }
+_expect end-with actual.stdout 'a [1/3]'

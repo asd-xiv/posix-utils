@@ -125,6 +125,31 @@ find_cron_pattern() {
   printf '%s' "$*"
 }
 
+# find_retry <id>
+# Print the retries of a check and the minutes between them, as "<retries>
+# <minutes>". Return 1 unless the "# RETRY:" line holds one or two integers.
+# The minutes are 1 by default.
+find_retry() {
+  retry_file=$(find_check_file "$1") || return 1
+  retry_line=$(sed -n 's/^# RETRY:[[:space:]]*//p' -- "$retry_file" | head -n 1)
+
+  set -f
+  # shellcheck disable=SC2086 # split into fields on purpose
+  set -- $retry_line
+  set +f
+
+  case "$#" in
+    1) set -- "$1" 1 ;;
+    2) ;;
+    *) return 1 ;;
+  esac
+
+  _is non-negative-integer "$1" || return 1
+  _is non-negative-integer "$2" || return 1
+
+  printf '%s %s' "$1" "$2"
+}
+
 # find_state <id>
 # Print the state of a check. Print "-" before its first run.
 find_state() {
@@ -141,14 +166,16 @@ find_state() {
 }
 
 # The lock of a check is the folder "<id>.lock" in the runtime folder. "run"
-# makes it with mkdir before the check starts and removes it when the check
-# ends. It holds one file per value: "pid", the process id of the run command,
-# then "started", the time the check started. "show" prints the time. The
-# process id is for a person who finds a lock that a run command left. recheck
-# trusts the lock: a check with a lock is running, and "run" skips it. No
-# command asks whether the process still runs. A run command that ends without
-# its traps, eg. by kill -9, leaves its lock. Then the check runs again only
-# after a person removes the lock, or a boot clears the runtime folder.
+# makes it with mkdir before the check starts and removes it when the check and
+# its retries end. It holds one file per value: "pid", the process id of the
+# run command, then "started", the time the check started. "show" prints the
+# time. From the first retry on, "retry" holds "<retry>/<retries>". "ls
+# --color" prints it. The process id is for a person who finds a lock that a
+# run command left. recheck trusts the lock: a check with a lock is running,
+# and "run" skips it. No command asks whether the process still runs. A run
+# command that ends without its traps, eg. by kill -9, leaves its lock. Then
+# the check runs again only after a person removes the lock, or a boot clears
+# the runtime folder.
 
 # print_lock_dir <id>
 # Print the path of the lock of a check, whether the check has one or not.

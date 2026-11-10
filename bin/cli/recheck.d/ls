@@ -45,6 +45,19 @@ find_last_line() {
     }' "$last_file"
 }
 
+# find_running_retry <id>
+# Print "<retry>/<retries>" while a retry of the check runs or waits. Print
+# nothing otherwise.
+find_running_retry() {
+  running_dir=$(print_lock_dir "$1") || return 0
+
+  # Empty before the first retry, and when the run ended and removed the lock
+  running_retry=""
+  { read -r running_retry <"$running_dir/retry" || true; } 2>/dev/null
+
+  printf '%s' "$running_retry"
+}
+
 # guard_columns <names>
 # Exit 2 unless <names> is a list of column names with a comma between them.
 # The names are state, switch, id, pattern and last-line.
@@ -115,7 +128,8 @@ list_checks() {
 
 # list_colored_checks
 # Print every check for a person: a dot in the color of its state, on or off,
-# id. The dot is blue while the check runs. The colors are the terminal's
+# id. The dot is blue while the check runs. During a retry, and the wait
+# before it, "[<retry>/<retries>]" follows the id. The colors are the terminal's
 # own, so they follow its palette.
 list_colored_checks() {
   for color_id in $(find_ids); do
@@ -128,8 +142,10 @@ list_colored_checks() {
 
     # Only the color says "running". The browser knows a row by its id, which
     # it reads as the third column, so the id must stay the third column
+    color_retry=""
     if is_running "$color_id"; then
       color_code=34
+      color_retry=$(find_running_retry "$color_id")
     fi
 
     # The space after "on" keeps the ids in one column
@@ -138,8 +154,8 @@ list_colored_checks() {
       color_switch="[on] "
     fi
 
-    printf '\033[%sm●\033[0m %s %s\n' \
-      "$color_code" "$color_switch" "$color_id"
+    printf '\033[%sm●\033[0m %s %s%s\n' "$color_code" "$color_switch" \
+      "$color_id" "${color_retry:+ [$color_retry]}"
   done
 
   return 0

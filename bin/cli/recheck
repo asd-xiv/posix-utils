@@ -38,6 +38,18 @@ set -eu
 #
 #     # CRON: 0 * * * *
 #
+#   Under it, a check can hold a retry line: the most times run runs it again
+#   after a run that is not green, then the minutes between two runs
+#   (default: 1):
+#
+#     # RETRY: 3 5
+#
+#   run stops at the first green. The last run is the answer: run keeps it
+#   and runs the on-change hook for it. A retry line that is not one or two
+#   integers means no retry. The check keeps its lock through its retries and
+#   the waits between them. A cron tick in that time skips the check as
+#   "Already running", so keep the retries shorter than the cron interval.
+#
 #   The crontab holds one line per enabled check with a valid cron pattern,
 #   inside a block that sync keeps equal to the check files.
 #
@@ -98,11 +110,12 @@ set -eu
 #   recheck keeps the last run, the last green or red, and the last output
 #   of a check in ~/.local/state/recheck/<id>/. It appends one line
 #   per run to ~/.local/state/recheck/runs.log: time, state, exit code,
-#   seconds the run took and id.
+#   seconds the run took and id. A retry adds "<retry>/<retries>".
 #
 #   While a check runs, recheck keeps its lock: the folder <id>.lock in
-#   /run/user/<user id>/recheck. It holds two files: pid, the process id of
-#   the run command, and started, the time the check started. While a check
+#   /run/user/<user id>/recheck. It holds pid, the process id of the run
+#   command, and started, the time the check started. From the first retry
+#   on, it also holds retry: "<retry>/<retries>". While a check
 #   has a lock, run skips it, and status, show and "ls --color" report it as
 #   running. A run command that ends by "kill -9" leaves the lock. It stays
 #   until you remove it with "rm -r", or until the next boot clears
@@ -117,7 +130,9 @@ set -eu
 #                valid cron pattern instead
 #   --color      With ls, print for a person: a dot in the color of the state,
 #                on or off, id. Green, red, yellow for broken, gray before
-#                the first run, blue while the check runs.
+#                the first run, blue while the check runs. During a
+#                retry, and the wait before it, "[<retry>/<retries>]"
+#                after the id.
 #                With show, print the property names in bold
 #   --columns <names>
 #                With ls, print only the named columns, in the order of

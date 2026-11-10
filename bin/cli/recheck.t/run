@@ -21,6 +21,22 @@ add_traced_check() {
   : >check.log
 }
 
+# add_retry_check <id> <retry-line> <red-runs>
+# Write an enabled check with "# RETRY: <retry-line>". It appends "start" to
+# check.log in the current folder, then exits 1 for its first <red-runs> runs
+# and 0 after.
+add_retry_check() {
+  cat >"config/recheck/checks/$1" <<CHECK
+#!/bin/sh
+# CRON: * * * * *
+# RETRY: $2
+printf 'start\\n' >>"$PWD/check.log"
+[ "\$(wc -l <"$PWD/check.log")" -gt $3 ] || exit 1
+CHECK
+  chmod +x "config/recheck/checks/$1"
+  : >check.log
+}
+
 # One rule, the exit code of a check is its state. The three states are the
 # three rows of one table, so one run holds all three
 _test 'given [checks that exit 0, 1 and 7] should [print green, red and broken, exit 0]'
@@ -174,3 +190,44 @@ actual() { "$RECHECK" run a b; }
 _expect equal actual.exit 3
 _expect equal actual.stdout 'b	green'
 _expect contain actual.stderr 'Could not take the lock'
+
+_test 'given [RETRY: 3 0 and a check red for 2 runs] should [run it 3 times, print green once]'
+prepare() { add_retry_check a '3 0' 2; }
+actual() { "$RECHECK" run a; }
+_expect equal actual.exit 0
+_expect equal actual.stdout 'a	green'
+_expect equal check.log "$(printf 'start\nstart\nstart')"
+
+_test 'given [RETRY: 2 0 and a check that stays red] should [run it 3 times, print red once]'
+prepare() { add_retry_check a '2 0' 9; }
+actual() { "$RECHECK" run a; }
+_expect equal actual.stdout 'a	red'
+_expect equal check.log "$(printf 'start\nstart\nstart')"
+
+_test 'given [RETRY: 2 0 and a check red for 2 runs] should [log 3 lines, end the retries with 1/2 and 2/2]'
+prepare() { add_retry_check a '2 0' 2; }
+actual() {
+  "$RECHECK" run a >/dev/null
+  cut -f 2,5,6 state/recheck/runs.log
+}
+_expect equal actual.stdout "$(printf 'red\ta\nred\ta\t1/2\ngreen\ta\t2/2')"
+
+_test 'given [a retry line that is not one or two integers] should [run the check once]'
+prepare() { add_retry_check a 'lots' 9; }
+actual() { "$RECHECK" run a; }
+_expect equal actual.stdout 'a	red'
+_expect equal check.log 'start'
+
+_test 'given [RETRY: 1 0, an on-change hook and a green check red for 1 run] should [not run the hook]'
+prepare() {
+  add_retry_check a '1 0' 1
+  add_state a green
+  printf 'green\n' >state/recheck/a/state
+  printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"%s/change.log"\n' "$PWD" \
+    >config/recheck/on-change
+  chmod +x config/recheck/on-change
+  : >change.log
+}
+actual() { "$RECHECK" run a; }
+_expect equal actual.stdout 'a	green'
+_expect equal change.log ''
