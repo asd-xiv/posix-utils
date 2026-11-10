@@ -4,27 +4,36 @@
 #   recheck log - Print the last runs
 #
 # SYNOPSIS
-#   recheck log [-n <count>] [id...]
+#   recheck log [-n <count>] [id-or-folgezettel...]
 #
 # DESCRIPTION
-#   Prints the last 10 lines of the run log, one per run, and the path of the
-#   log file to stderr. With ids, prints only the runs of those checks, then
-#   takes the last 10 of them. "recheck run --help" describes a line.
+#   Prints the last 10 lines of the run log, ~/.local/state/recheck/runs.log,
+#   one per run. Prints the path of the run log to stderr. With ids or
+#   Folgezettels, prints only the runs of the checks they select, then the
+#   last 10 of those. "recheck run --help" describes a line.
 #
 # ARGUMENTS
-#   id   The id of a check, repeatable
+#   id-or-folgezettel   An id, eg. 05a_t212-snapshot-close, or a Folgezettel:
+#                       the part of an id before its first "_", eg. 05. A
+#                       Folgezettel selects the check at it and each check
+#                       under it: 05 selects 05a and 05a1, not 051. An
+#                       argument without "_" is a Folgezettel, so an id
+#                       without "_", eg. foo, also selects each check under
+#                       it. Repeatable
 #
 # OPTIONS
-#   -n <count>   Print the last <count> lines (default: 10)
+#   -n <count>   Print the last <count> runs (default: 10)
 #   -h, --help   Print this help
 #
 # EXAMPLE
 #   recheck log -n 50
 #   recheck log 05a_t212-snapshot-close
+#   recheck log -n 20 05
 #
 # EXIT CODES
 #   0   Done
-#   2   Invalid usage, eg. an id with no check, or -n without a count
+#   2   Invalid usage, eg. an id or a Folgezettel with no check, or -n without a
+#       count
 #
 # SEE ALSO
 #   recheck run
@@ -39,6 +48,35 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../lib/validation.sh"
 . "$SCRIPT_DIR/../../lib/os.sh"
 . "$SCRIPT_DIR/lib.sh"
+
+# ╭───
+# │ Primitives
+# ╰───
+
+# find_ids_under <folgezettel>
+# Print the id of each check at <folgezettel> or under it, one per line. A
+# Folgezettel is under <folgezettel> when it starts with <folgezettel> and its
+# next character is of the other kind: a letter after a digit, eg. 05a under
+# 05, or a digit after a letter, eg. 05a1 under 05a. 051 is not under 05.
+find_ids_under() {
+  for fiu_id in $(find_ids); do
+    fiu_folgezettel="${fiu_id%%_*}"
+    fiu_rest="${fiu_folgezettel#"$1"}"
+    [ "$fiu_rest" != "$fiu_folgezettel" ] || continue
+
+    case "$1:$fiu_rest" in
+      *:) ;;
+      *[0-9]:[A-Za-z]*) ;;
+      *[A-Za-z]:[0-9]*) ;;
+      *) continue ;;
+    esac
+    printf '%s\n' "$fiu_id"
+  done
+}
+
+# ╭───
+# │ Bootstrap
+# ╰───
 
 COUNT=10
 
@@ -63,7 +101,25 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-guard_id "$@"
+# An argument with a "_" is an id, one without is a Folgezettel
+IDS=""
+for ARG in "$@"; do
+  case "$ARG" in
+    *_*)
+      guard_id "$ARG"
+      IDS="$IDS $ARG"
+      ;;
+    *)
+      _is slug "$ARG" || _fail 2 -v folgezettel "$ARG" "Not a Folgezettel"
+      UNDER_IDS=$(find_ids_under "$ARG")
+      [ -n "$UNDER_IDS" ] \
+        || _fail 2 -v folgezettel "$ARG" "No check at this Folgezettel"
+      for UNDER_ID in $UNDER_IDS; do
+        IDS="$IDS $UNDER_ID"
+      done
+      ;;
+  esac
+done
 
 # ╭───
 # │ Main
@@ -71,10 +127,10 @@ guard_id "$@"
 
 _info -v path "$RUN_LOG_FILE" "Log file"
 
-# The fifth field of a line is the id. An id is a slug, so a space splits
-# the list
+# The fifth field of a line is the id. An id is a slug, with no space, so awk
+# splits the ids on a space
 if [ -f "$RUN_LOG_FILE" ]; then
-  awk -F '\t' -v ids="$*" '
+  awk -F '\t' -v ids="$IDS" '
     BEGIN {
       count = split(ids, list, " ")
       for (i = 1; i <= count; i++) is_wanted[list[i]] = 1
