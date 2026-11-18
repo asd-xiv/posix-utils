@@ -1,0 +1,147 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../log.sh"
+. "$SCRIPT_DIR/../os.sh"
+
+# run_script
+#
+# Run the script on stdin in a new shell that sources log.sh and os.sh, as a
+# script does. The traps of _on_exit run when that shell exits.
+run_script() {
+  {
+    printf '. "%s"\n' "$SCRIPT_DIR/../log.sh" "$SCRIPT_DIR/../os.sh"
+    cat
+  } | sh -s
+}
+
+_describe "lib/os.sh :: _on_exit :: valid"
+
+_test 'given [a script that exits] should [run the function with the exit code]'
+actual() {
+  run_script <<'SCRIPT' || printf 'exit %s\n' "$?"
+print_code() { printf 'code %s\n' "$1"; }
+_on_exit print_code
+exit 4
+SCRIPT
+}
+_expect equal actual.stdout 'code 4
+exit 4'
+
+_test 'given [two functions] should [run the last one registered first]'
+actual() {
+  run_script <<'SCRIPT'
+print_first() { printf 'first\n'; }
+print_second() { printf 'second\n'; }
+_on_exit print_first
+_on_exit print_second
+exit 0
+SCRIPT
+}
+_expect equal actual.stdout 'second
+first'
+
+_describe "lib/os.sh :: _on_exit :: edge"
+
+_test 'given [a TERM] should [run the function with 143, then end by TERM]'
+actual() {
+  run_script <<'SCRIPT' || printf 'exit %s\n' "$?"
+print_code() { printf 'code %s\n' "$1"; }
+_on_exit print_code
+kill -TERM $$
+printf 'not reached\n'
+SCRIPT
+}
+_expect equal actual.stdout 'code 143
+exit 143'
+
+_test 'given [a function that fails] should [run the next one, and keep the exit code]'
+actual() {
+  run_script <<'SCRIPT'
+print_after() { printf 'after\n'; }
+fail_cleanup() { return 1; }
+_on_exit print_after
+_on_exit fail_cleanup
+exit 0
+SCRIPT
+}
+_expect equal actual.exit 0
+_expect equal actual.stdout 'after'
+
+_test 'given [an INT] should [run the function with 130, then end by INT]'
+actual() {
+  run_script <<'SCRIPT' || printf 'exit %s\n' "$?"
+print_code() { printf 'code %s\n' "$1"; }
+_on_exit print_code
+kill -INT $$
+printf 'not reached\n'
+SCRIPT
+}
+_expect equal actual.stdout 'code 130
+exit 130'
+
+_test 'given [a HUP] should [run the function with 129, then end by HUP]'
+actual() {
+  run_script <<'SCRIPT' || printf 'exit %s\n' "$?"
+print_code() { printf 'code %s\n' "$1"; }
+_on_exit print_code
+kill -HUP $$
+printf 'not reached\n'
+SCRIPT
+}
+_expect equal actual.stdout 'code 129
+exit 129'
+
+_test 'given [a TERM and a function that exits] should [run the functions left once, with the new exit code]'
+actual() {
+  run_script <<'SCRIPT' || printf 'exit %s\n' "$?"
+print_code() { printf 'code %s\n' "$1"; }
+exit_now() { printf 'exit_now\n'; exit 5; }
+_on_exit print_code
+_on_exit exit_now
+kill -TERM $$
+SCRIPT
+}
+_expect equal actual.stdout 'exit_now
+code 5
+exit 5'
+
+_test 'given [IFS set to ":"] should [run every function]'
+actual() {
+  run_script <<'SCRIPT'
+print_first() { printf 'first\n'; }
+print_second() { printf 'second\n'; }
+_on_exit print_first
+_on_exit print_second
+IFS=:
+exit 0
+SCRIPT
+}
+_expect equal actual.stdout 'second
+first'
+
+_describe "lib/os.sh :: _on_exit :: invalid"
+
+_test 'given [a name that is not a function] should [exit 3]'
+actual() {
+  run_script <<'SCRIPT'
+_on_exit no_such_function
+SCRIPT
+}
+_expect equal actual.exit 3
+_expect contain actual.stderr '_on_exit takes a defined function'
+
+_test 'given [a command as the function] should [exit 3 and not run it]'
+actual() {
+  status=0
+  run_script <<'SCRIPT' || status=$?
+_on_exit 'touch ran'
+SCRIPT
+  [ ! -e ran ] || printf 'ran\n'
+  exit "$status"
+}
+_expect equal actual.exit 3
+_expect contain actual.stderr '_on_exit takes a defined function'
+_expect equal actual.stdout ''

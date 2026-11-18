@@ -192,11 +192,12 @@ _TEMP_DIR=$(_create_temp_dir find-in-files)
 _delete_on_exit "$_TEMP_DIR"
 ```
 
-| Function                           | Does                                                                               |
-| ---------------------------------- | ---------------------------------------------------------------------------------- |
-| `_create_temp_dir <name>`          | Create a folder named after `<name>` under `TMPDIR`, and print its path            |
-| `_delete_on_exit <path> [on-exit]` | Delete `<path>` when the script exits or a signal stops it, after `<on-exit>` runs |
-| `_resolve_bin_dir`                 | Print the first writable bin dir of `/usr/local/bin` and `~/.local/bin`            |
+| Function                  | Does                                                                                                                 |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `_create_temp_dir <name>` | Create a folder named after `<name>` under `TMPDIR`, and print its path                                              |
+| `_on_exit <function>`     | Run `<function>` with the exit code when the script exits or INT, TERM or HUP ends it, the last one registered first |
+| `_delete_on_exit <dir>`   | Delete `<dir>` when the script exits or INT, TERM or HUP ends it, one absolute folder per script                     |
+| `_resolve_bin_dir`        | Print the first writable bin dir of `/usr/local/bin` and `~/.local/bin`                                              |
 
 ### network.sh
 
@@ -230,11 +231,12 @@ or 2.
 
 ### terminal.sh
 
-| Function             | Does                                                                                   |
-| -------------------- | -------------------------------------------------------------------------------------- |
-| `_set_title <title>` | Set the title of the terminal window, when stderr is a terminal                        |
-| `_restore_title`     | Restore the title the window had before `_set_title`                                   |
-| `_wait_for_enter`    | Stop until the user presses Enter, so a window that closes with the command stays open |
+| Function                        | Does                                                                                                     |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `_set_title <title>`            | Set the title of the terminal window, when stderr is a terminal                                          |
+| `_restore_title`                | Restore the title the window had before `_set_title`                                                     |
+| `_set_title_until_exit <title>` | Set the title of the terminal window until the script exits or INT, TERM or HUP ends it, then restore it |
+| `_wait_for_enter`               | Stop until the user presses Enter, so a window that closes with the command stays open                   |
 
 ### help.sh
 

@@ -49,20 +49,6 @@ case "${1:-}" in
 esac
 
 # ╭───
-# │ Cleanup
-# ╰───
-
-# shellcheck disable=SC2329 # called by trap
-cleanup() {
-  _restore_title
-}
-
-trap cleanup EXIT                                    # normal exit
-trap 'cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl+C
-trap 'cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout
-trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
-
-# ╭───
 # │ Main
 # ╰───
 
@@ -88,7 +74,7 @@ fi
 
 # Neovim with its 'title' option on renames the window. Hand it the same
 # title, so the window keeps one name. An id is a slug, safe between quotes
-_set_title "$TITLE"
+_set_title_until_exit "$TITLE"
 nvim -c "let &titlestring = '$TITLE'" "$@" \
   || _fail 3 "Neovim ended with an error, not synced"
 

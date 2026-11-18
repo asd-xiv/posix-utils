@@ -17,24 +17,11 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../lib/log.sh"
 . "$SCRIPT_DIR/../../lib/validation.sh"
 . "$SCRIPT_DIR/../../lib/guard.sh"
+. "$SCRIPT_DIR/../../lib/os.sh"
 . "$SCRIPT_DIR/../../lib/terminal.sh"
 . "$SCRIPT_DIR/lib.sh"
 
 SHOULD_OPEN_DRAFTS="" # --drafts, "true" or ""
-
-# ╭───
-# │ Cleanup
-# ╰───
-
-# shellcheck disable=SC2329 # called by trap
-cleanup() {
-  _restore_title
-}
-
-trap cleanup EXIT                                    # normal exit
-trap 'cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl+C
-trap 'cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout
-trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
 
 # ╭───
 # │ Main
@@ -83,7 +70,7 @@ if [ -n "$SHOULD_OPEN_DRAFTS" ]; then
 fi
 
 # A waybar click finds an open browser by this title
-_set_title "zettel :: browser"
+_set_title_until_exit "zettel :: browser"
 
 # A row is what list_rows or list_draft_rows prints. fzf shows and searches
 # the name.

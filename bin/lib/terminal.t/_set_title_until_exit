@@ -1,0 +1,86 @@
+#!/bin/sh
+
+# shellcheck disable=SC2329 # the harness calls prepare and actual
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+. "$SCRIPT_DIR/../../../tools/test-lib.sh"
+. "$SCRIPT_DIR/../log.sh"
+. "$SCRIPT_DIR/../os.sh"
+. "$SCRIPT_DIR/../terminal.sh"
+
+# _set_title writes only when stderr is a terminal. script(1) of util-linux
+# runs a command on a pseudo-terminal
+script -qec true /dev/null </dev/null >/dev/null 2>&1 \
+  || _skip_all "script(1) of util-linux does not run"
+
+# source_lib
+# Print the lines that source terminal.sh and the files it needs.
+source_lib() {
+  printf '. "%s"\n' "$SCRIPT_DIR/../log.sh" "$SCRIPT_DIR/../os.sh" \
+    "$SCRIPT_DIR/../terminal.sh"
+}
+
+# run_on_terminal
+# Run the script on stdin in a new shell that sources terminal.sh, on a
+# pseudo-terminal. Print what the shell wrote, with ESC as \033 and BEL as
+# \007, then a newline. Return the exit code of the shell, or 128 plus the
+# number of the signal that ended it.
+run_on_terminal() {
+  {
+    source_lib
+    cat
+  } >script.sh
+
+  rot_status=0
+  script -qec 'sh script.sh' /dev/null </dev/null >raw.txt || rot_status=$?
+  printf '%s\n' "$(sed "s/$(printf '\033')/\\\\033/g; s/$(printf '\007')/\\\\007/g" raw.txt)"
+
+  return "$rot_status"
+}
+
+_describe "lib/terminal.sh :: _set_title_until_exit :: valid"
+
+_test 'given [a script that exits] should [set the title, then restore it]'
+actual() {
+  run_on_terminal <<'SCRIPT'
+_set_title_until_exit "my title"
+exit 4
+SCRIPT
+}
+_expect equal actual.exit 4
+_expect equal actual.stdout '\033[22;0t\033]0;my title\007\033[23;0t'
+
+_describe "lib/terminal.sh :: _set_title_until_exit :: edge"
+
+_test 'given [a TERM] should [restore the title, then end by TERM]'
+actual() {
+  run_on_terminal <<'SCRIPT'
+_set_title_until_exit "my title"
+kill -TERM $$
+printf 'not reached\n'
+SCRIPT
+}
+_expect equal actual.exit 143
+_expect equal actual.stdout '\033[22;0t\033]0;my title\007\033[23;0t'
+
+_test 'given [an earlier _delete_on_exit call] should [restore the title and delete the path]'
+prepare() { mkdir dir; }
+actual() {
+  run_on_terminal <<'SCRIPT'
+_delete_on_exit "$PWD/dir"
+_set_title_until_exit "my title"
+exit 0
+SCRIPT
+  [ ! -e dir ] && printf 'deleted\n'
+}
+_expect equal actual.stdout '\033[22;0t\033]0;my title\007\033[23;0t
+deleted'
+
+_test 'given [no terminal] should [write nothing, and keep the exit code]'
+actual() {
+  {
+    source_lib
+    printf '_set_title_until_exit "my title"\nexit 4\n'
+  } | sh -s
+}
+_expect equal actual.exit 4
+_expect equal actual.stderr ''

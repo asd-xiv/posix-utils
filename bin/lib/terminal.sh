@@ -7,7 +7,7 @@
 #   . "$_SCRIPT_DIR/../lib/terminal.sh"
 #
 # DESCRIPTION
-#   Needs no other file of bin/lib.
+#   Needs log.sh, os.sh. A script sources them before this file.
 
 _HAS_TITLE="" # "true" once _set_title changed the window title
 
@@ -32,6 +32,16 @@ _restore_title() {
     printf '\033[23;0t' >&2 2>/dev/null || true
     _HAS_TITLE=""
   fi
+}
+
+# _set_title_until_exit <title>
+#
+# Name the terminal window <title> until the script exits, or until INT, TERM
+# or HUP ends it, then restore the old title. It registers _restore_title
+# with _on_exit.
+_set_title_until_exit() {
+  _on_exit _restore_title
+  _set_title "$1"
 }
 
 # _wait_for_enter

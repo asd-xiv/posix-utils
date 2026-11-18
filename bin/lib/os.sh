@@ -1,13 +1,14 @@
 #!/bin/sh
 
 # NAME
-#   os.sh - Create a temporary folder, delete it on exit, find OS folders
+#   os.sh - Run functions on exit, create a temporary folder and delete it on
+#   exit, find OS folders
 #
 # SYNOPSIS
 #   . "$_SCRIPT_DIR/../lib/os.sh"
 #
 # DESCRIPTION
-#   Needs log.sh, validation.sh. A script sources them before this file.
+#   Needs log.sh. A script sources it before this file.
 
 # _run_if_found <cmd> [arg...]
 #
@@ -89,32 +90,99 @@ _create_temp_dir() {
     || _fail 3 "Could not create a temporary folder"
 }
 
-# _delete_on_exit <path> [on-exit]
+_EXIT_FUNCTIONS="" # space-separated, the last registered first
+_DELETE_DIR=""     # the folder to delete on exit
+
+# _on_exit <function>
 #
-# Delete <path> when the script exits, or when INT, TERM or HUP stops it. Run
-# the function <on-exit> first, with the exit code as its positional: the
-# code of the script on EXIT, 130 on INT, 143 on TERM, 129 on HUP. Replaces
-# the traps of EXIT, INT, TERM and HUP.
+# Register <function> to run when the script exits, or when INT, TERM or HUP
+# ends it. <function> gets the exit code as $1: the code of the script on
+# EXIT, 130 on INT, 143 on TERM, 129 on HUP. The last function registered runs
+# first, and each runs once. A failed one does not stop the rest.
+#
+# _on_exit owns the traps of EXIT, INT, TERM and HUP. Its first call replaces
+# any the script set, and a later `trap` on one of them replaces its own.
+#
+# Call it in the main shell. A subshell, eg. $(...), starts with no traps but
+# keeps _EXIT_FUNCTIONS. If the list is empty, _on_exit sets the traps of the
+# subshell, and the function runs when the subshell exits. If not, it sets no
+# trap, and the function never runs.
 #
 # EXIT
-#   3   <on-exit> is not a function name
-_delete_on_exit() {
-  doe_on_exit="${2:-:}"
-  if [ "$doe_on_exit" != ":" ] && ! _is identifier "$doe_on_exit"; then
-    _fail 3 -v on_exit "$doe_on_exit" "_delete_on_exit takes a function name"
+#   3   <function> is not a defined function
+_on_exit() {
+  # command -v prints the name of a function, a builtin or a reserved word, the
+  # path of a program, or nothing. A builtin passes, eg. `true`, and does no
+  # harm
+  [ "$(command -v -- "$1")" = "$1" ] \
+    || _fail 3 -v function "$1" "_on_exit takes a defined function"
+
+  # The traps read _EXIT_FUNCTIONS when they run, so only the first call sets
+  # the traps
+  if [ -z "$_EXIT_FUNCTIONS" ]; then
+    trap '_run_exit_functions $?' EXIT
+    trap '_end_by_signal INT 130' INT   # Ctrl-C
+    trap '_end_by_signal TERM 143' TERM # kill, timeout, cancelled CI job
+    trap '_end_by_signal HUP 129' HUP   # lost SSH connection, closed window
   fi
 
-  # The path goes into the text of the traps, so quote it for the shell
-  doe_rm="rm -rf -- '$(printf '%s' "$1" | sed "s/'/'\\\\''/g")'"
+  _EXIT_FUNCTIONS="$1 $_EXIT_FUNCTIONS"
+}
 
-  # A signal trap clears the EXIT trap, so <on-exit> runs once. The code is
-  # 128 plus the number of the signal, as the shell reports it
-  # shellcheck disable=SC2064 # expand the path now, the traps run later
-  trap "$doe_on_exit \$?; $doe_rm" EXIT
-  # shellcheck disable=SC2064
-  trap "$doe_on_exit 130; $doe_rm; trap - EXIT INT; kill -INT $$" INT # Ctrl-C
-  # shellcheck disable=SC2064
-  trap "$doe_on_exit 143; $doe_rm; trap - EXIT TERM; kill -TERM $$" TERM # kill, timeout, CI cancel
-  # shellcheck disable=SC2064
-  trap "$doe_on_exit 129; $doe_rm; trap - EXIT HUP; kill -HUP $$" HUP # SSH drop, closed window
+# _run_exit_functions <exit-code>
+#
+# Take each function off _EXIT_FUNCTIONS, then run it with <exit-code>. A
+# function that exits during a signal trap makes the shell run the EXIT trap,
+# which runs only the functions left.
+_run_exit_functions() {
+  while [ -n "$_EXIT_FUNCTIONS" ]; do
+    lib_ref_function=${_EXIT_FUNCTIONS%% *}
+    _EXIT_FUNCTIONS=${_EXIT_FUNCTIONS#* }
+    "$lib_ref_function" "$1" || true
+  done
+}
+
+# _end_by_signal <signal> <exit-code>
+#
+# Run the functions _on_exit registered with <exit-code>, then end the script
+# by <signal>, so its caller sees the signal. A trap runs in place of the
+# default action of <signal>, so _end_by_signal clears the traps of EXIT and
+# <signal>, then resends <signal>.
+_end_by_signal() {
+  _run_exit_functions "$2"
+  trap - EXIT "$1"
+  kill -s "$1" $$
+}
+
+# _delete_on_exit <dir>
+#
+# Delete the absolute folder <dir> when the script exits, or when INT, TERM or
+# HUP ends it. A function that a later _on_exit call registers runs first.
+#
+# A script calls it once. Create any other temporary folder inside <dir>, eg.
+# `mktemp -d "$_TEMP_DIR/part.XXXXXX"`.
+#
+# EXIT
+#   3   A second call, or a <dir> that is not an absolute path
+_delete_on_exit() {
+  [ -z "$_DELETE_DIR" ] \
+    || _fail 3 -v dir "$1" "_delete_on_exit takes one folder per script. Create this one inside the first"
+
+  # The script can cd before it exits, and a relative path then names
+  # another folder
+  case "$1" in
+    /*) ;;
+    *) _fail 3 -v dir "$1" "_delete_on_exit takes an absolute path" ;;
+  esac
+
+  _DELETE_DIR=$1
+  _on_exit _delete_dir
+}
+
+# _delete_dir
+#
+# Delete _DELETE_DIR.
+# shellcheck disable=SC2329 # _delete_on_exit registers it with _on_exit
+_delete_dir() {
+  rm -rf -- "$_DELETE_DIR"
 }

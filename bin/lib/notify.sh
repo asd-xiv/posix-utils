@@ -7,8 +7,7 @@
 #   . "$_SCRIPT_DIR/../lib/notify.sh"
 #
 # DESCRIPTION
-#   Needs log.sh, validation.sh, os.sh. A script sources them before this
-#   file.
+#   Needs log.sh, os.sh. A script sources them before this file.
 #
 # ENVIRONMENT
 #   NO_NOTIFY   Skips the sounds and notifications when set and non-empty

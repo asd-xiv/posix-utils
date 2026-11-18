@@ -119,9 +119,9 @@ _take_snapshot() {
 # _finish_sync <exit-code>
 #
 # Save <exit-code> and the time the script ended to the row of _SYNC_ID in
-# syncs. _delete_on_exit runs it when the script exits or a signal stops it,
-# so it saves a failed run too. Does nothing before the run has a row.
-# shellcheck disable=SC2329 # _delete_on_exit calls it
+# syncs. The script registers it with _on_exit, so it saves a failed or
+# stopped run too. Do nothing before the run has a row.
+# shellcheck disable=SC2329 # the script registers it with _on_exit
 _finish_sync() {
   if [ -n "${_SYNC_ID:-}" ]; then
     _run_sql "$_DB_FILE" "UPDATE syncs
@@ -180,7 +180,8 @@ fi
 _use_account
 _require_cmd curl jq sqlite3
 _TEMP_DIR=$(_create_temp_dir t212)
-_delete_on_exit "$_TEMP_DIR" _finish_sync
+_delete_on_exit "$_TEMP_DIR"
+_on_exit _finish_sync
 
 _DB_FILE=$(_get_db_file "$_ACCOUNT")
 

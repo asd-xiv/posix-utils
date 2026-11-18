@@ -332,9 +332,9 @@ _USER_WORKSPACE="" # the workspace to switch back to
 # _stop_capture
 #
 # Stop the recording, close the terminal and switch back to the workspace of
-# the user. _delete_on_exit runs it when the script exits or a signal stops
-# it.
-# shellcheck disable=SC2329 # _delete_on_exit calls it
+# the user. The script registers it with _on_exit, so it runs when the script
+# exits or a signal stops it.
+# shellcheck disable=SC2329 # the script registers it with _on_exit
 _stop_capture() {
   if [ -n "$_IS_RECORDING" ]; then
     NO_NOTIFY=1 "$_SCRIPT_DIR/screenrecord" stop >/dev/null 2>&1 || true
@@ -350,7 +350,8 @@ _stop_capture() {
 }
 
 _TEMP_DIR=$(_create_temp_dir capture-terminal)
-_delete_on_exit "$_TEMP_DIR" _stop_capture
+_delete_on_exit "$_TEMP_DIR"
+_on_exit _stop_capture
 
 # ╭───
 # │ Main

@@ -4,23 +4,22 @@
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../../tools/test-lib.sh"
 . "$SCRIPT_DIR/../log.sh"
-. "$SCRIPT_DIR/../validation.sh"
 . "$SCRIPT_DIR/../os.sh"
 
 # run_script
-# Run the script on stdin in a new shell that sources os.sh and what it
-# needs, as a script does. The traps of _delete_on_exit fire when that shell exits.
+#
+# Run the script on stdin in a new shell that sources log.sh and os.sh, as a
+# script does. The traps of _on_exit run when that shell exits.
 run_script() {
   {
-    printf '. "%s"\n' "$SCRIPT_DIR/../log.sh" "$SCRIPT_DIR/../validation.sh" \
-      "$SCRIPT_DIR/../os.sh"
+    printf '. "%s"\n' "$SCRIPT_DIR/../log.sh" "$SCRIPT_DIR/../os.sh"
     cat
   } | sh -s
 }
 
 _describe "lib/os.sh :: _delete_on_exit :: valid"
 
-_test 'given [a script that exits] should [delete the path]'
+_test 'given [a script that exits] should [delete the folder]'
 prepare() { mkdir dir && touch dir/file; }
 actual() {
   run_script <<'SCRIPT'
@@ -32,35 +31,34 @@ SCRIPT
 _expect equal actual.exit 0
 _expect equal actual.stdout 'deleted'
 
-_test 'given [an on-exit function] should [run it with the exit code as its positional, then delete the path]'
+_describe "lib/os.sh :: _delete_on_exit :: edge"
+
+_test 'given [a TERM] should [delete the folder, then end by TERM]'
 prepare() { mkdir dir; }
 actual() {
   run_script <<'SCRIPT' || printf 'exit %s\n' "$?"
-save_code() { printf 'code %s, dir %s\n' "$1" "$([ -d dir ] && echo kept)"; }
-_delete_on_exit "$PWD/dir" save_code
+_delete_on_exit "$PWD/dir"
+kill -TERM $$
+printf 'not reached\n'
+SCRIPT
+  [ ! -e dir ] && printf 'deleted\n'
+}
+_expect equal actual.stdout 'exit 143
+deleted'
+
+_test 'given [a function that a later _on_exit call registers] should [run the function, then delete the folder]'
+prepare() { mkdir dir; }
+actual() {
+  run_script <<'SCRIPT' || printf 'exit %s\n' "$?"
+print_code() { printf 'code %s, dir %s\n' "$1" "$([ -d dir ] && echo kept)"; }
+_delete_on_exit "$PWD/dir"
+_on_exit print_code
 exit 4
 SCRIPT
   [ ! -e dir ] && printf 'deleted\n'
 }
 _expect equal actual.stdout 'code 4, dir kept
 exit 4
-deleted'
-
-_describe "lib/os.sh :: _delete_on_exit :: edge"
-
-_test 'given [a TERM] should [run on-exit with 143, delete the path, then end by TERM]'
-prepare() { mkdir dir; }
-actual() {
-  run_script <<'SCRIPT' || printf 'exit %s\n' "$?"
-save_code() { printf 'code %s, dir %s\n' "$1" "$([ -d dir ] && echo kept)"; }
-_delete_on_exit "$PWD/dir" save_code
-kill -TERM $$
-printf 'not reached\n'
-SCRIPT
-  [ ! -e dir ] && printf 'deleted\n'
-}
-_expect equal actual.stdout 'code 143, dir kept
-exit 143
 deleted'
 
 _test 'given [a path with a quote and a space] should [delete it]'
@@ -76,16 +74,31 @@ _expect equal actual.stdout 'deleted'
 
 _describe "lib/os.sh :: _delete_on_exit :: invalid"
 
-_test 'given [a command as on-exit] should [exit 3 and not run it]'
+_test 'given [a second call] should [exit 3 and delete the first folder]'
+prepare() { mkdir one two; }
+actual() {
+  status=0
+  run_script <<'SCRIPT' || status=$?
+_delete_on_exit "$PWD/one"
+_delete_on_exit "$PWD/two"
+SCRIPT
+  [ ! -e one ] && [ -e two ] && printf 'one deleted, two kept\n'
+  exit "$status"
+}
+_expect equal actual.exit 3
+_expect contain actual.stderr '_delete_on_exit takes one folder'
+_expect equal actual.stdout 'one deleted, two kept'
+
+_test 'given [a relative path] should [exit 3 and delete nothing]'
 prepare() { mkdir dir; }
 actual() {
   status=0
   run_script <<'SCRIPT' || status=$?
-_delete_on_exit "$PWD/dir" 'touch ran'
+_delete_on_exit dir
 SCRIPT
-  [ ! -e ran ] || printf 'ran\n'
+  [ -e dir ] && printf 'kept\n'
   exit "$status"
 }
 _expect equal actual.exit 3
-_expect contain actual.stderr '_delete_on_exit takes a function name'
-_expect equal actual.stdout ''
+_expect contain actual.stderr '_delete_on_exit takes an absolute path'
+_expect equal actual.stdout 'kept'

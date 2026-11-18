@@ -15,24 +15,11 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$SCRIPT_DIR/../../lib/log.sh"
 . "$SCRIPT_DIR/../../lib/validation.sh"
 . "$SCRIPT_DIR/../../lib/guard.sh"
+. "$SCRIPT_DIR/../../lib/os.sh"
 . "$SCRIPT_DIR/../../lib/terminal.sh"
 . "$SCRIPT_DIR/lib.sh"
 
 TITLE="zettel :: editor"
-
-# ╭───
-# │ Cleanup
-# ╰───
-
-# shellcheck disable=SC2329 # called by trap
-cleanup() {
-  _restore_title
-}
-
-trap cleanup EXIT                                    # normal exit
-trap 'cleanup; trap - EXIT INT; kill -INT $$' INT    # Ctrl+C
-trap 'cleanup; trap - EXIT TERM; kill -TERM $$' TERM # kill, timeout
-trap 'cleanup; trap - EXIT HUP; kill -HUP $$' HUP    # closed window
 
 # ╭───
 # │ Main
@@ -50,7 +37,7 @@ cd -- "$NOTES_DIR"
 # Neovim renames the window when its 'title' option is on, so titlestring
 # gives it the same title. _restore_title gives the window of the browser its
 # title back
-_set_title "$TITLE"
+_set_title_until_exit "$TITLE"
 EDITOR_STATUS=0
 nvim -c "let &titlestring = '$TITLE'" -- "$EDITED_FILE" || EDITOR_STATUS=$?
 
