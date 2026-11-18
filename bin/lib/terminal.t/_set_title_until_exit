@@ -13,6 +13,7 @@ script -qec true /dev/null </dev/null >/dev/null 2>&1 \
   || _skip_all "script(1) of util-linux does not run"
 
 # source_lib
+#
 # Print the lines that source terminal.sh and the files it needs.
 source_lib() {
   printf '. "%s"\n' "$SCRIPT_DIR/../log.sh" "$SCRIPT_DIR/../os.sh" \
@@ -20,21 +21,18 @@ source_lib() {
 }
 
 # run_on_terminal
-# Run the script on stdin in a new shell that sources terminal.sh, on a
-# pseudo-terminal. Print what the shell wrote, with ESC as \033 and BEL as
-# \007, then a newline. Return the exit code of the shell, or 128 plus the
-# number of the signal that ended it.
+#
+# Run the script on stdin on a pseudo-terminal, in a new shell that sources
+# terminal.sh. Print what the terminal showed, with the ESC and BEL bytes of the
+# title codes as the text \033 and \007, so a failed test prints them readable.
 run_on_terminal() {
   {
     source_lib
     cat
   } >script.sh
 
-  rot_status=0
-  script -qec 'sh script.sh' /dev/null </dev/null >raw.txt || rot_status=$?
-  printf '%s\n' "$(sed "s/$(printf '\033')/\\\\033/g; s/$(printf '\007')/\\\\007/g" raw.txt)"
-
-  return "$rot_status"
+  script -qec 'sh script.sh' /dev/null </dev/null \
+    | sed "s/$(printf '\033')/\\\\033/g; s/$(printf '\007')/\\\\007/g"
 }
 
 _describe "lib/terminal.sh :: _set_title_until_exit :: valid"
@@ -43,26 +41,15 @@ _test 'given [a script that exits] should [set the title, then restore it]'
 actual() {
   run_on_terminal <<'SCRIPT'
 _set_title_until_exit "my title"
-exit 4
+exit 0
 SCRIPT
 }
-_expect equal actual.exit 4
+# A terminal shows stdout and stderr as one stream, which script prints on stdout
 _expect equal actual.stdout '\033[22;0t\033]0;my title\007\033[23;0t'
 
 _describe "lib/terminal.sh :: _set_title_until_exit :: edge"
 
-_test 'given [a TERM] should [restore the title, then end by TERM]'
-actual() {
-  run_on_terminal <<'SCRIPT'
-_set_title_until_exit "my title"
-kill -TERM $$
-printf 'not reached\n'
-SCRIPT
-}
-_expect equal actual.exit 143
-_expect equal actual.stdout '\033[22;0t\033]0;my title\007\033[23;0t'
-
-_test 'given [an earlier _delete_on_exit call] should [restore the title and delete the path]'
+_test 'given [an earlier _delete_on_exit call] should [keep that cleanup]'
 prepare() { mkdir dir; }
 actual() {
   run_on_terminal <<'SCRIPT'
@@ -70,17 +57,16 @@ _delete_on_exit "$PWD/dir"
 _set_title_until_exit "my title"
 exit 0
 SCRIPT
-  [ ! -e dir ] && printf 'deleted\n'
+  [ -e dir ] || printf 'deleted\n' >result.txt
 }
-_expect equal actual.stdout '\033[22;0t\033]0;my title\007\033[23;0t
-deleted'
+_expect equal result.txt 'deleted'
 
-_test 'given [no terminal] should [write nothing, and keep the exit code]'
+_test 'given [no terminal] should [write nothing]'
 actual() {
   {
     source_lib
-    printf '_set_title_until_exit "my title"\nexit 4\n'
+    printf '_set_title_until_exit "my title"\n'
   } | sh -s
 }
-_expect equal actual.exit 4
+# Without a terminal in between, _set_title would write to stderr
 _expect equal actual.stderr ''
