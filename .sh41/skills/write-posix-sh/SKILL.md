@@ -2,8 +2,8 @@
 name: write-posix-sh
 description: |
   Writes and reviews POSIX shell scripts and the primitives in
-  `posix-utils/bin/lib/`. Use when the work is a shell script in `bin/`,
-  `tools/` or a `*.sh` file, with or without an extension, or when porting one
+  `posix-utils/bin/lib/`. Use when the work is a shell script, eg. in `bin/`
+  or `tools/`, with or without a `.sh` extension, or when porting one
   from bash or zsh. Not for a Node CLI.
 metadata:
   version: "0.1.0"
@@ -25,7 +25,7 @@ Sources used for various decisions in this skill:
 
 If part of `posix-utils`:
 
-1. Script's `bin/*` home
+1. The folder under `bin/` the script belongs in, eg. `bin/cli/`
    - Without it, ask the User
 
 Otherwise:
@@ -44,7 +44,7 @@ If part of `posix-utils`:
     ├── cli/             # terminal and CI, no display server
     │   └── t212/        # a command with parts lives in its own folder
     │       ├── t212     # the script, named after the folder
-    │       ├── t212.d/  # its parts, eg. lib.sh, one file per subcommand
+    │       ├── t212.d/  # its parts: one file per subcommand, and lib.sh
     │       └── t212.t/  # its tests
     └── sway/            # Sway session, needs Wayland and a notifier
 
@@ -56,15 +56,16 @@ Otherwise, ask the User where to place it.
 <!-- sh41:
 When editing this skill, use these terms consistently.
 
-| Term       | Example                                 | Means                                    | Not                       |
-| ---------- | --------------------------------------- | ---------------------------------------- | ------------------------- |
-| flag       | `-m`, `--max`                           | A named input to the script              | option, switch            |
-| positional | `<pattern>`, `$1`                       | An unnamed input, placed after flags     | argument, file argument   |
-| setting    | `_MAX_COUNT`                            | A top-level variable a flag sets once    | global, knob, config knob |
-| primitive  | `_is`, `_search_file`                   | A domain or domain-agnostic function     | helper, util              |
-| elevate    | `_ping_service_x` -> `_http_ping <url>` | Move a domain primitive up into `bin/lib/` | move, promote, extract    |
-| status     | `$?` after `grep` or a pipe             | What anything the script runs gives back | exit code, return value   |
-| exit code  | `exit 2`, under `EXIT CODES`            | What the script itself ends with         | status, return code       |
+| Term             | Example                                | Means                                      | Not                                     |
+| :--------------- | :------------------------------------- | :----------------------------------------- | :-------------------------------------- |
+| flag             | `-m`, `--max`                          | A named input to the script                | option, switch                          |
+| positional       | `<pattern>`, `$1`                      | An unnamed input, placed after flags       | argument, file argument                 |
+| setting          | `_MAX_COUNT`                           | A top-level variable a flag sets once      | global, knob, config knob               |
+| primitive        | `_is`                                  | A function without the script's nouns      | helper, util, domain-agnostic primitive |
+| domain primitive | `_is_acme_api_alive`                   | A function with the script's nouns         | domain-specific primitive               |
+| elevate          | `_ping_acme_api` -> `_http_ping <url>` | Move a domain primitive up into `bin/lib/` | move, promote, extract                  |
+| status           | `$?` after `grep` or a pipe            | What anything the script runs gives back   | exit code, return value                 |
+| exit code        | `exit 2`, under `EXIT CODES`           | What the script itself ends with           | status, return code                     |
 
 - Man page headings keep their standard names, `OPTIONS` and `ARGUMENTS`
 - `set` takes shell options, not flags
@@ -82,7 +83,7 @@ Kept so the skill works alone
 - Put `--` before the positionals you pass, eg. `rm -f -- "$file"`. A command
   reads a value that starts with `-` as a flag
 - Check each item inside a glob loop, eg. `[ -f "$file" ] || continue`
-  - A pattern that matches nothing stays literal, `for file in docs/*.md` then
+  - A pattern that matches nothing stays literal. `for file in docs/*.md` then
     runs the body once, on the pattern itself
 - Keep state that must outlast a reboot in
   `${XDG_STATE_HOME:-$HOME/.local/state}`
@@ -91,26 +92,31 @@ Kept so the skill works alone
 
 - `_lower_snake` for a private function and `_UPPER_SNAKE` for a private
   top-level variable, in a script or a lib file. Private means not part of the
-  public contract, not meant for the user
-- `UPPER_SNAKE` for any public global variable: an environment variable the
-  script reads, eg. `NO_COLOR`, or exports for a child, eg. a config path
+  public contract
+- `UPPER_SNAKE` for an environment variable: one the script reads, eg.
+  `NO_COLOR`, or exports for a child, eg. a config path
 - Name the variables of a function `lower_snake`, prefixed with the function
   acronym, eg. `sf_status` in `_search_file`
 - The prefix must be unique across the script and every file it sources
 - Never shadow a builtin, a shell variable or a standard environment variable:
-  `type`, `test`, `read`, `IFS`, `PATH`, `TMPDIR`
-- Name a path variable for what it holds, `_dir` or `_file`, unless its noun
+  eg. `type`, `test`, `read`, `IFS`, `PATH`, `TMPDIR`
+- Name a path variable for what it points to, `_dir` or `_file`, unless its noun
   already does, eg. `link_script`. Keep `_path` for a search list, as in `PATH`
 
 **Locks**:
 
 - Take a lock with `mkdir` in `$(_get_runtime_dir)`. `mkdir` is atomic
-  - A boot clears that directory, so no lock outlasts a reboot
+  - A boot clears that folder, so no lock outlasts a reboot
 - Write each value to its own file in the lock, `pid` first, eg.
   `<runtime-dir>/<cmd-name>.lock/pid`
-- Delete the lock with `rm -r -- "${_LOCK_DIR:?}"` in the cleanup trap, only
-  when this run took it
-- A lock is stale when its pid is gone or runs another program
+- Delete the lock in a function, eg.
+  `_delete_lock() { rm -r -- "${_LOCK_DIR:?}"; }`
+- Register that function with `_on_exit` on the line after `mkdir` takes the
+  lock
+  - A run that finds the lock taken exits before it registers the function, so
+    it never deletes the lock of the run that took it
+- A lock is stale when no process has its pid, or that process runs another
+  program
   - Only an explicit command deletes it, eg. `screenrecord stop`
   - Check the program with `ps -p <pid> -o args=` before you signal the pid
 
@@ -148,9 +154,9 @@ that prints the lines that match a pattern.
     see. Otherwise let `set -e` stop the script
 - With `set -o pipefail`, a pipe returns the status of its last failed command
   (eg. `(exit 3) | (exit 4) | true` -> 4)
-  - Turn it on around the pipe that needs it, off after. With it on,
-    `find "$dir" -type f | head -n 1` gives status 141 on a large dir, once
-    `head` stops reading, and `set -e` ends the script
+  - Turn it on around the pipe that needs it, off after
+  - With it on, `find "$dir" -type f | head -n 1` gives status 141 on a large
+    folder. `head` stops reading, then `set -e` ends the script
   - POSIX added it in June 2024. BusyBox `ash` added it in 1.16 (Jan 2010),
     `dash` in 0.5.13 (Sep 2025)
     <!-- sh41: without this line, agents spend turns checking pipefail support -->
@@ -165,8 +171,8 @@ set -eu
 ### 2. The man page
 
 - Name a script `<verb>-<object>`, eg. `find-in-files`, `download-git`
-  - `find-*` exits and `_find_*` returns 0 when it finds nothing, `get-*` and
-    `_get_*` non-zero
+  - When nothing is found, `find-*` exits 0 and `_find_*` returns 0
+  - When nothing is found, `get-*` and `_get_*` give non-zero
 - Write the man page once, as comments. `_show_help "$0"` prints it back
   - Document every code the script exits with under `EXIT CODES`
 
@@ -207,15 +213,16 @@ set -eu
 #   grep
 ```
 
-### 3. Domain-agnostic primitives
+### 3. Primitives
 
 - Read the files of `bin/lib/` before you write a script and reuse what fits
-- Source each file the script uses, after the files its header lists
+- Source each lib file after the files its Needs line names, eg. `log.sh` before
+  `os.sh`
   - A file of `bin/lib/` never sources another
 - Write a new primitive in the script
 - When a second script needs it, elevate it to the file of its topic in
   `bin/lib/`
-  - Remove the domain from its name, eg. `_ping_service_x` -> `_http_ping <url>`
+  - Remove the domain from its name, eg. `_ping_acme_api` -> `_http_ping <url>`
   - Start its variable prefix with `lib_`, eg. `lib_hp_status`, to avoid
     collisions with the variables of a script that sources it
 - `bin/cli/fancy-log` is the command form of `_log`, for a shell that does not
@@ -228,6 +235,8 @@ _SCRIPT_DIR=$(dirname "$(realpath "$0")")
 . "$_SCRIPT_DIR/../lib/log.sh"
 . "$_SCRIPT_DIR/../lib/validation.sh"
 . "$_SCRIPT_DIR/../lib/guard.sh"
+. "$_SCRIPT_DIR/../lib/help.sh"
+. "$_SCRIPT_DIR/../lib/os.sh"
 
 # _log reads these
 export LOG_NAMESPACE="find-in-files"
@@ -236,9 +245,9 @@ export LOG_LEVEL="${LOG_LEVEL:-info}"
 
 ### 4. Settings
 
-- Declare the settings up front, each with an explicit default. Assign every
-  other top-level variable, eg. `_PATTERN`, where the script first knows its
-  value
+- Declare the settings at the top of the script, each with an explicit default.
+  Assign every other top-level variable, eg. `_PATTERN`, where the script first
+  knows its value
 
 ```sh
 _IGNORE_CASE="" # -i/--ignore-case, "true" or ""
@@ -247,18 +256,19 @@ _MAX_COUNT=""   # -m/--max, a positive integer
 
 ### 5. Domain primitives
 
-- A primitive takes per-call data as positionals. A flag sets a setting once.
-  Never use a setting to pass data between functions
+- A primitive takes per-call data as positionals
+- A flag sets a setting once
+- Never use a setting to pass data between functions
 - `return` ends the function, `_fail` ends the script
 - Each function has its own positional list. `shift` and `set --` inside it
   never update the caller's `"$@"`
 - Tell a command's statuses apart before you act on one, so the script never
   treats "no match" as "broken"
-- Above a function, leave out a 0 that only says the work is done
+- Under `RETURNS`, leave out a 0 that only says the work is done
 
 ```sh
 # ╭───
-# │ Primitives
+# │ Domain primitives
 # ╰───
 
 # _search_file <pattern> <file>
@@ -275,7 +285,7 @@ _search_file() {
   if [ -z "$_MAX_COUNT" ]; then
     grep ${_IGNORE_CASE:+-i} -- "$1" "$2" || sf_status=$?
   else
-    # POSIX `grep` has no -m, so the search pipes into `head` as a workaround.
+    # POSIX `grep` has no -m, so the search pipes into `head`.
     # `pipefail` gives the pipe `grep`'s status: `head` exits 0 whether a line
     # matched or not
     set -o pipefail
@@ -297,7 +307,7 @@ _search_file() {
 
 ### 6. Flags and positionals
 
-- A command word comes before its flags, eg. `ls` in `recheck ls --color`
+- A subcommand comes before its flags, eg. `ls` in `recheck ls --color`
 - In `-?*`, the `?` lets a lone `-` through
 - Guard before every `shift 2`. `dash` aborts with
   `shift: can't shift that many`
@@ -358,11 +368,24 @@ _require_cmd grep
 
 ### 7. Cleanup
 
-- Register the trap before the first thing it must clean
-- End a signal trap by resending the signal. A trap stops the signal from ending
-  the script. Without the resend, the script runs on past its own cleanup
-  - Clear the EXIT trap in each signal trap. POSIX leaves open whether EXIT runs
-    when a signal kills the script
+- Register each cleanup function with `_on_exit` on the line after the script
+  creates what the function cleans, eg. after `mkdir` takes the lock
+  - Bad: `trap 'rm -r -- "${_LOCK_DIR:?}"' EXIT`
+  - Good: `_delete_lock() { rm -r -- "${_LOCK_DIR:?}"; }`, then
+    `_on_exit _delete_lock`
+- Never call `trap` outside `_on_exit`. `_on_exit` owns the EXIT, INT, TERM and
+  HUP traps, and a `trap` call replaces the one `_on_exit` set
+- Delete the temporary folder with `_delete_on_exit`
+  - It takes one absolute folder per script. Create any other temporary folder
+    inside it
+- Name the terminal window with `_set_title_until_exit`
+- Outside posix-utils, write `_on_exit` in the script
+  - End each signal trap with `trap - EXIT <signal>`, then `kill -s <signal> $$`
+    - Without the resend, the script runs on after the cleanup
+    - Clear the EXIT trap. POSIX leaves open whether EXIT runs when a signal
+      kills the script
+    - Clear the trap of `<signal>`, or the resent signal runs the trap again
+      instead of ending the script
 
 ```sh
 _TEMP_DIR=$(_create_temp_dir find-in-files)
@@ -412,13 +435,14 @@ done
 ### 9. The last line
 
 - Never end a script, or a function, on a bare `[ ] && { }`
-  - A false test becomes the exit code, eg. `[ -n "$_FOUND" ] && exit 0` alone
-    exits 1 when nothing matched, by accident
-- Exit on purpose in every branch, with the code the man page promised
+  - A false test becomes the exit code, eg. a last line
+    `[ -n "$_FOUND" ] && exit 0` exits 1 when nothing matched
+- Exit on purpose in every branch, with a code the man page lists under
+  `EXIT CODES`
 
 ```sh
 if [ -n "$_SKIPPED" ]; then
-  _fail 3 "Some files could not be searched"
+  _fail 3 "Could not search some files"
 fi
 
 if [ -z "$_FOUND" ]; then
@@ -432,8 +456,8 @@ exit 0
 
 - [ ] `npm run lint` passes, or `./tools/verify ./bin ./tools`
 - [ ] `--help` exits 0, and an unknown flag exits 2
-  - Skip a private command, under a `*.d` directory, and a test file, under a
-    `*.t` directory
-- [ ] A command has `+x`, a `*.sh` library does not
+  - Skip a private command, under a `*.d` folder, and a test file, under a `*.t`
+    folder
+- [ ] A command has `+x`, a `*.sh` lib file does not
 
 Re-read the draft against these until all checks pass.
